@@ -1,0 +1,863 @@
+package com.raju.aiassistant.domain.assistant
+
+import com.raju.aiassistant.data.search.SearchResponse
+import com.raju.aiassistant.data.search.SearchResult
+import com.raju.aiassistant.data.search.WebSearch
+import com.raju.aiassistant.domain.ai.AiModel
+import com.raju.aiassistant.domain.ai.AiProvider
+import com.raju.aiassistant.domain.ai.AiResult
+import com.raju.aiassistant.domain.ai.FailureKind
+import com.raju.aiassistant.domain.ai.ProviderId
+import com.raju.aiassistant.domain.ai.Turn
+import com.raju.aiassistant.domain.model.AssistantState
+import com.raju.aiassistant.domain.model.ChatMessage
+import com.raju.aiassistant.domain.model.ChatRole
+import com.raju.aiassistant.domain.model.MusicService
+import com.raju.aiassistant.domain.model.SecretId
+import com.raju.aiassistant.domain.model.UserSettings
+import com.raju.aiassistant.domain.tools.Contact
+import com.raju.aiassistant.domain.tools.ContactLookup
+import com.raju.aiassistant.domain.tools.DeviceTools
+import com.raju.aiassistant.domain.tools.ToolOutcome
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class AssistantEngineTest {
+    private class FakeProvider(val replies: ArrayDeque<AiResult<String>>) : AiProvider {
+        override val id = ProviderId.GEMINI
+        val calls = mutableListOf<List<Turn>>()
+        override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+        override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> {
+            calls += turns; return replies.removeFirst()
+        }
+    }
+
+    private class FakeSpeaker : Speaker {
+        override val speaking = MutableStateFlow(false)
+        override val level = MutableStateFlow(0f)
+        val spoken = mutableListOf<String>()
+        var stops = 0
+        override suspend fun speak(text: String): SpeakResult { spoken += text; return SpeakResult(true, "fake") }
+        override fun stop() { stops++ }
+    }
+
+    private class FakeVoice : VoiceInput {
+        override val listening = MutableStateFlow(false)
+        override val partial = MutableStateFlow("")
+        var starts = 0
+        /** Deepgram-like (records in this app) by default; false = the system recogniser. */
+        var inApp = true
+        override fun capturesInApp() = inApp
+        var onResult: ((String) -> Unit)? = null
+        var onError: ((VoiceError) -> Unit)? = null
+        override fun isAvailable() = true
+        override fun start(languageTag: String, onResult: (String) -> Unit, onError: (VoiceError) -> Unit) { starts++; this.onResult = onResult; this.onError = onError }
+        override fun stop() {}
+    }
+
+    private class FakeTools(var contacts: ContactLookup = ContactLookup.Found(emptyList())) : DeviceTools {
+        val dialed = mutableListOf<Contact>()
+        val music = mutableListOf<Pair<String, MusicService>>()
+        val timers = mutableListOf<Int>()
+        val sms = mutableListOf<Pair<String, String>>()
+        override fun setTimer(seconds: Int, note: String): ToolOutcome { timers += seconds; return ToolOutcome.Done("Timer set") }
+        override fun sendSms(contact: Contact, text: String): ToolOutcome { sms += contact.number to text; return ToolOutcome.Done("SMS sent") }
+        val events = mutableListOf<Pair<String, Int>>()
+        val eventStarts = mutableListOf<Long>()
+        val eventRules = mutableListOf<String?>()
+        override fun addCalendarEvent(title: String, startMillis: Long, durationMinutes: Int, location: String?, rrule: String?): ToolOutcome {
+            events += title to durationMinutes; eventStarts += startMillis; eventRules += rrule; return ToolOutcome.Done("Calendar opened")
+        }
+        override suspend fun findContacts(query: String) = contacts
+        override fun dial(contact: Contact, direct: Boolean): ToolOutcome { dialed += contact; return ToolOutcome.Done("Dialer opened for ${contact.name}") }
+        override fun openApp(name: String) = ToolOutcome.Failed("App \"$name\" is not installed")
+        override fun openSettings(page: SettingsPage) = ToolOutcome.Done("Opened")
+        override fun batteryStatus() = ToolOutcome.Done("Battery 80%")
+        override fun playMusic(query: String, service: MusicService): ToolOutcome { music += query to service; return ToolOutcome.Done("Opened ${service.label}") }
+        override fun openWhatsApp(number: String?, text: String) = ToolOutcome.Done("WhatsApp opened")
+    }
+
+    private class Store : ChatHistory, MemoryStore, ActionLog {
+        val saved = mutableListOf<ChatMessage>()
+        val mems = mutableListOf<Memory>()
+        val logs = mutableListOf<Pair<String, ActionStatus>>()
+        override suspend fun recent(limit: Int) = saved.takeLast(limit)
+        override suspend fun add(role: ChatRole, text: String): Long { saved += ChatMessage(saved.size + 1L, 1, role, text, 0); return saved.size.toLong() }
+        override suspend fun clear() = saved.clear()
+        override suspend fun all() = mems.toList()
+        override suspend fun add(text: String): Long { mems += Memory(mems.size + 1L, text, 0); return mems.size.toLong() }
+        override suspend fun log(type: String, summary: String, status: ActionStatus) { logs += type to status }
+    }
+
+    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true))
+    private val store = Store()
+    private val speaker = FakeSpeaker()
+    private val voice = FakeVoice()
+    private val tools = FakeTools()
+    private var keys = mutableMapOf(SecretId.GEMINI_API_KEY to "key", SecretId.TAVILY_API_KEY to "tvly")
+    private var online = true
+    private lateinit var provider: FakeProvider
+    private var search: WebSearch = object : WebSearch {
+        override suspend fun search(query: String, maxResults: Int, topic: String?) =
+            AiResult.Success(SearchResponse("ans", listOf(SearchResult("Site", "https://site.com", "snippet"))))
+    }
+
+    /** The engine runs in backgroundScope, which advanceUntilIdle() ignores; advance virtual time instead. */
+    private fun TestScope.settle() {
+        advanceTimeBy(60_000)
+        runCurrent()
+    }
+
+    private fun TestScope.engine(vararg replies: AiResult<String>): AssistantEngine {
+        provider = FakeProvider(ArrayDeque(replies.toList()))
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+        )
+    }
+
+    @Test
+    fun replyIsRecordedSpokenAndStateReturnsToIdle() = runTest {
+        val e = engine(AiResult.Success("Namaste! **Main** Seema AI hoon."))
+        e.submit("hello")
+        settle()
+        assertEquals(listOf(ChatRole.USER, ChatRole.ASSISTANT), e.transcript.value.map { it.role })
+        assertEquals(listOf("Namaste! Main Seema AI hoon."), speaker.spoken)
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertEquals(2, store.saved.size)
+    }
+
+    @Test
+    fun missingKeyGivesClearErrorWithoutCallingProvider() = runTest {
+        keys.remove(SecretId.GEMINI_API_KEY)
+        val e = engine()
+        e.submit("hello")
+        runCurrent()
+        assertEquals(AssistantState.Error, e.state.value)
+        assertTrue(e.lastError.value!!.contains("API key is not set"))
+        settle()
+        assertEquals(AssistantState.Idle, e.state.value) // error resets
+    }
+
+    @Test
+    fun offlineIsReported() = runTest {
+        online = false
+        val e = engine()
+        e.submit("hello")
+        runCurrent()
+        assertEquals(AssistantState.Offline, e.state.value)
+    }
+
+    @Test
+    fun providerFailureIsShownHonestly() = runTest {
+        val e = engine(AiResult.Failure(FailureKind.INVALID_KEY, "API key was rejected (HTTP 401)"))
+        e.submit("hello")
+        runCurrent()
+        assertEquals(AssistantState.Error, e.state.value)
+        assertTrue(e.transcript.value.last().text.contains("rejected"))
+        assertTrue(speaker.spoken.isEmpty())
+    }
+
+    @Test
+    fun callNeedsConfirmationAndUsesChosenContact() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "98765 43210"), Contact("Mom Office", "011 2345")))
+        val e = engine(AiResult.Success("""Calling. <action>{"type":"call","contact":"Mom"}</action>"""))
+        e.submit("call mom")
+        runCurrent()
+        val pending = e.pending.value
+        assertNotNull(pending)
+        assertEquals(2, pending!!.options.size)
+        assertTrue(tools.dialed.isEmpty()) // nothing happens before confirmation
+        e.resolve(Decision.Approve(pending.options[1]))
+        settle()
+        assertEquals(listOf(Contact("Mom Office", "011 2345")), tools.dialed)
+        assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
+        assertNull(e.pending.value)
+    }
+
+    @Test
+    fun deniedContactsPermissionCancelsCall() = runTest {
+        tools.contacts = ContactLookup.NeedsPermission("android.permission.READ_CONTACTS", "Needed to find contacts")
+        val e = engine(AiResult.Success("""<action>{"type":"call","contact":"Mom"}</action>"""))
+        e.submit("call mom")
+        runCurrent()
+        assertEquals(PendingRequest.Kind.PERMISSION, e.pending.value!!.kind)
+        e.resolve(Decision.PermissionResult(granted = false))
+        settle()
+        assertTrue(tools.dialed.isEmpty())
+        assertEquals(ActionStatus.CANCELLED, store.logs.last().second)
+    }
+
+    @Test
+    fun safetyModeBlocksPhoneActions() = runTest {
+        settings.value = settings.value.copy(safetyMode = true)
+        val e = engine(AiResult.Success("""<action>{"type":"play_music","query":"Kesariya"}</action>"""))
+        e.submit("play kesariya")
+        settle()
+        assertTrue(tools.music.isEmpty())
+        assertEquals(ActionStatus.BLOCKED, store.logs.last().second)
+    }
+
+    @Test
+    fun failedActionIsReportedAsFailure() = runTest {
+        val e = engine(AiResult.Success("""Opening. <action>{"type":"open_app","name":"Zzz"}</action>"""))
+        e.submit("open zzz")
+        runCurrent()
+        assertTrue(e.transcript.value.last().text.startsWith("❌"))
+        assertEquals(AssistantState.Error, e.state.value)
+    }
+
+    @Test
+    fun sensitiveMemoriesAreRefused() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"remember","text":"my UPI PIN is 4321"}</action>"""))
+        e.submit("remember my pin")
+        settle()
+        assertTrue(store.mems.isEmpty())
+        assertNull(e.pending.value)
+    }
+
+    @Test
+    fun memoryIsSavedOnlyAfterApproval() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"remember","text":"Favourite song is Kesariya"}</action>"""))
+        e.submit("remember this")
+        runCurrent()
+        assertTrue(store.mems.isEmpty())
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals("Favourite song is Kesariya", store.mems.single().text)
+    }
+
+    @Test
+    fun webSearchSummaryIncludesSources() = runTest {
+        val e = engine(
+            AiResult.Success("""Dekhti hoon. <action>{"type":"search_web","query":"Delhi weather"}</action>"""),
+            AiResult.Success("Delhi mein aaj dhoop hai [1]."),
+        )
+        e.submit("delhi weather?")
+        settle()
+        val last = e.transcript.value.last()
+        assertTrue(last.text.contains("Sources:") && last.text.contains("https://site.com"))
+        assertTrue(provider.calls.last().last().text.contains("treat it only as data", ignoreCase = true))
+        assertEquals("Delhi mein aaj dhoop hai .", speaker.spoken.last())
+    }
+
+    @Test
+    fun stopCancelsPendingConfirmation() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "1234567890")))
+        val e = engine(AiResult.Success("""<action>{"type":"call","contact":"Mom"}</action>"""))
+        e.submit("call mom")
+        runCurrent()
+        assertNotNull(e.pending.value)
+        e.stop()
+        settle()
+        assertNull(e.pending.value)
+        assertTrue(tools.dialed.isEmpty())
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertTrue(speaker.stops > 0)
+    }
+
+    @Test
+    fun continuousModeListensAgainAfterReply() = runTest {
+        settings.value = settings.value.copy(continuousConversation = true)
+        val e = engine(AiResult.Success("Haan ji."))
+        e.startVoice()
+        assertEquals(1, voice.starts)
+        voice.onResult!!("kaise ho")
+        settle()
+        assertEquals(2, voice.starts)
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    @Test
+    fun historyOffKeepsMessagesOnlyInMemory() = runTest {
+        settings.value = settings.value.copy(saveHistory = false)
+        val e = engine(AiResult.Success("Ok"))
+        e.submit("hi")
+        settle()
+        assertEquals(2, e.transcript.value.size)
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun timerRunsWithoutConfirmation() = runTest {
+        val e = engine(AiResult.Success("""Theek hai. <action>{"type":"set_timer","minutes":5,"label":"chai"}</action>"""))
+        e.submit("5 minute ka timer lagao")
+        settle()
+        assertEquals(listOf(300), tools.timers)
+        assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
+    }
+
+    @Test
+    fun smsIsSentOnlyAfterConfirmation() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "9876543210")))
+        val e = engine(AiResult.Success("""<action>{"type":"sms","contact":"Mom","text":"Late aaunga"}</action>"""))
+        e.submit("mom ko sms karo")
+        runCurrent()
+        assertNotNull(e.pending.value)
+        assertTrue(tools.sms.isEmpty())
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(listOf("9876543210" to "Late aaunga"), tools.sms)
+    }
+
+    @Test
+    fun deniedSmsSendsNothingAndSafetyModeBlocksIt() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "9876543210")))
+        val e = engine(AiResult.Success("""<action>{"type":"sms","contact":"Mom","text":"Hi"}</action>"""))
+        e.submit("sms mom")
+        runCurrent()
+        e.resolve(Decision.Deny)
+        settle()
+        assertTrue(tools.sms.isEmpty())
+        assertEquals(ActionStatus.CANCELLED, store.logs.last().second)
+
+        settings.value = settings.value.copy(safetyMode = true)
+        val e2 = engine(AiResult.Success("""<action>{"type":"sms","contact":"Mom","text":"Hi again"}</action>"""))
+        e2.submit("sms mom again")
+        settle()
+        assertTrue(tools.sms.isEmpty())
+        assertEquals(ActionStatus.BLOCKED, store.logs.last().second)
+    }
+
+    @Test
+    fun calendarEventOpensForFutureTimeOnly() = runTest {
+        val e = engine(
+            AiResult.Success("""<action>{"type":"add_event","title":"Doctor","start":"2030-01-01T17:00","duration_minutes":45}</action>"""),
+            AiResult.Success("""<action>{"type":"add_event","title":"Old","start":"1960-01-01T10:00"}</action>"""),
+        )
+        e.submit("doctor appointment add karo")
+        settle()
+        assertEquals(listOf("Doctor" to 45), tools.events)
+        e.submit("purana event")
+        settle()
+        assertEquals(1, tools.events.size)
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
+    }
+
+    @Test
+    fun batteryResultIsSpokenWhenRepliesAreSpoken() = runTest {
+        val e = engine(AiResult.Success("""Dekhti hoon. <action>{"type":"battery"}</action>"""))
+        e.submit("battery kitni hai")
+        settle()
+        assertEquals(listOf("Dekhti hoon.", "Battery 80 percent"), speaker.spoken) // "%" is spoken as a word
+    }
+
+    @Test
+    fun handsFreeKeepsListeningThroughSilenceUntilStop() = runTest {
+        val e = engine(AiResult.Success("Haan ji!"))
+        e.startHandsFree()
+        assertEquals(1, voice.starts)
+        assertTrue(e.handsFreeActive.value)
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        settle()
+        assertEquals(2, voice.starts) // listened again after silence
+        voice.onResult!!("kaise ho")
+        settle()
+        assertEquals(3, voice.starts) // and again after the reply, without continuous mode
+        assertEquals(AssistantState.Listening, e.state.value)
+        e.stop()
+        assertTrue(!e.handsFreeActive.value)
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        settle()
+        assertEquals(3, voice.starts)
+    }
+
+    @Test
+    fun handsFreeStopsOnPermissionProblems() = runTest {
+        val e = engine()
+        e.startHandsFree()
+        voice.onError!!(VoiceError("no mic", permissionDenied = true))
+        settle()
+        assertEquals(1, voice.starts)
+        assertTrue(!e.handsFreeActive.value)
+    }
+
+    @Test
+    fun sameVoiceFallbackNoteIsShownOnce() = runTest {
+        val failing = object : Speaker {
+            override val speaking = MutableStateFlow(false)
+            override val level = MutableStateFlow(0f)
+            override suspend fun speak(text: String) = SpeakResult(true, "Android", "ElevenLabs failed (402)")
+            override fun stop() {}
+        }
+        provider = FakeProvider(ArrayDeque(listOf(AiResult.Success("Ek."), AiResult.Success("Do."))))
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = failing, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+        )
+        e.submit("ek")
+        settle()
+        e.submit("do")
+        settle()
+        assertEquals(1, e.transcript.value.count { it.text.startsWith("Voice:") })
+    }
+
+    @Test
+    fun repeatingEventIsPassedToTheCalendar() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"add_event","title":"Class","start":"2030-01-01T08:00","repeat":"daily"}</action>"""))
+        e.submit("roz 8 baje class")
+        settle()
+        assertEquals(listOf("FREQ=DAILY"), tools.eventRules)
+    }
+
+    /** The user talks over Seema's first reply (only that one) and "records" [utterance]. */
+    private class InstantBargeIn(private val utterance: ByteArray? = ByteArray(10)) : BargeIn {
+        var starts = 0
+        override fun start(capture: Boolean, onInterrupt: () -> Unit, onUtterance: (ByteArray?) -> Unit) {
+            if (starts++ > 0) return
+            onInterrupt()
+            if (capture) onUtterance(utterance)
+        }
+        override fun stop() {}
+    }
+
+    private class FakeTranscriber(var text: String?) : Transcriber {
+        override fun isAvailable() = true
+        override suspend fun transcribe(pcm16k: ByteArray) = text
+    }
+
+    private fun TestScope.engineWith(bargeIn: BargeIn, transcriber: Transcriber?, vararg replies: AiResult<String>): AssistantEngine {
+        provider = FakeProvider(ArrayDeque(replies.toList()))
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            bargeIn = bargeIn, transcriber = transcriber,
+        )
+    }
+
+    @Test
+    fun interruptingWithANewQuestionAnswersThatInstead() = runTest {
+        val bargeIn = InstantBargeIn()
+        val e = engineWith(bargeIn, FakeTranscriber("Delhi ka mausam batao"), AiResult.Success("Bahut lamba jawab hai."), AiResult.Success("Delhi mein dhoop hai."))
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "Delhi ka mausam batao" })
+        assertEquals("Delhi mein dhoop hai.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals(2, provider.calls.size)
+    }
+
+    @Test
+    fun sayingRukoMakesHerStopAndListen() = runTest {
+        val e = engineWith(InstantBargeIn(), FakeTranscriber("ruko"), AiResult.Success("Bahut lamba jawab hai."))
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals("Haan, boliye?", speaker.spoken.last())
+        assertEquals(1, provider.calls.size) // no new AI request
+        assertEquals(AssistantState.Listening, e.state.value)
+        assertEquals(2, voice.starts)
+    }
+
+    @Test
+    fun aNoiseIsAFalseAlarmAndSheContinues() = runTest {
+        // First barge-in fires (a cough), the resumed sentence is not interrupted.
+        var fired = 0
+        val once = object : BargeIn {
+            override fun start(capture: Boolean, onInterrupt: () -> Unit, onUtterance: (ByteArray?) -> Unit) {
+                if (fired++ == 0) { onInterrupt(); onUtterance(ByteArray(10)) }
+            }
+            override fun stop() {}
+        }
+        val e = engineWith(once, FakeTranscriber(""), AiResult.Success("Pehli baat. Doosri baat."))
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertTrue(speaker.spoken.last().startsWith("Haan, toh…"))
+        assertTrue(speaker.spoken.last().contains("Pehli baat."))
+    }
+
+    @Test
+    fun withoutTranscriberTheRecogniserTakesOverAtOnce() = runTest {
+        val e = engineWith(InstantBargeIn(), null, AiResult.Success("Bahut lamba jawab hai."))
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals(2, voice.starts)
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    @Test
+    fun typedChatNeverUsesBargeIn() = runTest {
+        val bargeIn = InstantBargeIn()
+        val e = engineWith(bargeIn, FakeTranscriber("x"), AiResult.Success("Haan."))
+        e.submit("hello")
+        settle()
+        assertEquals(0, bargeIn.starts)
+    }
+
+    @Test
+    fun callStyleAudioIsOnOnlyDuringHandsFree() = runTest {
+        val mode = object : ConversationMode {
+            override var active = false
+            override fun enter() { active = true }
+            override fun exit() { active = false }
+        }
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            conversationMode = mode,
+        )
+        e.startHandsFree()
+        assertTrue(mode.active)
+        e.suspendListening() // app went to the background
+        assertTrue(!mode.active)
+        e.startHandsFree()
+        e.stop()
+        assertTrue(!mode.active)
+    }
+
+    private class FakeWake : WakeListener {
+        var onUtterance: ((ByteArray) -> Unit)? = null
+        var starts = 0
+        var stops = 0
+        override fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit) { starts++; this.onUtterance = onUtterance }
+        override fun stop() { stops++; onUtterance = null }
+    }
+
+    private var now = 0L
+
+    private fun TestScope.sleepyEngine(wake: WakeListener, transcriber: Transcriber?, vararg replies: AiResult<String>): AssistantEngine {
+        provider = FakeProvider(ArrayDeque(replies.toList()))
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
+            transcriber = transcriber, wakeListener = wake,
+        )
+    }
+
+    @Test
+    fun quietForAMinuteSheSleepsAndHerNameWakesHer() = runTest {
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("Seema, time kya hua?"), AiResult.Success("Saade paanch baje hain."))
+        e.startHandsFree()
+        now = 30_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Listening, e.state.value) // not yet
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertEquals(1, wake.starts)
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time kya hua?" })
+        assertEquals("Saade paanch baje hain.", speaker.spoken.last())
+    }
+
+    @Test
+    fun otherTalkDoesNotWakeHer() = runTest {
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("TV pe news chal rahi hai"))
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertEquals(2, wake.starts) // listening for her name again
+        assertTrue(e.transcript.value.isEmpty())
+    }
+
+    @Test
+    fun justHerNameGetsAGreetingAndOpeningTheAppWakesHer() = runTest {
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("सीमा"))
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertEquals("हाँ जी, बोलिए?", speaker.spoken.last())
+        assertEquals(AssistantState.Listening, e.state.value)
+
+        now = 200_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        e.suspendListening()
+        e.startHandsFree() // app opened again
+        assertEquals(AssistantState.Listening, e.state.value)
+        assertTrue(wake.stops >= 2)
+    }
+
+    @Test
+    fun aPauseAfterAurWaitsForTheRestOfTheSentence() = runTest {
+        val e = engine(AiResult.Success("Theek hai."))
+        e.startHandsFree()
+        voice.onResult!!("mummy ko call karo aur")
+        runCurrent()
+        assertEquals(0, provider.calls.size)
+        voice.onResult!!("unhe bolo main late aaunga")
+        settle()
+        assertEquals("mummy ko call karo aur unhe bolo main late aaunga", e.transcript.value.first { it.role == ChatRole.USER }.text)
+        assertEquals(1, provider.calls.size)
+    }
+
+    @Test
+    fun anUnclearWordIsAskedAgainOnce() = runTest {
+        val e = engine()
+        e.startHandsFree()
+        voice.onError!!(VoiceError("unclear", unclear = true))
+        settle()
+        assertTrue(speaker.spoken.last().contains("एक बार फिर"))
+        assertEquals(AssistantState.Listening, e.state.value)
+        voice.onError!!(VoiceError("unclear", unclear = true))
+        settle()
+        assertEquals(1, speaker.spoken.size) // asked only once
+    }
+
+    private class FakeBusiness : com.raju.aiassistant.domain.business.BusinessStore {
+        val expenses = mutableListOf<com.raju.aiassistant.domain.business.Expense>()
+        val journeys = mutableListOf<com.raju.aiassistant.domain.business.Journey>()
+        override suspend fun addExpense(amountPaise: Long, note: String, category: String): Long {
+            expenses += com.raju.aiassistant.domain.business.Expense(expenses.size + 1L, amountPaise, note, category, 1_000L); return expenses.size.toLong()
+        }
+        override suspend fun deleteLastExpense() = expenses.removeLastOrNull()
+        override suspend fun expensesBetween(fromMillis: Long, toMillis: Long) = expenses.filter { it.createdAt in fromMillis until toMillis }
+        override suspend fun saveJourney(journey: com.raju.aiassistant.domain.business.Journey): Long { journeys += journey; return 1 }
+        override suspend fun journeysFrom(date: java.time.LocalDate) = journeys.filter { !it.date.isBefore(date) }
+        override suspend fun removeJourney(pnr: String) = journeys.removeIf { it.pnr == pnr }
+    }
+
+    private fun TestScope.businessEngine(khata: FakeBusiness, vararg replies: AiResult<String>): AssistantEngine {
+        provider = FakeProvider(ArrayDeque(replies.toList()))
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 5_000L }, nowDescription = { "now" },
+            business = khata, zone = { java.time.ZoneOffset.UTC },
+        )
+    }
+
+    @Test
+    fun expensesAreSavedSummarisedAndKnownToThePrompt() = runTest {
+        val khata = FakeBusiness()
+        val e = businessEngine(
+            khata,
+            AiResult.Success("""Likh diya. <action>{"type":"expense_add","amount":200,"note":"petrol","category":"fuel"}</action>"""),
+            AiResult.Success("""Dekhti hoon. <action>{"type":"expense_summary","period":"today"}</action>"""),
+        )
+        e.submit("200 ka petrol daala")
+        settle()
+        assertEquals(20_000L, khata.expenses.single().amountPaise)
+        assertTrue(e.transcript.value.any { it.text.contains("Today's total ₹200") })
+        e.submit("aaj kitna kharcha hua?")
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("200 rupees")) // "₹" is spoken as a word
+    }
+
+    @Test
+    fun pnrStatusOpensTheOfficialPageAndNeverGuesses() = runTest {
+        val khata = FakeBusiness()
+        val e = businessEngine(khata, AiResult.Success("""Official page kholti hoon. <action>{"type":"pnr_status","pnr":"1234567890"}</action>"""))
+        e.submit("PNR 1234567890 ka status?")
+        settle()
+        // FakeTools can't open web pages: the failure is reported honestly.
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
+    }
+
+    @Test
+    fun researchMergesSearchesIntoOneReportWithSources() = runTest {
+        val khata = FakeBusiness()
+        val e = businessEngine(
+            khata,
+            AiResult.Success("""<action>{"type":"research","query":"EV","queries":["ev price","ev range"]}</action>"""),
+            AiResult.Success("EVs are cheaper to run [1].\nDetails\n- range [1]"),
+        )
+        e.submit("EV ke baare mein research karo")
+        settle()
+        val last = e.transcript.value.last { it.role == ChatRole.ASSISTANT }
+        assertTrue(last.text.contains("Sources:") && last.text.contains("https://site.com"))
+        assertEquals(1, last.text.split("https://site.com").size - 1) // duplicate results merged
+    }
+
+    // ---------------------------------------------------------------- voice reliability
+
+    private class Mode : ConversationMode {
+        override var active = false
+        var everActive = false
+        override fun enter() { active = true; everActive = true }
+        override fun exit() { active = false }
+    }
+
+    private fun TestScope.engineWithMode(mode: ConversationMode, speakerOverride: Speaker = speaker, vararg replies: AiResult<String>): AssistantEngine {
+        provider = FakeProvider(ArrayDeque(replies.toList()))
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speakerOverride, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            conversationMode = mode,
+        )
+    }
+
+    @Test
+    fun systemRecogniserNeverListensUnderCallStyleAudio() = runTest {
+        // Android silences other apps' microphones during call-style audio: the Google recogniser would hear nothing.
+        voice.inApp = false
+        val mode = Mode()
+        val e = engineWithMode(mode, speaker, AiResult.Success("Haan ji, sun rahi hoon."))
+        e.startHandsFree()
+        voice.onResult!!("हे सीमा, तुम सुन रही हो?")
+        settle()
+        assertTrue(!mode.everActive)
+        assertEquals("Haan ji, sun rahi hoon.", speaker.spoken.last())
+        assertEquals(2, voice.starts)
+    }
+
+    @Test
+    fun staleRecognitionCallbacksAreIgnored() = runTest {
+        val e = engine(AiResult.Success("Naya jawab."))
+        e.startVoice()
+        val oldResult = voice.onResult!!
+        val oldError = voice.onError!!
+        e.stop()
+        e.startVoice()
+        oldResult("purani baat")
+        oldError(VoiceError("late error"))
+        settle()
+        assertEquals(0, provider.calls.size)
+        assertTrue(e.transcript.value.none { it.text.contains("late error") })
+        voice.onResult!!("nayi baat")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertEquals("Naya jawab.", speaker.spoken.single())
+    }
+
+    @Test
+    fun aDelayedRelistenNeverRestartsANewerSession() = runTest {
+        val e = engine()
+        e.startHandsFree()
+        voice.onError!!(VoiceError("silence", noSpeech = true)) // schedules a re-listen in 300 ms
+        e.startVoice() // the user taps Mic meanwhile
+        assertEquals(2, voice.starts)
+        settle()
+        assertEquals(2, voice.starts) // the old re-listen did not cut the new session
+    }
+
+    @Test
+    fun aBusyRecogniserIsRetriedQuietlyAlsoInTapMode() = runTest {
+        val e = engine()
+        e.startVoice()
+        voice.onError!!(VoiceError("busy", transient = true))
+        settle()
+        assertEquals(2, voice.starts)
+        assertEquals(AssistantState.Listening, e.state.value)
+        assertTrue(e.transcript.value.isEmpty())
+    }
+
+    @Test
+    fun hearingNothingInTapModeSaysSoOnScreen() = runTest {
+        val e = engine()
+        e.startVoice()
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        settle()
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertNotNull(e.hint.value)
+        assertNull(e.lastError.value) // not an error: no Retry of an old message
+    }
+
+    @Test
+    fun recognisedTextIsShownBeforeTheAnswer() = runTest {
+        val e = engine(AiResult.Success("Haan."))
+        e.startVoice()
+        voice.onResult!!("tum sun rahi ho")
+        assertEquals("tum sun rahi ho", e.heard.value)
+    }
+
+    @Test
+    fun anEmptyAiReplyIsShownAndSpokenInAVoiceTurn() = runTest {
+        val e = engine(AiResult.Success("   "))
+        e.startVoice()
+        voice.onResult!!("hello")
+        settle()
+        assertTrue(e.transcript.value.any { it.text.contains("empty reply") })
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("couldn't answer"))
+    }
+
+    @Test
+    fun aTypedRequestErrorIsNotSpoken() = runTest {
+        val e = engine(AiResult.Failure(FailureKind.RATE_LIMITED, "Rate limited (HTTP 429)"))
+        e.submit("hello")
+        settle()
+        assertTrue(e.transcript.value.any { it.text.contains("429") })
+        assertTrue(speaker.spoken.isEmpty())
+    }
+
+    @Test
+    fun everyVoiceFailureIsReportedNotOnlyTheFirst() = runTest {
+        val mute = object : Speaker {
+            override val speaking = MutableStateFlow(false)
+            override val level = MutableStateFlow(0f)
+            override suspend fun speak(text: String) = SpeakResult(false, "none", "No text-to-speech engine is available.")
+            override fun stop() {}
+        }
+        val e = engineWithMode(Mode(), mute, AiResult.Success("Ek."), AiResult.Success("Do."))
+        e.submit("ek")
+        settle()
+        e.submit("do")
+        settle()
+        assertEquals(2, e.transcript.value.count { it.text.startsWith("🔇 Voice failed") })
+    }
+
+    @Test
+    fun stoppingWhileThinkingNeverSpeaksTheStaleAnswer() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val slow = object : AiProvider {
+            override val id = ProviderId.GEMINI
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> { gate.await(); return AiResult.Success("Purana jawab.") }
+        }
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> slow }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+        )
+        e.submit("kuch batao")
+        runCurrent()
+        assertEquals(AssistantState.Thinking, e.state.value)
+        e.stop()
+        gate.complete(Unit)
+        settle()
+        assertTrue(speaker.spoken.isEmpty())
+        assertEquals(AssistantState.Idle, e.state.value)
+    }
+
+    @Test
+    fun handsFreeRecoversAndListensAgainAfterAnAiError() = runTest {
+        val e = engine(AiResult.Failure(FailureKind.SERVER, "Server error (HTTP 503)"))
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertTrue(e.transcript.value.any { it.text.contains("503") })
+        assertEquals(2, voice.starts) // listening again after showing (and saying) the error
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+}
