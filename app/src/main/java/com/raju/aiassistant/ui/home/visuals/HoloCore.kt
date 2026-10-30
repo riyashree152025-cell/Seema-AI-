@@ -90,6 +90,7 @@ fun HoloCore(
     }
     val back = remember { Path() }
     val front = remember { Path() }
+    val hud = remember { ringPoints(1.0f, 72) }
 
     Canvas(modifier) {
         val t = time()
@@ -107,6 +108,38 @@ fun HoloCore(
             Brush.radialGradient(listOf(primary.copy(alpha = (0.28f + 0.3f * beat) * glow * flicker), palette[3].copy(alpha = 0.08f * glow), Color.Transparent), center = c, radius = unit * 1.9f),
             radius = unit * 1.9f,
         )
+
+        // Heartbeat shock-waves: a ring of light leaves the core on every beat.
+        if (richEffects && !style.speechReactive) {
+            val wave = beatPhase(t, style.bpm)
+            drawCircle(primary.copy(alpha = (1f - wave) * 0.35f * glow * flicker), radius = unit * (0.45f + 1.25f * wave), center = c, style = Stroke((1f + 2f * (1f - wave)) * density))
+        } else if (style.speechReactive) {
+            drawCircle(primary.copy(alpha = 0.25f + 0.4f * beat), radius = unit * (0.55f + 0.5f * beat), center = c, style = Stroke((1f + 3f * beat) * density))
+        }
+
+        // JARVIS-style HUD: a slowly turning tick ring (slightly tilted, in perspective) and three
+        // arc segments turning the other way.
+        val hudTilt = 0.32f + 0.05f * kotlin.math.sin(t * 0.3f)
+        val tickTurn = t * 0.05f * 2f * PI.toFloat() * (1f + style.rotationSpeed * 4f)
+        for (k in hud.indices) {
+            val longTick = k % 6 == 0
+            val a = hud[k]
+            val inner = Vec3(a.x * 1.50f, a.y * 1.50f, 0f).rotateZ(tickTurn).rotateX(hudTilt)
+            val outer = Vec3(a.x * (if (longTick) 1.62f else 1.56f), a.y * (if (longTick) 1.62f else 1.56f), 0f).rotateZ(tickTurn).rotateX(hudTilt)
+            val p1 = project(inner, c.x, c.y, unit)
+            val p2 = project(outer, c.x, c.y, unit)
+            drawLine(palette[1].copy(alpha = (if (longTick) 0.55f else 0.25f) * (0.4f + 0.6f * p1.depth) * flicker), Offset(p1.x, p1.y), Offset(p2.x, p2.y), (if (longTick) 1.6f else 1f) * density)
+        }
+        repeat(3) { i ->
+            back.reset(); front.reset()
+            val start = (-t * 0.09f * 2f * PI.toFloat() * (1f + style.rotationSpeed * 3f)) + i * (2f * PI.toFloat() / 3f)
+            val arc = List(18) { k ->
+                val ang = start + k * 0.05f
+                Vec3(1.68f * kotlin.math.cos(ang), 1.68f * kotlin.math.sin(ang), 0f).rotateX(hudTilt)
+            }
+            addLoop(arc, c, unit, front, front, closed = false)
+            drawPath(front, accent.copy(alpha = 0.6f * flicker), style = Stroke(2.4f * density, cap = StrokeCap.Round))
+        }
 
         // Listening: 3D ripples spreading out around the core like sound waves.
         if (style.ripples) {
@@ -144,6 +177,42 @@ fun HoloCore(
         drawCircle(Color.White.copy(alpha = 0.9f * energy), radius = coreR * 0.35f, center = c)
         drawPath(front, primary.copy(alpha = 0.55f * flicker), style = Stroke(1.3f * density))
 
+        // Scanner: a bright latitude line sweeping up and down the sphere.
+        if (richEffects) {
+            val yScan = kotlin.math.sin(t * 0.9f) * 0.9f
+            val rScan = kotlin.math.sqrt((1f - yScan * yScan).coerceAtLeast(0f))
+            val scan = List(48) { k ->
+                val ang = k * 2f * PI.toFloat() / 48f
+                Vec3(rScan * kotlin.math.cos(ang), yScan, rScan * kotlin.math.sin(ang)).rotateY(spin * 0.8f).rotateX(tilt)
+            }
+            back.reset(); front.reset()
+            addLoop(scan, c, unit * 0.62f * (1f + 0.04f * beat), back, front)
+            drawPath(front, palette[1].copy(alpha = 0.75f * flicker), style = Stroke(1.8f * density))
+            drawPath(back, palette[1].copy(alpha = 0.2f * flicker), style = Stroke(1f * density))
+        }
+
+        // Energy arcs: short lightning bolts jumping from the core to the sphere, a new set every 0.2 s.
+        if (richEffects) {
+            val slot = (t * 5f).toInt()
+            val bolts = 1 + (2f * energy).toInt()
+            repeat(bolts) { b ->
+                val seed = slot * 31 + b * 7
+                val ang = pseudoRandom(seed) * 2f * PI.toFloat()
+                val reach = unit * 0.62f * (0.85f + 0.2f * pseudoRandom(seed + 1))
+                val bolt = Path()
+                bolt.moveTo(c.x, c.y)
+                val steps = 6
+                for (k in 1..steps) {
+                    val f = k / steps.toFloat()
+                    val jitter = (pseudoRandom(seed + k * 13) - 0.5f) * unit * 0.12f * (1f - f * 0.5f)
+                    val r = reach * f
+                    bolt.lineTo(c.x + r * kotlin.math.cos(ang) - jitter * kotlin.math.sin(ang), c.y + r * kotlin.math.sin(ang) + jitter * kotlin.math.cos(ang))
+                }
+                drawPath(bolt, palette[2].copy(alpha = 0.18f * energy), style = Stroke(5f * density, cap = StrokeCap.Round))
+                drawPath(bolt, Color.White.copy(alpha = 0.7f * energy * flicker), style = Stroke(1.1f * density, cap = StrokeCap.Round))
+            }
+        }
+
         // Thinking: a fast spinning arc inside the sphere.
         if (style.spinner) {
             val arc = ringPoints(0.82f, 48).map { it.rotateZ(t * 5f).rotateX(0.9f).rotateY(t * 1.3f) }
@@ -160,6 +229,15 @@ fun HoloCore(
             val sat = rings[i][((t * 18f * (i + 1)).toInt()) % rings[i].size]
                 .rotateZ(t * spec.speed * 2f * PI.toFloat()).rotateX(spec.tiltX).rotateZ(spec.tiltZ + t * spec.precession * 2f * PI.toFloat())
             val sp = project(sat, c.x, c.y, unit)
+            // A short comet trail behind each satellite.
+            if (richEffects) for (trail in 1..6) {
+                val idx = ((((t * 18f * (i + 1)).toInt() - trail * 2) % rings[i].size) + rings[i].size) % rings[i].size
+                val tp = project(
+                    rings[i][idx].rotateZ(t * spec.speed * 2f * PI.toFloat()).rotateX(spec.tiltX).rotateZ(spec.tiltZ + t * spec.precession * 2f * PI.toFloat()),
+                    c.x, c.y, unit,
+                )
+                drawCircle(col.copy(alpha = (0.35f * (1f - trail / 7f)) * (0.3f + 0.7f * tp.depth) * flicker), radius = (1.5f + 3f * tp.depth) * (1f - trail / 9f) * density, center = Offset(tp.x, tp.y))
+            }
             drawCircle(col.copy(alpha = (0.3f + 0.6f * sp.depth) * flicker), radius = (2f + 5f * sp.depth) * density, center = Offset(sp.x, sp.y))
             drawCircle(Color.White.copy(alpha = 0.4f + 0.5f * sp.depth), radius = (1f + 2f * sp.depth) * density, center = Offset(sp.x, sp.y))
         }

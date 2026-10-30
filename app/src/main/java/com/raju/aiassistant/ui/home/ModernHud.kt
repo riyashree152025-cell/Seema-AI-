@@ -37,6 +37,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.raju.aiassistant.data.weather.WeatherState
 import com.raju.aiassistant.data.weather.weatherLabel
 import kotlin.math.roundToInt
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -301,5 +315,89 @@ fun BigVoiceButton(active: Boolean, label: String, accent: Color, onClick: () ->
             Icon(if (active) Icons.Filled.Mic else Icons.Filled.MicNone, contentDescription = label, modifier = Modifier.size(38.dp))
         }
         Text(label, style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+    }
+}
+
+/**
+ * The 3D dashboard's control dock: a slim glass capsule with Chat, Stop and Settings as small
+ * glowing buttons and the microphone in the middle inside a turning holographic ring
+ * (it spins faster and glows while the mic is on). Same actions as the classic buttons.
+ */
+@Composable
+fun HoloDock(
+    accent: Color,
+    micActive: Boolean,
+    micLabel: String,
+    stopEnabled: Boolean,
+    time: () -> Float,
+    onChat: () -> Unit,
+    onMic: () -> Unit,
+    onStop: () -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(28.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(60.dp)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.16f), Color(0xCC050B18))))
+            .border(1.dp, Brush.horizontalGradient(listOf(accent.copy(alpha = 0.15f), accent.copy(alpha = 0.8f), accent.copy(alpha = 0.15f))), shape)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        DockButton("Chat", Icons.AutoMirrored.Filled.Chat, accent, true, onChat)
+        DockMic(micActive, micLabel, accent, time, onMic)
+        DockButton("Stop", Icons.Filled.Stop, accent, stopEnabled, onStop)
+        DockButton("Settings", Icons.Filled.Settings, accent, true, onSettings)
+    }
+}
+
+@Composable
+private fun DockButton(label: String, icon: ImageVector, accent: Color, enabled: Boolean, onClick: () -> Unit) {
+    val tint = if (enabled) accent else accent.copy(alpha = 0.3f)
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClickLabel = label, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(30.dp)
+                .background(Brush.radialGradient(listOf(tint.copy(alpha = 0.28f), Color.Transparent)), CircleShape)
+                .border(1.dp, tint.copy(alpha = 0.55f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp)) }
+        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.8.sp), color = tint, maxLines = 1)
+    }
+}
+
+@Composable
+private fun DockMic(active: Boolean, label: String, accent: Color, time: () -> Float, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(54.dp)
+            .clip(CircleShape)
+            .clickable(onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val t = time()
+            val spin = (t * (if (active) 220f else 60f)) % 360f
+            drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = if (active) 0.55f else 0.28f), Color.Transparent)), radius = size.minDimension / 2f)
+            val stroke = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+            val inset = 3.dp.toPx()
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+            val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+            drawArc(accent, spin, 100f, false, topLeft, arcSize, style = stroke)
+            drawArc(accent.copy(alpha = 0.6f), spin + 180f, 60f, false, topLeft, arcSize, style = stroke)
+            drawCircle(accent.copy(alpha = 0.35f), radius = size.minDimension / 2f - 9.dp.toPx(), style = Stroke(1.dp.toPx()))
+        }
+        Icon(if (active) Icons.Filled.Mic else Icons.Filled.MicNone, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
     }
 }

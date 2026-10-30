@@ -136,29 +136,34 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            val glow = MaterialTheme.colorScheme.primary
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                // A thin emerald horizon line above the bar.
-                modifier = Modifier.drawBehind {
-                    drawLine(
-                        Brush.horizontalGradient(listOf(Color.Transparent, glow.copy(alpha = 0.7f), Color.Transparent)),
-                        Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx(),
-                    )
-                },
-            ) {
-                Destination.entries.forEach { dest ->
-                    NavigationBarItem(
-                        selected = current == dest,
-                        onClick = { navigateTo(dest) },
-                        icon = { Icon(dest.icon, contentDescription = dest.label) },
-                        label = { Text(dest.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
-                    )
+            // The 3D Holographic design gets its own slim glass bar; the Arc Reactor keeps the classic one.
+            if (container.resolveCore(settings.coreAppearance) == com.raju.aiassistant.domain.model.CoreAppearance.MODERN) {
+                HoloNavBar(current, navigateTo)
+            } else {
+                val glow = MaterialTheme.colorScheme.primary
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    // A thin emerald horizon line above the bar.
+                    modifier = Modifier.drawBehind {
+                        drawLine(
+                            Brush.horizontalGradient(listOf(Color.Transparent, glow.copy(alpha = 0.7f), Color.Transparent)),
+                            Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx(),
+                        )
+                    },
+                ) {
+                    Destination.entries.forEach { dest ->
+                        NavigationBarItem(
+                            selected = current == dest,
+                            onClick = { navigateTo(dest) },
+                            icon = { Icon(dest.icon, contentDescription = dest.label) },
+                            label = { Text(dest.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            ),
+                        )
+                    }
                 }
             }
         },
