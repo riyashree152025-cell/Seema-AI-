@@ -1,6 +1,8 @@
 package com.raju.aiassistant
 
 import android.content.Intent
+import com.raju.aiassistant.domain.model.CoreAppearance
+import kotlinx.coroutines.launch
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,6 +36,13 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         LaunchRequest.from(intent)?.let { (application as RajuApp).container.launchRequests.value = it }
+        // Debug builds only: lets the emulator test choose an AI core (`--es seema_core MODERN`), like tapping Apply.
+        if (BuildConfig.DEBUG) intent?.getStringExtra("seema_core")?.let { name ->
+            CoreAppearance.entries.firstOrNull { it.name == name }?.let { core ->
+                val c = (application as RajuApp).container
+                c.appScope.launch { c.settingsRepository.setCoreAppearance(core) }
+            }
+        }
     }
 
     /** Long-press the app icon → "Voice" / "Chat". Dynamic, so they work for both debug and release package names. */
