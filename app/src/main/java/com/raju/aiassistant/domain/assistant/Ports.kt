@@ -9,6 +9,8 @@ data class SpeakResult(val completed: Boolean, val engineLabel: String, val erro
 
 interface Speaker {
     val speaking: StateFlow<Boolean>
+    /** True once audio is really playing (the "Speaking" state is shown only then). */
+    val playing: StateFlow<Boolean> get() = speaking
     /** 0..1 loudness of the audio currently playing (drives the reactor). */
     val level: StateFlow<Float>
     /** Speaks [text], replacing anything already playing. Returns when finished, stopped or failed. */

@@ -9,12 +9,15 @@ enum class AssistantState(val label: String) {
     Listening("Listening"),
     Thinking("Thinking"),
     Speaking("Speaking"),
-    Executing("Executing"),
+    /** Carrying out a task (phone action, web search, research): "Processing". */
+    Executing("Processing"),
     Success("Done"),
     Error("Error"),
     Offline("Offline"),
     /** Hands-free mode after a quiet while: the mic only waits (on the phone) for the user's voice. */
-    Sleeping("Sleeping");
+    Sleeping("Sleeping"),
+    /** Something needs a permission from the user (e.g. the microphone) before Seema can continue. */
+    WaitingPermission("Permission needed");
 
     /** States in which a Stop action is meaningful. */
     val isBusy: Boolean

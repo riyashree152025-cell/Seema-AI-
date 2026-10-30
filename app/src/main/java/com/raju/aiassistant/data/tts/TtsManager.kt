@@ -2,6 +2,7 @@ package com.raju.aiassistant.data.tts
 
 import com.raju.aiassistant.domain.assistant.SpeakResult
 import com.raju.aiassistant.domain.assistant.Speaker
+import com.raju.aiassistant.domain.language.SeemaLanguage
 import com.raju.aiassistant.domain.model.UserSettings
 import com.raju.aiassistant.domain.voice.SpeechPipeline
 import com.raju.aiassistant.domain.voice.TtsProvider
@@ -28,9 +29,14 @@ class TtsManager(
     private val providers: List<TtsProvider>,
     private val androidTts: AndroidTts,
     private val settings: StateFlow<UserSettings>,
+    /** The conversation's language (Hindi or Bengali), used when "Auto" is chosen. */
+    private val conversationLanguage: StateFlow<SeemaLanguage>,
 ) : Speaker {
     private val _speaking = MutableStateFlow(false)
     override val speaking: StateFlow<Boolean> = _speaking.asStateFlow()
+    private val _playing = MutableStateFlow(false)
+    /** True only once audio is really coming out of the speaker (not while it is being synthesised). */
+    override val playing: StateFlow<Boolean> = _playing.asStateFlow()
     private val _level = MutableStateFlow(0f)
     override val level: StateFlow<Float> = _level.asStateFlow()
     private val _activeEngine = MutableStateFlow<String?>(null)
@@ -56,14 +62,16 @@ class TtsManager(
                     result = pipeline.speak(
                         text = text,
                         providers = ordered,
-                        preferredLanguage = s.speechLanguage,
+                        preferredLanguage = (SeemaLanguage.fromTag(s.speechLanguage) ?: conversationLanguage.value).tag,
                         rate = s.speechRate,
-                        onEngine = { _activeEngine.value = it },
+                        // Called right before each chunk is played: from here on she is really speaking.
+                        onEngine = { _activeEngine.value = it; _playing.value = true },
                         onLevel = { _level.value = it },
                         onChunkPlayed = { chunksDone++ },
                     )
                 } finally {
                     _speaking.value = false
+                    _playing.value = false
                     _level.value = 0f
                 }
             }
@@ -82,6 +90,7 @@ class TtsManager(
         current?.cancel()
         current = null
         androidTts.stop()
+        _playing.value = false
         _level.value = 0f
     }
 

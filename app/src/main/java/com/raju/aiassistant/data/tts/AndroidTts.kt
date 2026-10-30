@@ -24,7 +24,7 @@ enum class LanguageSupport(val label: String) {
     ENGINE_UNAVAILABLE("no TTS engine"),
 }
 
-data class TtsDiagnostics(val engine: String?, val hindi: LanguageSupport, val englishIndia: LanguageSupport)
+data class TtsDiagnostics(val engine: String?, val hindi: LanguageSupport, val englishIndia: LanguageSupport, val bengali: LanguageSupport = LanguageSupport.NOT_SUPPORTED)
 
 /** Android's built-in TextToSpeech, used offline and as fallback. Synthesises to WAV for unified playback. */
 class AndroidTts(private val context: Context) {
@@ -64,21 +64,21 @@ class AndroidTts(private val context: Context) {
             TextToSpeech.LANG_MISSING_DATA -> LanguageSupport.MISSING_DATA
             else -> LanguageSupport.NOT_SUPPORTED
         }
-        return TtsDiagnostics(runCatching { e.defaultEngine }.getOrNull(), check("hi-IN"), check("en-IN"))
+        return TtsDiagnostics(runCatching { e.defaultEngine }.getOrNull(), check("hi-IN"), check("en-IN"), check("bn-IN"))
     }
 
-    /** Voices installed for Hindi and English (India), as reported by the TTS engine. */
+    /** Voices installed for Hindi, Bengali and English (India), as reported by the TTS engine. */
     suspend fun voices(): List<VoiceOption> {
         val engine = engine() ?: return emptyList()
         return runCatching { engine.voices.orEmpty() }.getOrDefault(emptySet())
-            .filter { it.locale.language in setOf("hi", "en") && (it.locale.country == "IN" || it.locale.language == "hi") }
+            .filter { it.locale.language in setOf("hi", "bn", "en") && (it.locale.country == "IN" || it.locale.language != "en") }
             .filterNot { it.isNetworkConnectionRequired && it.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) == true }
             .sortedWith(compareBy<Voice> { it.locale.language != "hi" }.thenBy { it.name })
             .map { VoiceOption(it.name, "${it.locale.displayName} — ${it.name}" + if (it.isNetworkConnectionRequired) " (online)" else "") }
     }
 
     /** Returns WAV bytes, or null with a reason. */
-    suspend fun synthesize(text: String, languageTag: String, voiceName: String?, rate: Float): Pair<ByteArray?, String?> {
+    suspend fun synthesize(text: String, languageTag: String, voiceName: String?, rate: Float, pitch: Float = 1f): Pair<ByteArray?, String?> {
         val engine = engine() ?: return null to "Android text-to-speech is not available. Install Google Speech Services."
         val locale = Locale.forLanguageTag(languageTag)
         // A voice chosen in Settings is used only for chunks in that voice's language
@@ -89,6 +89,12 @@ class AndroidTts(private val context: Context) {
             var result = engine.setLanguage(locale)
             if (result < TextToSpeech.LANG_AVAILABLE && locale.country.isNotEmpty()) result = engine.setLanguage(Locale(locale.language))
             if (result < TextToSpeech.LANG_AVAILABLE) {
+                // An English voice reads Bengali as silence and must never stand in for it: say what is missing.
+                if (locale.language == "bn" || text.any { it in '\u0980'..'\u09FF' }) {
+                    return null to if (result == TextToSpeech.LANG_MISSING_DATA)
+                        "the phone's Bengali voice is not installed (Settings → Text-to-speech → Google → Install voice data → Bengali)"
+                    else "the phone's text-to-speech engine has no Bengali voice (install Google Speech Services)"
+                }
                 // An English voice reads Devanagari as silence: say what is missing instead of "speaking" nothing.
                 if (locale.language == "hi" || text.any { it in '\u0900'..'\u097F' }) {
                     return null to if (result == TextToSpeech.LANG_MISSING_DATA)
@@ -99,6 +105,7 @@ class AndroidTts(private val context: Context) {
             }
         }
         engine.setSpeechRate(rate)
+        engine.setPitch(pitch.coerceIn(0.5f, 1.5f))
         val file = File(context.cacheDir, "tts_${UUID.randomUUID()}.wav")
         val id = file.name
         return try {

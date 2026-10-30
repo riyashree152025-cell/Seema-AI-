@@ -2,6 +2,16 @@ package com.raju.aiassistant.domain.assistant
 
 import com.raju.aiassistant.data.search.WebSearch
 import com.raju.aiassistant.domain.ai.AiProvider
+import com.raju.aiassistant.domain.ai.Turn
+import com.raju.aiassistant.domain.knowledge.KnowledgeSearch
+import com.raju.aiassistant.domain.knowledge.NoKnowledge
+import com.raju.aiassistant.domain.language.Detection
+import com.raju.aiassistant.domain.language.LANGUAGE_AUTO
+import com.raju.aiassistant.domain.language.SeemaLanguage
+import com.raju.aiassistant.domain.language.detectScript
+import com.raju.aiassistant.domain.language.nextConversationLanguage
+import com.raju.aiassistant.domain.language.phrase
+import kotlinx.coroutines.flow.first
 import com.raju.aiassistant.domain.ai.AiResult
 import com.raju.aiassistant.domain.ai.FailureKind
 import com.raju.aiassistant.domain.ai.ModelAdvice
@@ -59,6 +69,9 @@ private const val DAY_MS = 24 * 60 * 60_000L
 /** Official Indian Railways PNR enquiry (needs a captcha, so the user finishes it there). */
 private const val PNR_ENQUIRY_URL = "https://www.indianrail.gov.in/enquiry/PNR/PnrEnquiry.html?locale=en"
 private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
+private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
+/** Failures where another provider may still answer (not a blocked or empty request). */
+private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 private const val MAX_LISTEN_FAILURES = 3
 /** Chat messages kept in memory (older ones stay in the database). */
@@ -104,7 +117,19 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Privacy-safe diagnostics (stages, error codes, lengths — never what the user said). */
     private val log: (String) -> Unit = {},
+    /** Hindi or Bengali, shared with speech output so the voice speaks the conversation's language. */
+    private val conversationLanguage: MutableStateFlow<SeemaLanguage> = MutableStateFlow(SeemaLanguage.HINDI),
+    /** The user's imported documents (RAG); empty when none were imported. */
+    private val knowledge: KnowledgeSearch = NoKnowledge,
+    /** Other AI providers to try when the chosen one fails (auto fallback). */
+    private val fallbackProviders: () -> List<ProviderId> = { emptyList() },
 ) {
+    /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
+    val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
+    private fun lang(): SeemaLanguage = SeemaLanguage.fromTag(settings.value.speechLanguage) ?: conversationLanguage.value
+    /** The last message mixed Hindi and Bengali evenly: ask which language instead of guessing. */
+    private var languageUnclear = false
+
     private val _state = MutableStateFlow(AssistantState.Idle)
     val state: StateFlow<AssistantState> = _state.asStateFlow()
 
@@ -199,6 +224,8 @@ class AssistantEngine(
         lastActivityAt = clock()
         cancelWork()
         lastUserText = trimmed
+        conversationLanguage.value = nextConversationLanguage(settings.value.speechLanguage, conversationLanguage.value, trimmed)
+        languageUnclear = settings.value.speechLanguage == LANGUAGE_AUTO && detectScript(trimmed) == Detection.MIXED
         trace("submit ${if (fromVoice) "voice" else "typed"} (${trimmed.length} chars)")
         job = scope.launch { handleUserMessage(trimmed, fromVoice) }
     }
@@ -303,7 +330,7 @@ class AssistantEngine(
         if (!voice.capturesInApp()) conversationMode.exit()
         trace("listen ${if (handsFree) "hands-free" else "tap"} ${if (voice.capturesInApp()) "in-app" else "system"} recogniser")
         voice.start(
-            settings.value.speechLanguage,
+            lang().tag,
             onResult = { heard -> if (gen == listenGen) onHeard(heard) else trace("stale result dropped") },
             onError = { err ->
                 if (gen != listenGen) { trace("stale error dropped"); return@start }
@@ -319,7 +346,7 @@ class AssistantEngine(
                     // Better to ask again than to act on a misheard word.
                     unclearInARow++
                     job = scope.launch {
-                        say(if (settings.value.speechLanguage.startsWith("hi")) "माफ़ कीजिए, ठीक से सुनाई नहीं दिया — एक बार फिर बोलिए?" else "Sorry, I didn't catch that clearly — could you say it again?", allowBargeIn = false)
+                        say(phrase(lang(), "माफ़ कीजिए, ठीक से सुनाई नहीं दिया — एक बार फिर बोलिए?", "দুঃখিত, ঠিক শুনতে পাইনি — আরেকবার বলবেন?"), allowBargeIn = false)
                         if (_voiceSession.value) listen()
                     }
                 } else if (keepGoing && (err.noSpeech || err.unclear)) {
@@ -344,15 +371,13 @@ class AssistantEngine(
                     }
                     if (err.noSpeech) {
                         // Tap-to-talk heard nothing: say so on screen instead of silently going idle.
-                        _hint.value = if (prefersHindiUi()) "कुछ सुनाई नहीं दिया — Mic दबाकर फिर बोलिए।" else "I didn't hear anything — tap Mic and speak again."
+                        _hint.value = phrase(lang(), "कुछ सुनाई नहीं दिया — Mic दबाकर फिर बोलिए।", "কিছু শুনতে পাইনি — Mic চেপে আবার বলুন।")
                         _state.value = AssistantState.Idle
-                    } else failAsync(err.message)
+                    } else if (err.permissionDenied) permissionMissing(err.message) else failAsync(err.message)
                 }
             },
         )
     }
-
-    private fun prefersHindiUi() = settings.value.speechLanguage.startsWith("hi")
 
     /** Listens again after [delayMs], unless something newer (a new listen, Stop, a reply) happened meanwhile. */
     private fun relisten(delayMs: Long) {
@@ -390,7 +415,7 @@ class AssistantEngine(
         voice.stop()
         conversationMode.exit()
         _voiceSession.value = false
-        _hint.value = if (prefersHindiUi()) "बातचीत बंद — फिर बात करने के लिए Mic दबाइए।" else "Conversation ended — tap Mic to talk again."
+        _hint.value = phrase(lang(), "बातचीत बंद — फिर बात करने के लिए Mic दबाइए।", "কথা শেষ — আবার কথা বলতে Mic চাপুন।")
         _state.value = AssistantState.Idle
     }
 
@@ -456,7 +481,7 @@ class AssistantEngine(
         if (!greet) { listen(); return }
         cancelWork()
         job = scope.launch {
-            say(if (settings.value.speechLanguage.startsWith("hi")) "हाँ जी, बोलिए?" else "Yes, tell me?", allowBargeIn = false)
+            say(phrase(lang(), "हाँ जी, बोलिए?", "হ্যাঁ, বলুন?"), allowBargeIn = false)
             if (_voiceSession.value) listen()
         }
     }
@@ -514,7 +539,13 @@ class AssistantEngine(
         val memoryTexts = relevantMemories(allMemories, text)
         val recentOpenings = _transcript.value.asReversed().asSequence()
             .filter { it.role == ChatRole.ASSISTANT }.take(3).map { openingOf(it.text) }.filter { it.isNotBlank() }.toList()
-        val context = PromptContext(voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot())
+        // Knowledge Base: passages of the user's documents that match this message (searched on the phone).
+        val documents = runCatching { knowledge.search(text) }.getOrDefault(emptyList())
+        if (documents.isNotEmpty()) trace("knowledge: ${documents.size} passage(s)")
+        val context = PromptContext(
+            voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot(),
+            language = lang(), languageUnclear = languageUnclear, documents = documents,
+        )
         val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context)
         val turns = toTurns(_transcript.value, s.historyLimit * 2, ModelAdvice.historyCharBudget(model))
 
@@ -523,8 +554,14 @@ class AssistantEngine(
             is AiResult.Success -> r.value
             is AiResult.Failure -> {
                 trace("ai failed: ${r.kind}")
-                fail(r.message, if (r.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
-                return
+                // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
+                val backup = if (r.kind in FALLBACK_KINDS) fallbackReply(providerId, system, turns) else null
+                if (backup == null) {
+                    fail(r.message, if (r.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
+                    return
+                }
+                note("↪ ${providerId.shortName}: ${r.message} — answered by ${backup.first.shortName} instead.")
+                backup.second
             }
         }
         trace("ai reply (${raw.length} chars)")
@@ -557,6 +594,23 @@ class AssistantEngine(
         finishTurn()
     }
 
+    /** Tries the other configured providers in turn; returns the first real reply, or null. */
+    private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): Pair<ProviderId, String>? {
+        for (id in fallbackProviders().filter { it != failed }) {
+            val key = secret(id.secret)?.takeIf { it.isNotBlank() } ?: continue
+            val p = providerFor(id, key)
+            val cacheKey = id to key.hashCode()
+            val model = settings.value.modelFor(id) ?: discoveredModels[cacheKey] ?: when (val m = p.listModels()) {
+                is AiResult.Success -> pickDefaultModel(id, m.value)?.id?.also { discoveredModels[cacheKey] = it }
+                is AiResult.Failure -> null
+            } ?: continue
+            trace("ai fallback ${id.shortName}")
+            val r = p.chat(model, system, turns)
+            if (r is AiResult.Success && r.value.isNotBlank()) return id to r.value
+        }
+        return null
+    }
+
     private fun finishTurn() {
         val s = settings.value
         voiceTurn = false
@@ -571,8 +625,13 @@ class AssistantEngine(
     }
 
     private suspend fun say(text: String, allowBargeIn: Boolean = true, depth: Int = 0) {
-        _state.value = AssistantState.Speaking
+        // "Speaking" is shown only once audio really plays; while the voice is being prepared she is thinking.
+        if (_state.value != AssistantState.Thinking && _state.value != AssistantState.Executing) _state.value = AssistantState.Thinking
         val spoken = speakableText(text)
+        val showSpeaking = scope.launch {
+            speaker.playing.first { it }
+            if (_state.value == AssistantState.Thinking || _state.value == AssistantState.Executing) _state.value = AssistantState.Speaking
+        }
         // In a voice conversation the user can talk over Seema, like interrupting a person.
         val canBargeIn = allowBargeIn && settings.value.bargeIn && (handsFree || _voiceSession.value)
         val capture = canBargeIn && transcriber?.isAvailable() == true
@@ -590,8 +649,10 @@ class AssistantEngine(
         val result = try {
             speaker.speak(spoken)
         } finally {
+            showSpeaking.cancel()
             if (!interrupted.get()) bargeIn.stop()
         }
+        lastSpoken = text
         if (interrupted.get()) {
             trace("interrupted by the user after ${speaker.playedChunks} part(s)")
             onInterrupted(spoken, capture, utterance, depth)
@@ -637,7 +698,7 @@ class AssistantEngine(
             }
             isStopCommand(heard) -> {
                 record(ChatRole.USER, heard)
-                say(if (DEVANAGARI.containsMatchIn(heard)) "हाँ, बोलिए?" else "Haan, boliye?", allowBargeIn = false)
+                say(if (lang() == SeemaLanguage.BENGALI) "হ্যাঁ, বলুন?" else if (DEVANAGARI.containsMatchIn(heard)) "हाँ, बोलिए?" else "Haan, boliye?", allowBargeIn = false)
                 _voiceSession.value = true
                 listen()
                 throw CancellationException("Stopped by the user")
@@ -650,7 +711,32 @@ class AssistantEngine(
         }
     }
 
-    private fun resumePrefix(rest: String) = if (DEVANAGARI.containsMatchIn(rest)) "हाँ, तो… " else "Haan, toh… "
+    private fun resumePrefix(rest: String) = when {
+        BENGALI_SCRIPT.containsMatchIn(rest) -> "হ্যাঁ, তো… "
+        DEVANAGARI.containsMatchIn(rest) -> "हाँ, तो… "
+        else -> "Haan, toh… "
+    }
+
+    private var lastSpoken: String? = null
+
+    /** "Repeat": speaks Seema's last reply again (nothing is sent to the AI). */
+    fun repeatLast() {
+        speakAgain(_transcript.value.lastOrNull { it.role == ChatRole.ASSISTANT }?.text ?: lastSpoken ?: return)
+    }
+
+    /** Speaks one of Seema's replies again (the 🔊 button under a message). */
+    fun speakAgain(text: String) {
+        cancelWork()
+        job = scope.launch {
+            say(text, allowBargeIn = false)
+            if (_state.value != AssistantState.Error) _state.value = AssistantState.Idle
+        }
+    }
+
+    /** Mic permission was refused: show it as its own state (not as a generic error). */
+    fun permissionMissing(message: String) {
+        scope.launch { fail(message, AssistantState.WaitingPermission) }
+    }
 
     /** "Ruko": stop speaking right now but keep the conversation (hands-free listens again next). */
     fun interrupt() {
@@ -748,8 +834,8 @@ class AssistantEngine(
 
     private fun today(): LocalDate = Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDate()
 
-    private fun prefersHindi(): Boolean =
-        lastUserText?.let { DEVANAGARI.containsMatchIn(it) } ?: settings.value.speechLanguage.startsWith("hi")
+    /** Khata/PNR summaries exist in Hindi and English; English is no longer a reply language, so Hindi. */
+    private fun prefersHindi(): Boolean = true
 
     /** Today's khata and upcoming journeys for the prompt (null when empty or unreadable). */
     private suspend fun businessSnapshot(): String? = runCatching {
@@ -764,7 +850,7 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, "Research needs a Tavily API key (Settings → Web search).")
             return
         }
-        if (speak && !replySpoken) say(if (prefersHindi()) "ठीक है, अच्छे से रिसर्च करती हूँ…" else "Okay, let me research that properly…", allowBargeIn = false)
+        if (speak && !replySpoken) say(phrase(lang(), "ठीक है, अच्छे से रिसर्च करती हूँ…", "ঠিক আছে, ভালো করে খুঁজে দেখছি…"), allowBargeIn = false)
         _state.value = AssistantState.Executing
         val client = searchFor(key)
         val results = mutableListOf<com.raju.aiassistant.data.search.SearchResult>()
@@ -793,7 +879,7 @@ class AssistantEngine(
                 // Only the opening summary is read aloud; the full report stays in Chat.
                 if (speak) {
                     val first = reportText.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().take(300)
-                    say(first + if (prefersHindi()) " पूरी रिपोर्ट चैट में है।" else " The full report is in Chat.")
+                    say(first + phrase(lang(), " पूरी रिपोर्ट चैट में है।", " পুরো রিপোর্ট চ্যাটে আছে।"))
                 }
             }
             is AiResult.Failure -> {
@@ -934,7 +1020,7 @@ class AssistantEngine(
             return
         }
         // Searching takes a few seconds: like a person, say so instead of going silent.
-        if (speak && !replySpoken) say(if (DEVANAGARI.containsMatchIn(action.query) || settings.value.speechLanguage.startsWith("hi")) "एक सेकंड, देखती हूँ…" else "One second, let me check…", allowBargeIn = false)
+        if (speak && !replySpoken) say(phrase(lang(), "एक सेकंड, देखती हूँ…", "এক সেকেন্ড, দেখছি…"), allowBargeIn = false)
         _state.value = AssistantState.Executing
         val response = when (val r = searchFor(key).search(action.query, topic = action.topic)) {
             is AiResult.Success -> r.value
@@ -971,9 +1057,12 @@ class AssistantEngine(
         val d = CompletableDeferred<Decision>()
         decision = d
         _pending.value = request
+        val before = _state.value
+        if (request.kind == PendingRequest.Kind.PERMISSION) _state.value = AssistantState.WaitingPermission
         return try {
             d.await()
         } finally {
+            if (_state.value == AssistantState.WaitingPermission) _state.value = before
             if (decision === d) {
                 _pending.value = null
                 decision = null
@@ -1021,7 +1110,7 @@ class AssistantEngine(
         if (voiceTurn) {
             // The user is talking, maybe not looking at the screen: say briefly that it failed.
             voiceTurn = false
-            say(if (prefersHindi()) "माफ़ कीजिए, अभी जवाब नहीं दे पाई — वजह स्क्रीन पर लिखी है।" else "Sorry, I couldn't answer that — the reason is on the screen.", allowBargeIn = false)
+            say(phrase(lang(), "माफ़ कीजिए, अभी जवाब नहीं दे पाई — वजह स्क्रीन पर लिखी है।", "দুঃখিত, এখন উত্তর দিতে পারলাম না — কারণ স্ক্রিনে লেখা আছে।"), allowBargeIn = false)
         }
         _state.value = state
         _voiceSession.value = false
@@ -1039,7 +1128,7 @@ class AssistantEngine(
     private fun scheduleErrorReset() {
         scope.launch {
             delay(4_000)
-            if (_state.value == AssistantState.Error) _state.value = AssistantState.Idle
+            if (_state.value == AssistantState.Error || _state.value == AssistantState.WaitingPermission) _state.value = AssistantState.Idle
         }
     }
 

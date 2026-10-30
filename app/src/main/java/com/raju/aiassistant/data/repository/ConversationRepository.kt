@@ -22,7 +22,26 @@ class ConversationRepository(
         )).also { conversationId = it }
     }
 
-    override suspend fun recent(limit: Int): List<ChatMessage> = dao.recentMessages(limit).map { it.toDomain() }
+    /** Messages of the current conversation (the latest one), oldest first. */
+    override suspend fun recent(limit: Int): List<ChatMessage> {
+        val id = lock.withLock { conversationId ?: dao.latestConversation()?.id } ?: return emptyList()
+        return dao.recentMessagesIn(id, limit).map { it.toDomain() }
+    }
+
+    /** "New conversation": later messages go to a fresh conversation; older chats stay saved and searchable. */
+    suspend fun startNew() {
+        lock.withLock {
+            conversationId = dao.insertConversation(ConversationEntity(title = "Chat", createdAt = clock(), updatedAt = clock()))
+        }
+    }
+
+    /** Search all saved chats; `%` and `_` in the query are matched literally. */
+    suspend fun search(query: String, limit: Int = 50): List<ChatMessage> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return dao.searchMessages(escaped, limit).map { it.toDomain() }
+    }
 
     override suspend fun add(role: ChatRole, text: String): Long {
         val id = currentConversationId()

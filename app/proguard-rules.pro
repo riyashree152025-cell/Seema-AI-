@@ -8,3 +8,9 @@
 -dontwarn javax.annotation.**
 # Action history stores javaClass.simpleName ("Call", "SetTimer", ...): keep those names readable in release.
 -keepnames class com.raju.aiassistant.domain.assistant.AssistantAction$*
+
+# PDFBox (Knowledge Base PDF import) loads fonts/resources by name and has optional JPEG2000 support.
+-keep class com.tom_roush.pdfbox.** { *; }
+-keep class com.tom_roush.fontbox.** { *; }
+-dontwarn com.gemalto.jp2.**
+-dontwarn com.tom_roush.pdfbox.**

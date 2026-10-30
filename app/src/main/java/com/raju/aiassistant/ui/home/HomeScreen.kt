@@ -148,7 +148,7 @@ fun HomeScreen(
     }
 
     val handsFreeMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.toggleHandsFree()
+        if (granted) viewModel.toggleHandsFree() else viewModel.micDenied()
     }
     val onVoice = {
         if (viewModel.hasMicPermission()) viewModel.toggleHandsFree() else handsFreeMic.launch(Manifest.permission.RECORD_AUDIO)
@@ -256,6 +256,8 @@ fun HomeScreen(
                 )
                 StatusChip(if (state.online) "Online" else "Offline", if (state.online) SuccessGreen else ErrorRed)
                 StatusChip("Mode: ${state.listenMode}", MaterialTheme.colorScheme.secondary)
+                StatusChip("🌐 ${state.language.label.substringBefore(' ')}", MaterialTheme.colorScheme.secondary)
+                StatusChip("🗣 Voice: ${state.voiceEngine}", MaterialTheme.colorScheme.secondary)
                 StatusChip(
                     when {
                         state.listening -> "Mic: listening"

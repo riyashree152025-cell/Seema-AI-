@@ -190,6 +190,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                 tts?.hindi == LanguageSupport.AVAILABLE,
                 if (tts != null && tts.hindi != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
             )
+            StatusRow(
+                "Android voice (বাংলা Bengali)",
+                if (tts == null) "checking…" else tts.bengali.label,
+                tts?.bengali == LanguageSupport.AVAILABLE,
+                if (tts != null && tts.bengali != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
+            )
             val voiceKey = when (s.ttsEngine) {
                 TtsEngine.SARVAM -> SecretId.SARVAM_API_KEY
                 TtsEngine.ELEVENLABS -> SecretId.ELEVENLABS_API_KEY
@@ -278,6 +284,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             var rate by remember(s.speechRate) { mutableFloatStateOf(s.speechRate) }
             Text("Speaking speed: ${"%.1f".format(rate)}×", style = MaterialTheme.typography.bodyMedium)
             Slider(value = rate, onValueChange = { rate = it }, valueRange = 0.5f..2f, steps = 14, onValueChangeFinished = { viewModel.setSpeechRate(rate) })
+            var pitch by remember(s.speechPitch) { mutableFloatStateOf(s.speechPitch) }
+            Text("Voice pitch: ${"%.2f".format(pitch)} (lower = deeper, calmer · Android voice)", style = MaterialTheme.typography.bodyMedium)
+            Slider(value = pitch, onValueChange = { pitch = it }, valueRange = 0.7f..1.3f, steps = 11, onValueChangeFinished = { viewModel.setSpeechPitch(pitch) })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = viewModel::testVoice) { Text("Test voice") }
                 OutlinedButton(onClick = viewModel::stopVoice) { Text("Stop") }
@@ -286,8 +295,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             activeEngine?.let { Text("Active: $it", style = MaterialTheme.typography.bodyMedium, color = TextSecondary) }
 
             SpeechInputSettings(s, viewModel, state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true)
-            Text("Speech input language", style = MaterialTheme.typography.titleMedium)
+            Text("Language — हिन्दी / বাংলা", style = MaterialTheme.typography.titleMedium)
             ChipRow(SPEECH_LANGUAGES.map { it.first }, s.speechLanguage, { tag -> SPEECH_LANGUAGES.first { it.first == tag }.second }) { viewModel.setSpeechLanguage(it) }
+            Text(
+                "Seema listens, replies and speaks in Hindi or Bengali. Auto: she follows the language you use (বাংলা লিখলে বা বললে বাংলায় উত্তর); Hinglish counts as Hindi. If you mix both, she asks which you prefer. Bengali voice: Sarvam (cloud) or the phone's Bengali Android voice — never an English voice.",
+                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+            )
             ToggleRow("Speak replies aloud", s.autoSpeakReplies, viewModel::setAutoSpeak)
             Text("Voice mode (microphone & battery)", style = MaterialTheme.typography.titleMedium)
             VoiceMode.entries.forEach { m -> HintRadioRow(m.label, m.hint, s.voiceMode == m) { viewModel.setVoiceMode(m) } }
@@ -410,14 +423,24 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                 OutlinedButton(onClick = { confirm = "Delete all chat history?" to viewModel::clearChatHistory }) { Text("Delete chat history") }
                 OutlinedButton(onClick = { confirm = "Delete all memories?" to viewModel::clearMemories }) { Text("Delete memories") }
             }
-            Text("Edit individual memories in Tools.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Text("View, edit or delete individual memories in Tools → Memories.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            MemoryFileButtons(viewModel)
         }
+
+        KnowledgeBaseSettings(viewModel)
 
         PerformanceAndBattery(s, viewModel)
 
         HudPanel(title = "About") {
             Text("Seema AI Assistant ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
             Text("AI answers can be wrong — check important information.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Text(
+                "Needs internet: AI replies (Gemini/Groq), web search, weather, cloud voices (Sarvam, ElevenLabs, Cartesia, Deepgram). " +
+                    "Works offline: the Arc Reactor / 3D core, clock and phone status, khata and PNR diary, memories and documents on the phone, " +
+                    "the Android voice (if its Hindi/Bengali voice data is installed) and phone speech recognition (if the offline language pack is installed). " +
+                    "There is no on-phone AI model: without internet Seema cannot answer questions.",
+                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+            )
         }
     }
 

@@ -74,3 +74,23 @@ data class JourneyEntity(
     val note: String?,
     val createdAt: Long,
 )
+
+/** Knowledge Base: one imported document; [text] is the extracted text (kept so the index can be rebuilt). */
+@Entity(tableName = "kb_documents")
+data class KbDocumentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val mimeType: String,
+    val text: String,
+    val chunkCount: Int,
+    val addedAt: Long,
+)
+
+/** Knowledge Base: one searchable passage of a document. */
+@Entity(tableName = "kb_chunks", indices = [Index("documentId")])
+data class KbChunkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val documentId: Long,
+    val chunkIndex: Int,
+    val text: String,
+)

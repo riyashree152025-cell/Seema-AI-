@@ -44,12 +44,17 @@ fun isSilent(audio: PcmAudio, text: String): Boolean {
 fun providerOrder(selected: TtsEngine): List<TtsEngine> = listOf(selected) + TtsEngine.entries.filter { it != selected }
 
 private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
+private val BENGALI = Regex("[\\u0980-\\u09FF]")
 
 /**
- * Language for one chunk: Devanagari text is always spoken as Hindi (hi-IN); Roman-script text
- * (Hinglish/English) uses the user's chosen language, so a Hindi voice reads Hinglish naturally.
+ * Language for one chunk: Bengali script is spoken as Bengali (bn-IN), Devanagari as Hindi (hi-IN);
+ * Roman-script text (Hinglish) uses the conversation's language, so a Hindi voice reads Hinglish naturally.
  */
-fun languageFor(chunk: String, preferredTag: String): String = if (DEVANAGARI.containsMatchIn(chunk)) "hi-IN" else preferredTag
+fun languageFor(chunk: String, preferredTag: String): String = when {
+    BENGALI.containsMatchIn(chunk) -> "bn-IN"
+    DEVANAGARI.containsMatchIn(chunk) -> "hi-IN"
+    else -> preferredTag
+}
 
 /**
  * Speaks text chunk by chunk. While one chunk plays the next is already being synthesised
