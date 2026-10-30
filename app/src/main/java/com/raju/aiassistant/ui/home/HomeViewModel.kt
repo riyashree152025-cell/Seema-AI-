@@ -127,6 +127,12 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         if (engine.state.value == AssistantState.Sleeping) engine.wakeUp() else engine.interrupt()
     }
 
+    /** The "Design" tag on Home: switches between the Arc Reactor and the 3D core in one tap (saved). */
+    fun toggleCore() {
+        val next = if (uiState.value.core == CoreAppearance.MODERN) CoreAppearance.LEGACY else CoreAppearance.MODERN
+        viewModelScope.launch { c.settingsRepository.setCoreAppearance(next) }
+    }
+
     /** "Turn off" on the Safety Mode banner: calls, WhatsApp, SMS, apps and music work again. */
     fun disableSafetyMode() {
         viewModelScope.launch { c.settingsRepository.setSafetyMode(false) }
