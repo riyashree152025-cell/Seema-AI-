@@ -1,6 +1,6 @@
 # Next phase: offline voice, wake word and screen-off listening
 
-**Status: NOT STARTED.** Nothing here is implemented yet. This plan is kept so the work is not forgotten. It was deferred on purpose because each item needs real model files and testing on the user's Android 15 phone. A cloud build and an emulator cannot prove any of it.
+**Status:** B (offline TTS) is implemented — see `docs/OFFLINE_VOICE_ENGINES.md` (Piper and Kokoro-82M via sherpa-onnx 1.13.8, Voice Engine Manager, Automatic/Manual selection). It still has to be measured on the user's phone. A (offline ASR), C (wake word) and D (screen-off listening) are **NOT STARTED**. This plan is kept so the work is not forgotten. It was deferred on purpose because each item needs real model files and testing on the user's Android 15 phone. A cloud build and an emulator cannot prove any of it.
 
 ## 1. What exists today (so the next phase builds on it, not around it)
 
@@ -23,13 +23,13 @@ The engine and UI do not need to be rewritten.
 ## 2. Planned work
 
 ### A. Offline Hindi ASR (Sherpa-ONNX)
-- Add `com.k2fsa.sherpa.onnx` (Android AAR, arm64-v8a only, to keep the APK small).
+- The sherpa-onnx 1.13.8 AAR is already in the app (for offline TTS); reuse `SherpaTtsHost`'s loading pattern and `VoiceModelManager` for downloads.
 - Choose a model only after checking each candidate's license, size, Hindi/Hinglish coverage and streaming support. Benchmark on the phone: cold start, real-time factor, RAM and heat.
 - Download only with the user's consent: show the size and progress, verify the SHA-256 checksum, and store the model in app-private storage.
 - Implement as a `VoiceInput` named `SherpaVoiceInput`, so it fits `SwitchingVoiceInput`.
 - Proof required: works in airplane mode on the phone.
 
-### B. Offline TTS (Sherpa-ONNX + Piper voices)
+### B. Offline TTS (Sherpa-ONNX + Piper voices) — DONE in code, phone measurement pending
 - List only the voices whose model files and licenses are actually available. Do not hard-code names.
 - Implement as a `TtsProvider` (`TtsEngine.OFFLINE_NEURAL`), placed before Android TTS in the fallback order.
 - Add a preview button per voice, plus a speed control where the voice supports it.

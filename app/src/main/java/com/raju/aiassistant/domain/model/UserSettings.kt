@@ -12,7 +12,9 @@ enum class TtsEngine(val label: String, val hint: String) {
     ELEVENLABS("ElevenLabs", "★ most natural and sweet voice; Hindi + English"),
     CARTESIA("Cartesia Sonic", "Natural voice with moods; Hindi + English"),
     DEEPGRAM("Deepgram Aura", "English only — Hindi replies use the next voice"),
-    ANDROID("Android TTS (offline)", "Free, works without internet"),
+    PIPER("Piper — offline, fast", "★ Runs on the phone after a one-time download (21 MB); Hindi female voice; no API cost"),
+    KOKORO("Kokoro-82M — offline, natural", "Most human-like offline voice (132 MB); needs a fast phone, otherwise Piper takes over"),
+    ANDROID("Android TTS (offline)", "Free, works without internet; the last fallback"),
 }
 
 /** How Seema talks. Changes only the tone; honesty and safety rules stay the same. */
@@ -87,6 +89,10 @@ data class UserSettings(
     val sttEngine: SttEngine = SttEngine.ANDROID,
     val deepgramSttModel: String = VoiceCatalog.DEEPGRAM_DEFAULT_STT,
     val speechRate: Float = 1.0f,
+    /** Automatic: the app picks the offline engine (Kokoro → Piper → Android) by availability, speed and failures. */
+    val voiceEngineAuto: Boolean = true,
+    /** Kokoro speaker (31 = hf_alpha, Hindi female). */
+    val kokoroSpeaker: Int = 31,
     /** Voice pitch for the Android voice: a little below 1 sounds deeper and calmer. */
     val speechPitch: Float = 0.92f,
     val androidVoice: String? = null,

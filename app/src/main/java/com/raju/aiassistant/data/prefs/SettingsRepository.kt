@@ -62,6 +62,8 @@ class SettingsRepository(private val context: Context) {
             androidVoice = this[Keys.ANDROID_VOICE],
             speechLanguage = com.raju.aiassistant.domain.language.normalizeLanguageSetting(this[Keys.SPEECH_LANGUAGE]),
             speechPitch = this[Keys.SPEECH_PITCH] ?: d.speechPitch,
+            voiceEngineAuto = this[Keys.VOICE_ENGINE_AUTO] ?: d.voiceEngineAuto,
+            kokoroSpeaker = this[Keys.KOKORO_SPEAKER] ?: d.kokoroSpeaker,
             autoSpeakReplies = this[Keys.AUTO_SPEAK] ?: d.autoSpeakReplies,
             continuousConversation = this[Keys.CONTINUOUS] ?: d.continuousConversation,
             // Older versions stored a hands-free switch: keep a user's explicit choice.
@@ -113,6 +115,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setDeepgramSttModel(v: String) = edit { it[Keys.DEEPGRAM_STT] = v }
     suspend fun setSpeechRate(v: Float) = edit { it[Keys.SPEECH_RATE] = v.coerceIn(0.5f, 2f) }
     suspend fun setSpeechPitch(v: Float) = edit { it[Keys.SPEECH_PITCH] = v.coerceIn(0.5f, 1.5f) }
+    suspend fun setVoiceEngineAuto(v: Boolean) = edit { it[Keys.VOICE_ENGINE_AUTO] = v }
+    suspend fun setKokoroSpeaker(v: Int) = edit { it[Keys.KOKORO_SPEAKER] = v }
     suspend fun setAndroidVoice(v: String?) = edit { if (v == null) it.remove(Keys.ANDROID_VOICE) else it[Keys.ANDROID_VOICE] = v }
     suspend fun setSpeechLanguage(v: String) = edit { it[Keys.SPEECH_LANGUAGE] = v }
     suspend fun setAutoSpeak(v: Boolean) = edit { it[Keys.AUTO_SPEAK] = v }
@@ -175,6 +179,8 @@ class SettingsRepository(private val context: Context) {
         val DEEPGRAM_STT = stringPreferencesKey("deepgram_stt_model")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
         val SPEECH_PITCH = floatPreferencesKey("speech_pitch")
+        val VOICE_ENGINE_AUTO = booleanPreferencesKey("voice_engine_auto")
+        val KOKORO_SPEAKER = intPreferencesKey("kokoro_speaker")
         val ANDROID_VOICE = stringPreferencesKey("android_voice")
         val SPEECH_LANGUAGE = stringPreferencesKey("speech_language")
         val AUTO_SPEAK = booleanPreferencesKey("auto_speak")

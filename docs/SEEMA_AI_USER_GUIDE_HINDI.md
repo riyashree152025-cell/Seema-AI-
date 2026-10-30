@@ -54,6 +54,18 @@ Free limits कंपनियाँ बदलती रहती हैं। �
 | **Speech input** (Android / Deepgram) | सुनने वाला engine। Deepgram Hinglish बेहतर समझता है और बिना beep के सुनता है, पर key चाहिए। বাংলা हमेशा Android recogniser से सुनी जाती है। |
 | **Sleep mode** | इतने सेकंड चुप रहने पर Seema सो जाती है। फिर "सीमा" बोलकर जगाइए। |
 
+### Offline आवाज़ (Voice Engine Manager) — इंटरनेट/API ख़र्च के बिना
+
+Settings → Voice के नीचे **"Voice Engine Manager (offline voices)"**:
+
+1. **Piper · Priyamvada (Hindi)** → **Download 21 MB** दबाइए (Wi-Fi बेहतर)। "Installed · works offline" दिखे तो तैयार।
+2. चाहें तो **Kokoro-82M** (132 MB) भी डाउनलोड कीजिए — आवाज़ ज़्यादा natural है पर फ़ोन पर धीमी हो सकती है। महिला आवाज़: **hf_alpha** या **hf_beta**।
+3. **Preview** से दोनों आवाज़ें सुनकर तुलना कीजिए।
+4. **Automatic (recommended)** चालू रखिए: Kokoro तेज़ चले तो Kokoro, धीमा हो या fail हो तो Piper, दोनों न चलें तो Android आवाज़। Model डाउनलोड होने के बाद Sarvam/कोई voice API इस्तेमाल नहीं होती — कोई ख़र्च नहीं। **Manual** में ऊपर "Speech output" में चुनी आवाज़ पहले चलती है।
+5. **Test speed on this phone** दबाइए — आपके फ़ोन पर असली नाप आता है: पहला वाक्य कितने ms में, speed (1 से कम = बोलने से तेज़), CPU %, memory, battery current। ये नंबर मुझे भेज दीजिए।
+
+ध्यान दें: बंगाली की offline आवाज़ अभी नहीं है (बंगाली Android/Sarvam से बोली जाएगी)। AI का दिमाग़ (जवाब) अब भी इंटरनेट से आता है; सिर्फ़ आवाज़ फ़ोन पर बनती है।
+
 **Bengali/Hindi आवाज़ फ़ोन पर:** Settings → Status में "Android voice (Hindi)" और "(বাংলা)" दिखते हैं। "Install" दबाकर फ़ोन की आवाज़ डाउनलोड कर सकते हैं।
 
 ---
@@ -115,6 +127,7 @@ Free limits कंपनियाँ बदलती रहती हैं। �
   - khata, PNR
   - memories, documents
   - Android आवाज़ और Android recogniser, अगर उनकी offline language फ़ाइल डाउनलोड हो
+  - Piper / Kokoro offline आवाज़ (एक बार डाउनलोड के बाद)
 
 ---
 

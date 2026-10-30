@@ -117,6 +117,20 @@ adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core MOD
 adb shell uiautomator dump /sdcard/ui-modern.xml > /dev/null 2>&1
 echo "DASHBOARD texts: $(adb shell cat /sdcard/ui-modern.xml | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | tr '\n' ' ')"
 adb exec-out screencap -p > smoke-6-dashboard.png
+echo "===== RUN 7: offline voice engines (real download, sherpa-onnx synthesis, playback, benchmark) ====="
+voice_test() { # $1 = PIPER or KOKORO, $2 = max seconds
+  adb logcat -c
+  adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_voice_test "$1" > /dev/null
+  for _ in $(seq 1 $(( $2 / 5 ))); do
+    adb logcat -d -s SeemaVoiceTest:I | grep -q "result=" && break
+    sleep 5
+  done
+  adb logcat -d -s SeemaVoiceTest:I | grep VOICE_TEST || echo "VOICE_TEST engine=$1 result=TIMEOUT"
+  adb logcat -d | grep -iE "AndroidRuntime|FATAL|sherpa|onnx" | head -30 || true
+  echo "VOICE_MEM[$1] $(adb shell dumpsys meminfo $PKG | grep -E 'TOTAL PSS|TOTAL:' | head -1 | tr -s ' ')"
+}
+voice_test PIPER 420
+voice_test KOKORO 900
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|ANR in" | head -50 || true
 adb logcat -d > logcat.txt
 exit 0

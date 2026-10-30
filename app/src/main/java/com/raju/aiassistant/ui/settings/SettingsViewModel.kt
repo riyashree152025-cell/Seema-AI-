@@ -407,6 +407,47 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         _info.value = runCatching { c.memoryRepository.deleteAll() }.fold({ "All memories deleted." }, { "Could not delete memories." })
     }
 
+    // ---------------------------------------------------------------- offline voice engines
+
+    val voiceModelStates: StateFlow<Map<String, com.raju.aiassistant.data.tts.local.ModelState>> = c.voiceModels.states
+    val voiceEngineStats: StateFlow<Map<TtsEngine, com.raju.aiassistant.domain.voice.EngineStats>> = c.voiceEngineStats.stats
+    val voiceModelCatalog get() = c.voiceModels.catalog
+    val offlineRuntimeAvailable: Boolean get() = c.sherpaHost.nativeAvailable
+    private val _benchmark = MutableStateFlow<List<com.raju.aiassistant.data.tts.local.VoiceBenchmark>?>(null)
+    val benchmark: StateFlow<List<com.raju.aiassistant.data.tts.local.VoiceBenchmark>?> = _benchmark.asStateFlow()
+    private val _benchmarkRunning = MutableStateFlow(false)
+    val benchmarkRunning: StateFlow<Boolean> = _benchmarkRunning.asStateFlow()
+
+    fun onMeteredNetwork() = c.voiceModels.onMeteredNetwork()
+    fun setVoiceEngineAuto(v: Boolean) = launch { repo.setVoiceEngineAuto(v) }
+    fun setKokoroSpeaker(v: Int) = launch { repo.setKokoroSpeaker(v) }
+    fun downloadVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = c.voiceModels.download(m)
+    fun cancelVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = c.voiceModels.cancel(m)
+    fun deleteVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = launch {
+        c.sherpaHost.release(m.engine)
+        c.voiceModels.delete(m)
+    }
+
+    /** Speaks a sample with exactly this engine, so voices can be compared. */
+    fun previewEngine(engine: TtsEngine) = launch {
+        val r = c.speaker.preview(engine, "नमस्ते! मैं सीमा हूँ। आज आपकी क्या मदद कर सकती हूँ?")
+        _voiceTest.value = if (r.completed) "Preview: ${r.engineLabel}" else "Preview failed: ${r.error ?: "no audio"}"
+    }
+
+    fun runVoiceBenchmark() = launch {
+        if (_benchmarkRunning.value) return@launch
+        _benchmarkRunning.value = true
+        c.speaker.stop()
+        val installed = c.voiceModels.catalog.filter { c.voiceModels.installedModel(it.engine)?.id == it.id }
+        val s = c.currentSettings.value
+        _benchmark.value = com.raju.aiassistant.data.tts.local.benchmarkOfflineVoices(c.appContext, c.sherpaHost, installed) { m ->
+            if (m.engine == TtsEngine.KOKORO) s.kokoroSpeaker else m.speakers.first().id
+        }
+        _benchmarkRunning.value = false
+    }
+
+    fun resetVoiceStats() = c.voiceEngineStats.reset()
+
     // ---------------------------------------------------------------- knowledge base & memory files
 
     val documents: StateFlow<List<com.raju.aiassistant.data.knowledge.KbDocumentInfo>> =

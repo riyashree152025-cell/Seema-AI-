@@ -24,3 +24,7 @@ google-services.json
 
 # Logs
 *.log
+
+# Downloaded by app/build.gradle.kts (sherpa-onnx AAR, checksum-verified)
+app/libs/*.aar
+app/libs/*.part

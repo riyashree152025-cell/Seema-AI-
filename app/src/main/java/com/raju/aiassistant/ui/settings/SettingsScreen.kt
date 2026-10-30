@@ -201,7 +201,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                 TtsEngine.ELEVENLABS -> SecretId.ELEVENLABS_API_KEY
                 TtsEngine.CARTESIA -> SecretId.CARTESIA_API_KEY
                 TtsEngine.DEEPGRAM -> SecretId.DEEPGRAM_API_KEY
-                TtsEngine.ANDROID -> null
+                TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> null
             }
             val voiceKeySaved = voiceKey == null || state.secrets[voiceKey]?.configured == true
             StatusRow(
@@ -266,7 +266,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                     TtsEngine.ELEVENLABS -> state.secrets[SecretId.ELEVENLABS_API_KEY]?.configured != true
                     TtsEngine.CARTESIA -> state.secrets[SecretId.CARTESIA_API_KEY]?.configured != true
                     TtsEngine.DEEPGRAM -> state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured != true
-                    TtsEngine.ANDROID -> false
+                    TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> false
                 }
                 HintRadioRow(e.label, e.hint + if (keyMissing) " · key not set" else "", s.ttsEngine == e) { viewModel.setTtsEngine(e) }
             }
@@ -337,6 +337,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Personality", style = MaterialTheme.typography.titleMedium)
             Personality.entries.forEach { p -> HintRadioRow(p.label, p.hint, s.personality == p) { viewModel.setPersonality(p) } }
         }
+        VoiceEngineManager(s, viewModel)
         SecretCard(SecretId.SARVAM_API_KEY, state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus(), viewModel, title = "Sarvam AI voice key")
         SecretCard(SecretId.ELEVENLABS_API_KEY, state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus(), viewModel, title = "ElevenLabs voice key") {
             Text("ElevenLabs → Developers → API keys. Allow \"Text to Speech\" (and \"Voices: read\" + \"Models: read\" so the lists load). Test plays nothing; it checks a real request and loads the voices.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)

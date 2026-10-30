@@ -14,3 +14,12 @@
 -keep class com.tom_roush.fontbox.** { *; }
 -dontwarn com.gemalto.jp2.**
 -dontwarn com.tom_roush.pdfbox.**
+
+# sherpa-onnx: the native code reads the config classes' fields by name (JNI) and calls back into Kotlin.
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+# commons-compress: only bzip2 + tar are used; optional codecs are absent.
+-dontwarn org.apache.commons.compress.**
+-dontwarn org.brotli.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.objectweb.asm.**
