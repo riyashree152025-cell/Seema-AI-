@@ -23,7 +23,7 @@ object TextExtractor {
     }
 
     /** UTF-8 text (BOM removed). */
-    fun plainText(bytes: ByteArray): String = String(bytes, Charsets.UTF_8).removePrefix("﻿")
+    fun plainText(bytes: ByteArray): String = String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
 
     /** Text of a .docx: paragraphs from word/document.xml (a zip of XML; no library needed). */
     fun docxText(input: InputStream): String? {

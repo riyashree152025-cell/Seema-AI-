@@ -32,6 +32,6 @@ class TextExtractorTest {
 
     @Test
     fun plainTextDropsTheByteOrderMark() {
-        assertEquals("হ্যালো", TextExtractor.plainText("﻿হ্যালো".toByteArray()))
+        assertEquals("হ্যালো", TextExtractor.plainText("\uFEFFহ্যালো".toByteArray()))
     }
 }
