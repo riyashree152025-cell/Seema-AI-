@@ -97,6 +97,11 @@ import com.raju.aiassistant.domain.power.activityPhaseFor
 import kotlinx.coroutines.delay
 import com.raju.aiassistant.domain.model.VoiceMode
 import kotlin.math.sin
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import com.raju.aiassistant.domain.model.CoreAppearance
+import com.raju.aiassistant.ui.home.visuals.HoloCore
+import com.raju.aiassistant.ui.home.visuals.holoCoreStyleFor
 
 @Composable
 fun HomeScreen(
@@ -106,7 +111,9 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val assistantState = state.assistantState
-    val style = reactorStyleFor(assistantState)
+    // Only the chosen AI core runs; both follow the same assistant state.
+    val modern = state.core == CoreAppearance.MODERN
+    val style = if (modern) holoCoreStyleFor(assistantState) else reactorStyleFor(assistantState)
 
     // Smart power: when nobody touches the screen and Seema is not busy, the visuals slow down
     // (idle) and then stop drawing altogether (sleep) until the next touch or event.
@@ -262,7 +269,9 @@ fun HomeScreen(
                 if (state.paused) StatusChip("Paused", WarningAmber)
             }
 
-            // Stage: one large, centred, heart-beating reactor
+            if (modern) HoloClock(Color(style.primaryArgb))
+
+            // Stage: one large, centred core — the Legacy Arc Reactor or the 3D Holographic Core.
             BoxWithConstraints(
                 Modifier
                     .weight(1f)
@@ -276,10 +285,11 @@ fun HomeScreen(
                     .semantics { contentDescription = "Assistant status: ${assistantState.label}" },
                 contentAlignment = Alignment.Center,
             ) {
-                ArcReactor(
-                    style, profile.particleCount, profile.richEffects, timeProvider, speechLevel,
-                    Modifier.size(minOf(maxWidth, maxHeight) * 0.96f),
-                )
+                val coreSize = minOf(maxWidth, maxHeight) * 0.96f
+                Crossfade(targetState = modern, animationSpec = tween(400), label = "core") { showModern ->
+                    if (showModern) HoloCore(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
+                    else ArcReactor(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
+                }
             }
 
             val stateColor = Color(style.primaryArgb)
@@ -336,13 +346,18 @@ fun HomeScreen(
             }
 
             val busy = assistantState.isBusy || state.listening
+            val voiceLabel = when {
+                state.handsFree -> "Mic ON"
+                state.voiceMode == VoiceMode.PUSH_TO_TALK -> "Talk"
+                else -> "Voice"
+            }
+            if (modern) {
+                DeviceStatsRow(Color(style.primaryArgb))
+                BigVoiceButton(state.handsFree || state.listening, voiceLabel, Color(style.primaryArgb), onVoice)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ControlButton(
-                    when {
-                        state.handsFree -> "Mic ON"
-                        state.voiceMode == VoiceMode.PUSH_TO_TALK -> "Talk"
-                        else -> "Voice"
-                    },
+                if (!modern) ControlButton(
+                    voiceLabel,
                     if (state.handsFree) Icons.Filled.Mic else Icons.Filled.MicOff,
                     enabled = true,
                     onClick = onVoice,

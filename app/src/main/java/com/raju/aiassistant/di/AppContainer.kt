@@ -84,6 +84,20 @@ class AppContainer(context: Context) {
     val powerMonitor by lazy { com.raju.aiassistant.core.power.PowerMonitor(appContext) }
 
     /**
+     * What "Auto" means on this phone, decided once per app start (never switches while in use):
+     * the light Arc Reactor on low-memory phones or in Battery Saver, otherwise the 3D core.
+     */
+    val autoCoreAppearance: com.raju.aiassistant.domain.model.CoreAppearance by lazy {
+        val light = runCatching { com.raju.aiassistant.core.power.DeviceStats.prefersLightCore(appContext) }.getOrDefault(true) ||
+            powerMonitor.state.value.systemPowerSave
+        if (light) com.raju.aiassistant.domain.model.CoreAppearance.LEGACY else com.raju.aiassistant.domain.model.CoreAppearance.MODERN
+    }
+
+    /** The design the Home screen really shows: Auto resolved to Legacy or Modern. */
+    fun resolveCore(choice: com.raju.aiassistant.domain.model.CoreAppearance) =
+        if (choice == com.raju.aiassistant.domain.model.CoreAppearance.AUTO) autoCoreAppearance else choice
+
+    /**
      * The app went to the background for a while (Android trims memory): free what is cheap to
      * recreate. The TTS engine binding is rebuilt on the next reply; chats and memories are untouched.
      */

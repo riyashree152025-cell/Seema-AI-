@@ -5,7 +5,7 @@ import com.raju.aiassistant.domain.power.ThermalLevel
 
 /** How much animation work the home screen may do. Tuned for budget phones (Galaxy A14). */
 data class MotionProfile(
-    /** False = draw a single static frame (reduced motion, deep idle, critical heat). */
+    /** False = draw a single static frame (reduced motion or critical heat only). */
     val animate: Boolean,
     val maxFps: Int,
     val particleCount: Int,
@@ -29,12 +29,15 @@ fun motionProfileFor(
     val still = MotionProfile(animate = false, maxFps = 0, particleCount = 0, richEffects = true, backgroundDensity = 0.35f)
     if (reducedMotion || !systemAnimationsEnabled) return still
     if (thermal == ThermalLevel.CRITICAL) return still.copy(richEffects = false, backgroundDensity = 0f)
-    if (phase == ActivityPhase.SLEEP) return still
     var p = if (lowPowerMode) MotionProfile(animate = true, maxFps = 20, particleCount = 12, richEffects = false, backgroundDensity = 0.3f)
     // 30 fps keeps the heartbeat smooth while halving the drawing work (and battery) of 60 fps.
     else MotionProfile(animate = true, maxFps = 30, particleCount = 36, richEffects = true, backgroundDensity = 0.62f)
-    if (phase == ActivityPhase.IDLE) {
-        p = p.copy(maxFps = minOf(p.maxFps, 12), particleCount = p.particleCount / 2, richEffects = false, backgroundDensity = p.backgroundDensity * 0.5f)
+    // Idle and sleep only slow the reactor down: it keeps turning and beating (it never freezes,
+    // so it always looks alive); the expensive extras are switched off.
+    when (phase) {
+        ActivityPhase.IDLE -> p = p.copy(maxFps = minOf(p.maxFps, 20), particleCount = p.particleCount * 2 / 3, backgroundDensity = p.backgroundDensity * 0.7f)
+        ActivityPhase.SLEEP -> p = p.copy(maxFps = minOf(p.maxFps, 12), particleCount = p.particleCount / 2, richEffects = false, backgroundDensity = p.backgroundDensity * 0.4f)
+        ActivityPhase.ACTIVE -> Unit
     }
     p = when (thermal) {
         ThermalLevel.WARM -> p.copy(maxFps = minOf(p.maxFps, 15), particleCount = p.particleCount / 2, backgroundDensity = p.backgroundDensity * 0.6f)

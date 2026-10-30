@@ -247,6 +247,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Used when you ask about news, prices, weather or anything current. Sources are shown with links.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
 
+        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
+
         // ---------------------------------------------------------------- voice
         HudPanel(title = "Voice") {
             Text("Speech output (Seema's voice)", style = MaterialTheme.typography.titleMedium)

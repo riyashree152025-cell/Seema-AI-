@@ -7,6 +7,7 @@ import com.raju.aiassistant.domain.ai.ProviderId
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.ChatRole
 import com.raju.aiassistant.domain.model.VoiceMode
+import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.power.ThermalLevel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -43,6 +44,8 @@ data class HomeUiState(
     /** "Hands-free", "Continuous" or "Tap to talk": how listening continues after a reply. */
     val listenMode: String = "",
     val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
+    /** LEGACY or MODERN (Auto already resolved). */
+    val core: CoreAppearance = CoreAppearance.LEGACY,
     val smartPower: Boolean = true,
     val thermalProtection: Boolean = true,
     /** Real thermal status from Android. */
@@ -92,6 +95,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                     else -> "Tap to talk"
                 },
                 voiceMode = settings.voiceMode,
+                core = c.resolveCore(settings.coreAppearance),
                 smartPower = settings.smartPower,
                 thermalProtection = settings.thermalProtection,
             )

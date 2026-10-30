@@ -5,7 +5,7 @@ Target: Samsung Galaxy A14, Android 15. Branch `claude/power-optimization`.
 ## Where the power went (found in the code)
 | Cause | Effect | Fix |
 |---|---|---|
-| Home animation ran at 30 fps whenever the screen was on, also when nobody used it | constant CPU/GPU work → warm phone | Smart power: 12 fps after 30 s without touch/activity, **no frames at all** after 2 min; any touch or assistant event restores full animation |
+| Home animation ran at 30 fps whenever the screen was on, also when nobody used it | constant CPU/GPU work → warm phone | Smart power: 20 fps after 30 s without touch/activity, 12 fps after 2 min — the reactor keeps turning and beating (*changed on request: the first version froze it after 2 min, which looked like the reactor had stopped working*); any touch or assistant event restores full animation |
 | Hands-free listening was ON by default | microphone + speech recogniser restarting every few seconds while the app was open | Voice modes; default **Push-to-talk** (mic only on tap). *Session* ends by itself after the timeout; *Always listening* only when chosen (and only while the app is open) |
 | Phone heat was ignored | the app kept full visuals while Android was already throttling | Thermal protection (PowerManager thermal status listener, event-driven) |
 | AI model list was downloaded before **every** request when no model was chosen | one extra network call per question | Model found once per provider/key, then reused |
@@ -42,3 +42,8 @@ Runs: before = GitHub Actions run 40997604778 (job "smoke (35)"), after = run 40
 
 ## Still to measure on the Galaxy A14 (real device)
 See `RESOURCE_USAGE_REPORT.md` → "How to measure on the phone". Required: 30 min active use and a separate idle period, before and after, with Android Studio Profiler (Energy/CPU/Memory) or Perfetto, and `dumpsys batterystats`.
+
+## Update: dual AI core (branch `claude/dual-ai-core`)
+- Smart power no longer freezes the Home core (user request). Measured idle/sleep frame counts from the table above (241 / 0) are for the earlier version; now idle runs at ≤20 fps and sleep at ≤12 fps.
+- Emulator, Android 15, 20 s windows, run 41003601876: Legacy Arc Reactor 533 frames, 3D Holographic Core 402 frames (the software emulator could not reach 30 fps with the 3D core; real-phone GPU numbers still to be measured), thermal SEVERE 150, CRITICAL 1. PSS: Legacy 123.1 MB, 3D core 129.3 MB.
+- Only the selected core is composed on Home; switching crossfades for 0.4 s.

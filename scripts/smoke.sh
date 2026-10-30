@@ -58,6 +58,24 @@ adb shell cmd thermalservice override-status 4 || true
 sleep 2
 measure thermal-critical
 adb shell cmd thermalservice reset || true
+
+echo "===== RUN 5: AI core appearance (Legacy -> 3D -> restart keeps 3D -> back to Legacy) ====="
+screen_has() { adb shell uiautomator dump /sdcard/ui-core.xml > /dev/null 2>&1; adb shell cat /sdcard/ui-core.xml | grep -c "$1" || true; }
+echo "CORE[legacy] battery-tile-visible=$(screen_has 'BATTERY')"
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core MODERN
+sleep 6
+echo "CORE[modern] battery-tile-visible=$(screen_has 'BATTERY')"
+adb exec-out screencap -p > smoke-4-modern.png
+measure modern-core
+adb shell am force-stop $PKG
+adb shell am start -W -n $PKG/com.raju.aiassistant.MainActivity > /dev/null
+sleep 8
+echo "CORE[after-restart] battery-tile-visible=$(screen_has 'BATTERY')"
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core LEGACY
+sleep 6
+echo "CORE[back-to-legacy] battery-tile-visible=$(screen_has 'BATTERY')"
+adb exec-out screencap -p > smoke-5-legacy.png
+measure legacy-core
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|ANR in" | head -50 || true
 adb logcat -d > logcat.txt
 exit 0

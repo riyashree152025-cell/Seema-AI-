@@ -56,6 +56,13 @@ enum class VoiceMode(val label: String, val hint: String) {
     ALWAYS("Always listening (app open)", "Listens as soon as the app opens; sleeps and wakes on \"Seema\""),
 }
 
+/** The two Home screen designs (Settings → AI core appearance). Only the chosen one runs. */
+enum class CoreAppearance(val label: String, val hint: String) {
+    LEGACY("Legacy Arc Reactor", "The original reactor: always turning, beats like a heart, colours change with her mood"),
+    MODERN("3D Holographic Core", "New JARVIS-style 3D core with blue holographic rings, clock and live phone status"),
+    AUTO("Auto / Smart", "Chosen once when the app opens: 3D core on capable phones, Arc Reactor on light phones or in Battery Saver"),
+}
+
 /** Non-secret user preferences (persisted in DataStore). */
 data class UserSettings(
     val defaultProvider: ProviderId = ProviderId.GEMINI,
@@ -98,6 +105,8 @@ data class UserSettings(
     val smartPower: Boolean = true,
     /** Thermal protection: lighter visuals when Android reports the phone is getting hot. */
     val thermalProtection: Boolean = true,
+    /** Which AI core the Home screen shows. */
+    val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
     val personality: Personality = Personality.MASTI,
     val announceNotifications: Boolean = false,
     val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),

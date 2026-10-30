@@ -20,6 +20,7 @@ import com.raju.aiassistant.domain.model.SttEngine
 import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.domain.model.UserSettings
 import com.raju.aiassistant.domain.model.VoiceMode
+import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.model.validSarvamSpeaker
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -72,6 +73,7 @@ class SettingsRepository(private val context: Context) {
             businessReminders = this[Keys.BUSINESS_REMINDERS] ?: d.businessReminders,
             smartPower = this[Keys.SMART_POWER] ?: d.smartPower,
             thermalProtection = this[Keys.THERMAL_PROTECTION] ?: d.thermalProtection,
+            coreAppearance = this[Keys.CORE_APPEARANCE]?.let { v -> CoreAppearance.entries.firstOrNull { it.name == v } } ?: d.coreAppearance,
             personality = enumOr(this[Keys.PERSONALITY], d.personality),
             announceNotifications = this[Keys.ANNOUNCE] ?: d.announceNotifications,
             announceApps = this[Keys.ANNOUNCE_APPS] ?: d.announceApps,
@@ -117,6 +119,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setVoiceMode(v: VoiceMode) = edit { it[Keys.VOICE_MODE] = v.name }
     suspend fun setSmartPower(v: Boolean) = edit { it[Keys.SMART_POWER] = v }
     suspend fun setThermalProtection(v: Boolean) = edit { it[Keys.THERMAL_PROTECTION] = v }
+    suspend fun setCoreAppearance(v: CoreAppearance) = edit { it[Keys.CORE_APPEARANCE] = v.name }
     suspend fun setBargeIn(v: Boolean) = edit { it[Keys.BARGE_IN] = v }
     suspend fun setSleepAfterSeconds(v: Int) = edit { it[Keys.SLEEP_AFTER] = v.coerceIn(0, 3600) }
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
@@ -177,6 +180,7 @@ class SettingsRepository(private val context: Context) {
         val VOICE_MODE = stringPreferencesKey("voice_mode")
         val SMART_POWER = booleanPreferencesKey("smart_power")
         val THERMAL_PROTECTION = booleanPreferencesKey("thermal_protection")
+        val CORE_APPEARANCE = stringPreferencesKey("core_appearance")
         val BARGE_IN = booleanPreferencesKey("barge_in")
         val SLEEP_AFTER = intPreferencesKey("sleep_after_seconds")
         val WAKE_WORD = booleanPreferencesKey("wake_word")
