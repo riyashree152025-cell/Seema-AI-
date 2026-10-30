@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import com.raju.aiassistant.domain.assistant.latencySummary
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +55,7 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
     val journeys by viewModel.journeys.collectAsStateWithLifecycle()
     val totals by viewModel.totals.collectAsStateWithLifecycle()
     val voiceEvents by viewModel.voiceDiagnostics.collectAsStateWithLifecycle()
+    val latencies by viewModel.latencies.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<Memory?>(null) }
 
     LazyColumn(
@@ -143,6 +145,31 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
                 if (voiceEvents.isEmpty()) Text("No voice events yet.", color = TextSecondary)
                 voiceEvents.takeLast(12).forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = TextSecondary) }
                 if (voiceEvents.isNotEmpty()) TextButton(onClick = viewModel::copyDiagnostics) { Text("Copy all") }
+            }
+        }
+
+        item {
+            HudPanel(title = "Response time (measured)") {
+                Text(
+                    "Measured on this phone for every reply, from the moment your message was ready (typed, or recognised from speech) to Seema's first word on screen, her first audible word, and the whole reply. Nothing is estimated.",
+                    style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+                )
+                val ok = latencies.filter { it.ok }
+                if (ok.isEmpty()) Text("No replies measured yet.", color = TextSecondary)
+                else {
+                    latencySummary(ok.mapNotNull { it.firstTextMs })?.let { Text("First words from the AI: $it", style = MaterialTheme.typography.bodyMedium) }
+                    latencySummary(ok.mapNotNull { it.firstAudioMs })?.let { Text("Seema starts speaking: $it", style = MaterialTheme.typography.bodyMedium) }
+                    latencySummary(ok.map { it.totalMs })?.let { Text("Whole reply: $it", style = MaterialTheme.typography.bodyMedium) }
+                    val last = latencies.last()
+                    Text(
+                        "Last: ${last.provider} · ${last.model} · " +
+                            "text ${last.firstTextMs?.let { "$it ms" } ?: "—"} · voice ${last.firstAudioMs?.let { "$it ms" } ?: "—"} · total ${last.totalMs} ms" +
+                            (if (last.streamed) " · streamed" else "") + (if (last.ok) "" else " · FAILED"),
+                        style = MaterialTheme.typography.labelSmall, color = TextSecondary,
+                    )
+                }
+                val failed = latencies.count { !it.ok }
+                if (failed > 0) Text("$failed of the last ${latencies.size} requests failed (shown in Chat).", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
         }
 

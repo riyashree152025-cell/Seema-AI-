@@ -2,7 +2,10 @@ package com.raju.aiassistant.data.ai
 
 import com.raju.aiassistant.domain.ai.AiResult
 import com.raju.aiassistant.domain.ai.FailureKind
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -61,6 +64,41 @@ suspend fun OkHttpClient.fetch(request: Request): AiResult<Pair<Int, String>> = 
     await(request).use { r -> AiResult.Success(r.code to (r.body?.string() ?: "")) }
 } catch (e: IOException) {
     ioFailure(e)
+}
+
+/**
+ * Server-sent events: calls [onData] with the payload of every `data:` line until the stream ends
+ * (or `[DONE]`). Runs on the IO dispatcher; cancelling the coroutine cancels the HTTP call.
+ */
+suspend fun OkHttpClient.streamSse(request: Request, onData: (String) -> Unit): AiResult<Unit> =
+    withContext(Dispatchers.IO) {
+        try {
+            await(request).use { r ->
+                if (r.code !in 200..299) return@withContext httpFailure(r.code, r.body?.string() ?: "")
+                val source = r.body?.source() ?: return@withContext AiResult.Failure(FailureKind.UNKNOWN, "Empty response")
+                while (true) {
+                    ensureActive()
+                    val line = source.readUtf8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data == "[DONE]") break
+                    if (data.isNotEmpty()) onData(data)
+                }
+                AiResult.Success(Unit)
+            }
+        } catch (e: IOException) {
+            ioFailure(e)
+        }
+    }
+
+/** Appended when the connection broke after part of a streamed reply had arrived. */
+const val CUT_NOTE = "\n\n(नेटवर्क की वजह से जवाब बीच में कट गया — फिर से पूछें।)"
+
+/** The final result of a streamed reply: the text that arrived, or the failure if nothing did. */
+fun streamedReply(result: AiResult<Unit>, text: CharSequence, note: String, cut: AiResult.Failure?): AiResult<String> = when {
+    result is AiResult.Failure && text.isEmpty() -> result
+    text.isBlank() -> AiResult.Failure(FailureKind.UNKNOWN, "Empty response")
+    else -> AiResult.Success(text.toString().trim() + note + if (cut != null) CUT_NOTE else "")
 }
 
 /** Like [fetch], for binary responses such as audio. */

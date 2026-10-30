@@ -19,8 +19,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Adapter for OpenAI-compatible chat APIs. Used for Groq today; a future OpenAI provider
- * only needs a new [ProviderId] and base URL.
+ * Adapter for OpenAI-compatible chat APIs (Groq, Cerebras). Another such provider only needs a
+ * new [ProviderId] and base URL.
  */
 class OpenAiCompatibleProvider(
     override val id: ProviderId,
@@ -48,35 +48,60 @@ class OpenAiCompatibleProvider(
         }
     }
 
-    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
-        val payload = buildJsonObject {
-            put("model", model)
-            put("temperature", 0.7)
-            put("max_tokens", 4096)
-            // gpt-oss models reason before answering; "low" keeps spoken replies fast (Groq supports it).
-            if (model.contains("gpt-oss")) put("reasoning_effort", "low")
-            putJsonArray("messages") {
-                addJsonObject { put("role", "system"); put("content", systemPrompt) }
-                turns.forEach { t ->
-                    addJsonObject {
-                        put("role", if (t.role == TurnRole.ASSISTANT) "assistant" else "user")
-                        put("content", t.text)
-                    }
+    private fun payload(model: String, systemPrompt: String, turns: List<Turn>, stream: Boolean) = buildJsonObject {
+        put("model", model)
+        put("temperature", 0.7)
+        put("max_tokens", 4096)
+        // gpt-oss models reason before answering; "low" keeps spoken replies fast (Groq supports it).
+        if (model.contains("gpt-oss")) put("reasoning_effort", "low")
+        if (stream) put("stream", true)
+        putJsonArray("messages") {
+            addJsonObject { put("role", "system"); put("content", systemPrompt) }
+            turns.forEach { t ->
+                addJsonObject {
+                    put("role", if (t.role == TurnRole.ASSISTANT) "assistant" else "user")
+                    put("content", t.text)
                 }
             }
         }
-        val request = Request.Builder()
-            .url("$baseUrl/chat/completions")
-            .header("Authorization", "Bearer $apiKey")
-            .post(payload.toRequestBody())
-            .build()
-        when (val r = http.fetch(request)) {
+    }
+
+    private fun request(body: kotlinx.serialization.json.JsonObject) = Request.Builder()
+        .url("$baseUrl/chat/completions")
+        .header("Authorization", "Bearer $apiKey")
+        .post(body.toRequestBody())
+        .build()
+
+    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
+        when (val r = http.fetch(request(payload(model, systemPrompt, turns, stream = false)))) {
             is AiResult.Failure -> r
             is AiResult.Success -> {
                 val (code, body) = r.value
                 if (code !in 200..299) httpFailure(code, body) else parseReply(body)
             }
         }
+    }
+
+    override val streams = true
+
+    override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {
+        val text = StringBuilder()
+        var finish: String? = null
+        var cut: AiResult.Failure? = null
+        // A failure before any text arrived is retried like a normal request; never after (no duplicates).
+        val result = withRetry {
+            val r = http.streamSse(request(payload(model, systemPrompt, turns, stream = true))) { data ->
+                val choice = (runCatching { JsonFormat.parseToJsonElement(data) as JsonObject }.getOrNull()
+                    ?.get("choices") as? JsonArray)?.firstOrNull() as? JsonObject ?: return@streamSse
+                ((choice["delta"] as? JsonObject)?.get("content") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }?.let {
+                    text.append(it)
+                    onDelta(it)
+                }
+                (choice["finish_reason"] as? JsonPrimitive)?.contentOrNull?.let { finish = it }
+            }
+            if (r is AiResult.Failure && text.isNotEmpty()) { cut = r; AiResult.Success(Unit) } else r
+        }
+        return streamedReply(result, text, if (finish == "length") TRUNCATED_NOTE else "", cut)
     }
 
     private fun parseReply(body: String): AiResult<String> {
@@ -91,3 +116,4 @@ class OpenAiCompatibleProvider(
 }
 
 const val GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+const val CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"

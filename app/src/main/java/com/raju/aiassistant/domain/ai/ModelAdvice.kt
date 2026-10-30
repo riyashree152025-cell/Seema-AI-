@@ -15,6 +15,8 @@ object ModelAdvice {
     private val PREFERRED = mapOf(
         ProviderId.GEMINI to listOf("gemini-2.5-flash", "gemini-2.0-flash", "flash"),
         ProviderId.GROQ to listOf("llama-3.3-70b", "gpt-oss-120b", "llama-4", "qwen3", "llama-3.1-8b", "llama"),
+        // The list itself comes live from the key's /models endpoint; this only orders it.
+        ProviderId.CEREBRAS to listOf("llama-3.3-70b", "gpt-oss-120b", "qwen-3", "llama"),
     )
 
     fun isChatModel(id: String) = NOT_CHAT.none { id.contains(it, ignoreCase = true) }

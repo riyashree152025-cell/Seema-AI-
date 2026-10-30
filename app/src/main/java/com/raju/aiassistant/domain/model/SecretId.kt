@@ -7,6 +7,7 @@ package com.raju.aiassistant.domain.model
 enum class SecretId(val storageKey: String, val displayName: String, val helpUrl: String) {
     GEMINI_API_KEY("gemini_api_key", "Google Gemini API key", "https://aistudio.google.com/apikey"),
     GROQ_API_KEY("groq_api_key", "Groq API key", "https://console.groq.com/keys"),
+    CEREBRAS_API_KEY("cerebras_api_key", "Cerebras API key", "https://cloud.cerebras.ai"),
     TAVILY_API_KEY("tavily_api_key", "Tavily web-search API key", "https://app.tavily.com"),
     SARVAM_API_KEY("sarvam_api_key", "Sarvam AI voice (Bulbul) API key", "https://dashboard.sarvam.ai"),
     ELEVENLABS_API_KEY("elevenlabs_api_key", "ElevenLabs voice API key", "https://elevenlabs.io/app/settings/api-keys"),
