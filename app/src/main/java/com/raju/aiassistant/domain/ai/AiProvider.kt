@@ -6,6 +6,7 @@ import com.raju.aiassistant.domain.model.SecretId
 enum class ProviderId(val displayName: String, val shortName: String, val secret: SecretId) {
     GEMINI("Google Gemini", "Gemini", SecretId.GEMINI_API_KEY),
     GROQ("Groq", "Groq", SecretId.GROQ_API_KEY),
+    CEREBRAS("Cerebras", "Cerebras", SecretId.CEREBRAS_API_KEY),
 }
 
 data class AiModel(val id: String, val displayName: String)
@@ -47,4 +48,15 @@ interface AiProvider {
     suspend fun listModels(): AiResult<List<AiModel>>
 
     suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String>
+
+    /**
+     * Like [chat], but [onDelta] receives the reply piece by piece while it is generated, so speech
+     * can start before the whole answer is written. Returns the full text. Providers without
+     * streaming deliver the whole reply as one piece.
+     */
+    /** True when [chatStream] really delivers the reply piece by piece (then speech can start early). */
+    val streams: Boolean get() = false
+
+    suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> =
+        chat(model, systemPrompt, turns).also { if (it is AiResult.Success) onDelta(it.value) }
 }

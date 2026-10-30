@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import com.raju.aiassistant.domain.voice.afterWakeWord
 import com.raju.aiassistant.domain.voice.isStopCommand
 import com.raju.aiassistant.domain.voice.stripEcho
@@ -70,6 +72,8 @@ private const val DAY_MS = 24 * 60 * 60_000L
 private const val PNR_ENQUIRY_URL = "https://www.indianrail.gov.in/enquiry/PNR/PnrEnquiry.html?locale=en"
 private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
 private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
+/** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
+private const val AI_TIMEOUT_MS = 45_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
@@ -503,6 +507,7 @@ class AssistantEngine(
     // ---------------------------------------------------------------- core flow
 
     private suspend fun handleUserMessage(text: String, fromVoice: Boolean, recordUser: Boolean = true) {
+        turnStartedAt = clock()
         _lastError.value = null
         voiceTurn = fromVoice
         if (recordUser) record(ChatRole.USER, text)
@@ -550,25 +555,77 @@ class AssistantEngine(
         val turns = toTurns(_transcript.value, s.historyLimit * 2, ModelAdvice.historyCharBudget(model))
 
         trace("ai request ${providerId.shortName}")
-        val raw = when (val r = provider.chat(model, system, turns)) {
-            is AiResult.Success -> r.value
+        val speak = fromVoice || s.autoSpeakReplies
+        // Streaming: the reply arrives piece by piece; as soon as its first sentence is complete
+        // Seema starts speaking it while the rest is still being written.
+        val buffer = StringBuilder()
+        val firstTextAt = java.util.concurrent.atomic.AtomicLong(0L)
+        val headReady = CompletableDeferred<String?>()
+        var spokenHead: String? = null
+        turnFirstAudioAt = null
+        turnActive = true
+        val streamed: AiResult<String> = try {
+            coroutineScope {
+                val request = async {
+                    val r = withTimeoutOrNull(AI_TIMEOUT_MS) {
+                        provider.chatStream(model, system, turns) { delta ->
+                            firstTextAt.compareAndSet(0L, clock())
+                            val head = synchronized(buffer) {
+                                buffer.append(delta)
+                                if (speak && provider.streams && !headReady.isCompleted) speakableHead(buffer) else null
+                            }
+                            if (head != null) headReady.complete(head)
+                        }
+                    }
+                    headReady.complete(null)
+                    r ?: synchronized(buffer) {
+                        // No full reply in time: keep what arrived, otherwise it is a timeout (Seema never hangs in "Thinking").
+                        if (buffer.isNotBlank()) AiResult.Success(buffer.toString().trim() + "\n\n(जवाब पूरा नहीं आया — फिर से पूछें।)")
+                        else AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not answer within ${AI_TIMEOUT_MS / 1000} seconds.")
+                    }
+                }
+                headReady.await()?.let { head ->
+                    spokenHead = head
+                    trace("speaking early (${head.length} chars)")
+                    say(head)
+                }
+                request.await()
+            }
+        } finally {
+            turnActive = false
+        }
+        var answeredBy = providerId
+        var raw = when (streamed) {
+            is AiResult.Success -> streamed.value
             is AiResult.Failure -> {
-                trace("ai failed: ${r.kind}")
+                trace("ai failed: ${streamed.kind}")
+                recordLatency(providerId, model, firstTextAt.get(), ok = false)
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
-                val backup = if (r.kind in FALLBACK_KINDS) fallbackReply(providerId, system, turns) else null
+                val backup = if (streamed.kind in FALLBACK_KINDS && spokenHead == null) fallbackReply(providerId, system, turns) else null
                 if (backup == null) {
-                    fail(r.message, if (r.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
+                    fail(streamed.message, if (streamed.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
                     return
                 }
-                note("↪ ${providerId.shortName}: ${r.message} — answered by ${backup.first.shortName} instead.")
+                note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.first.shortName} instead.")
+                answeredBy = backup.first
                 backup.second
             }
         }
         trace("ai reply (${raw.length} chars)")
-        val parsedRaw = parseReply(raw)
+        var parsedRaw = parseReply(raw)
+        if (parsedRaw.text.isBlank() && parsedRaw.actions.isEmpty() && spokenHead == null && answeredBy == providerId) {
+            // An empty answer is a failure too: let another AI try before giving up.
+            fallbackReply(providerId, system, turns)?.let { (id, text) ->
+                note("↪ ${providerId.shortName} returned an empty reply — answered by ${id.shortName} instead.")
+                answeredBy = id
+                raw = text
+                parsedRaw = parseReply(text)
+            }
+        }
         val repetition = collapseRepetition(parsedRaw.text)
         val parsed = parsedRaw.copy(text = repetition.text)
         if (parsed.text.isBlank() && parsed.actions.isEmpty()) {
+            recordLatency(providerId, model, firstTextAt.get(), ok = false)
             fail("${providerId.shortName} returned an empty reply (model $model). Tap Retry or choose another model.")
             return
         }
@@ -577,9 +634,17 @@ class AssistantEngine(
             note("⚠️ The reply from model \"$model\" was repeating itself, so the repeats were removed. A recommended model in Settings usually fixes this.")
         }
 
-        val speak = fromVoice || s.autoSpeakReplies
         replySpoken = speak && parsed.text.isNotBlank()
-        if (replySpoken) say(parsed.text)
+        if (replySpoken) {
+            turnActive = true
+            try {
+                val rest = spokenHead?.let { remainderAfter(parsed.text, it) } ?: parsed.text
+                if (rest.isNotBlank()) say(rest)
+            } finally {
+                turnActive = false
+            }
+        }
+        recordLatency(answeredBy, model, firstTextAt.get(), ok = true)
 
         var hadActions = false
         for (action in parsed.actions) {
@@ -594,6 +659,25 @@ class AssistantEngine(
         finishTurn()
     }
 
+    private val _latencies = MutableStateFlow<List<TurnLatency>>(emptyList())
+    /** Response times of the last replies (Tools → Response time). */
+    val latencies: StateFlow<List<TurnLatency>> = _latencies.asStateFlow()
+    private var turnStartedAt = 0L
+    @Volatile private var turnFirstAudioAt: Long? = null
+    @Volatile private var turnActive = false
+
+    private fun recordLatency(provider: ProviderId, model: String, firstTextAt: Long, ok: Boolean) {
+        val now = clock()
+        val entry = TurnLatency(
+            at = now, provider = provider.shortName, model = model,
+            firstTextMs = firstTextAt.takeIf { it > 0 }?.let { it - turnStartedAt },
+            firstAudioMs = turnFirstAudioAt?.let { it - turnStartedAt },
+            totalMs = now - turnStartedAt, streamed = firstTextAt > 0, ok = ok,
+        )
+        _latencies.value = (_latencies.value + entry).takeLast(50)
+        trace("latency: text ${entry.firstTextMs ?: "-"} ms, voice ${entry.firstAudioMs ?: "-"} ms, total ${entry.totalMs} ms" + if (ok) "" else " (failed)")
+    }
+
     /** Tries the other configured providers in turn; returns the first real reply, or null. */
     private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): Pair<ProviderId, String>? {
         for (id in fallbackProviders().filter { it != failed }) {
@@ -605,7 +689,7 @@ class AssistantEngine(
                 is AiResult.Failure -> null
             } ?: continue
             trace("ai fallback ${id.shortName}")
-            val r = p.chat(model, system, turns)
+            val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return id to r.value
         }
         return null
@@ -630,6 +714,7 @@ class AssistantEngine(
         val spoken = speakableText(text)
         val showSpeaking = scope.launch {
             speaker.playing.first { it }
+            if (turnActive && turnFirstAudioAt == null) turnFirstAudioAt = clock()
             if (_state.value == AssistantState.Thinking || _state.value == AssistantState.Executing) _state.value = AssistantState.Speaking
         }
         // In a voice conversation the user can talk over Seema, like interrupting a person — but only

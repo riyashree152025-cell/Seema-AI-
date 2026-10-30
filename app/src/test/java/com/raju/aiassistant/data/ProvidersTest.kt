@@ -65,6 +65,42 @@ class ProvidersTest {
     }
 
     @Test
+    fun openAiCompatibleStreamingDeliversPiecesAndTheWholeText() = runBlocking {
+        enqueue(200, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Namaste \"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Raju!\"},\"finish_reason\":\"stop\"}]}\n\n" +
+            "data: [DONE]\n\n")
+        val pieces = mutableListOf<String>()
+        val r = OpenAiCompatibleProvider(ProviderId.CEREBRAS, http, "k", url).chatStream("llama-3.3-70b", "sys", listOf(Turn(TurnRole.USER, "hi"))) { pieces += it }
+        assertEquals(AiResult.Success("Namaste Raju!"), r)
+        assertEquals(listOf("Namaste ", "Raju!"), pieces)
+        val req = server.takeRequest()
+        assertTrue(req.path!!.endsWith("/chat/completions"))
+        assertEquals("Bearer k", req.getHeader("Authorization"))
+        assertTrue(req.body.readUtf8().contains("\"stream\":true"))
+    }
+
+    @Test
+    fun streamingErrorsAreRealFailures() = runBlocking {
+        enqueue(401, """{"error":{"message":"Invalid API Key"}}""")
+        val r = OpenAiCompatibleProvider(ProviderId.GROQ, http, "bad", url).chatStream("m", "sys", listOf(Turn(TurnRole.USER, "hi"))) {}
+        assertEquals(FailureKind.INVALID_KEY, (r as AiResult.Failure).kind)
+    }
+
+    @Test
+    fun geminiStreamingUsesSseAndJoinsTheParts() = runBlocking {
+        enqueue(200, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"आज \"}]}}]}\n\n" +
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"धूप है।\"}]},\"finishReason\":\"STOP\"}]}\n\n")
+        val pieces = mutableListOf<String>()
+        val r = GeminiProvider(http, "KEY", url).chatStream("gemini-2.5-flash", "sys", listOf(Turn(TurnRole.USER, "hi"))) { pieces += it }
+        assertEquals(AiResult.Success("आज धूप है।"), r)
+        assertEquals(2, pieces.size)
+        val req = server.takeRequest()
+        assertTrue(req.path!!.contains(":streamGenerateContent?alt=sse"))
+        assertEquals("KEY", req.getHeader("x-goog-api-key"))
+    }
+
+    @Test
     fun geminiModelsKeepOnlyChatModels() = runBlocking {
         enqueue(200, """{"models":[{"name":"models/gemini-2.5-flash","displayName":"Gemini 2.5 Flash","supportedGenerationMethods":["generateContent"]},{"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]}]}""")
         val r = GeminiProvider(http, "k", url).listModels() as AiResult.Success

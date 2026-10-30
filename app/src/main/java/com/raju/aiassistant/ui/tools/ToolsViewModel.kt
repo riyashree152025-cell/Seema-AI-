@@ -46,6 +46,8 @@ class ToolsViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Recent voice-pipeline events (stages and error codes only, no words) for troubleshooting. */
     val voiceDiagnostics: StateFlow<List<String>> = c.engine.diagnostics
+    /** Measured response times of the last replies. */
+    val latencies: StateFlow<List<com.raju.aiassistant.domain.assistant.TurnLatency>> = c.engine.latencies
 
     private val _message = MutableStateFlow<String?>(null)
     /** Real result of the last quick action / memory operation. */

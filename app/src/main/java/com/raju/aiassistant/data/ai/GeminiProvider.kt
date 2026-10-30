@@ -42,37 +42,67 @@ class GeminiProvider(
         }
     }
 
-    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
-        val payload = buildJsonObject {
-            putJsonObject("systemInstruction") { putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } } }
-            putJsonArray("contents") {
-                turns.forEach { t ->
-                    addJsonObject {
-                        put("role", if (t.role == TurnRole.ASSISTANT) "model" else "user")
-                        putJsonArray("parts") { addJsonObject { put("text", t.text) } }
-                    }
+    private fun payload(model: String, systemPrompt: String, turns: List<Turn>) = buildJsonObject {
+        putJsonObject("systemInstruction") { putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } } }
+        putJsonArray("contents") {
+            turns.forEach { t ->
+                addJsonObject {
+                    put("role", if (t.role == TurnRole.ASSISTANT) "model" else "user")
+                    putJsonArray("parts") { addJsonObject { put("text", t.text) } }
                 }
             }
-            putJsonObject("generationConfig") {
-                put("temperature", 0.7)
-                put("maxOutputTokens", 4096)
-                // Gemini 2.5 Flash "thinks" before answering by default, which adds seconds to every
-                // spoken reply. A chatty assistant does not need it: switch it off (Flash allows 0).
-                if (model.contains("2.5-flash")) putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
-            }
         }
-        val request = Request.Builder()
-            .url("$baseUrl/models/${model.removePrefix("models/")}:generateContent")
-            .header("x-goog-api-key", apiKey)
-            .post(payload.toRequestBody())
-            .build()
-        when (val r = http.fetch(request)) {
+        putJsonObject("generationConfig") {
+            put("temperature", 0.7)
+            put("maxOutputTokens", 4096)
+            // Gemini 2.5 Flash "thinks" before answering by default, which adds seconds to every
+            // spoken reply. A chatty assistant does not need it: switch it off (Flash allows 0).
+            if (model.contains("2.5-flash")) putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
+        }
+    }
+
+    private fun request(model: String, method: String, body: JsonObject) = Request.Builder()
+        .url("$baseUrl/models/${model.removePrefix("models/")}:$method")
+        .header("x-goog-api-key", apiKey)
+        .post(body.toRequestBody())
+        .build()
+
+    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
+        when (val r = http.fetch(request(model, "generateContent", payload(model, systemPrompt, turns)))) {
             is AiResult.Failure -> r
             is AiResult.Success -> {
                 val (code, body) = r.value
                 if (code !in 200..299) httpFailure(code, body) else parseReply(body)
             }
         }
+    }
+
+    override val streams = true
+
+    override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {
+        val text = StringBuilder()
+        var finish: String? = null
+        var blocked = false
+        var cut: AiResult.Failure? = null
+        val result = withRetry {
+            val r = http.streamSse(request(model, "streamGenerateContent?alt=sse", payload(model, systemPrompt, turns))) { data ->
+                val root = runCatching { JsonFormat.parseToJsonElement(data) as JsonObject }.getOrNull() ?: return@streamSse
+                if ((root["promptFeedback"] as? JsonObject)?.get("blockReason") != null) blocked = true
+                val candidate = (root["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return@streamSse
+                ((candidate["content"] as? JsonObject)?.get("parts") as? JsonArray).orEmpty().forEach { part ->
+                    ((part as? JsonObject)?.get("text") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }?.let {
+                        text.append(it)
+                        onDelta(it)
+                    }
+                }
+                (candidate["finishReason"] as? JsonPrimitive)?.contentOrNull?.let { finish = it }
+            }
+            if (r is AiResult.Failure && text.isNotEmpty()) { cut = r; AiResult.Success(Unit) } else r
+        }
+        if (text.isBlank() && result is AiResult.Success && (blocked || finish == "SAFETY")) {
+            return AiResult.Failure(FailureKind.BLOCKED, FailureKind.BLOCKED.userMessage)
+        }
+        return streamedReply(result, text, if (finish == "MAX_TOKENS") TRUNCATED_NOTE else "", cut)
     }
 
     private fun parseModels(body: String): AiResult<List<AiModel>> {

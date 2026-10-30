@@ -1065,4 +1065,81 @@ class AssistantEngineTest {
         assertEquals(listOf("Kal barish hogi.", "Kal barish hogi."), speaker.spoken)
         assertEquals(1, provider.calls.size)
     }
+
+    // ---------------------------------------------------------------- streaming, latency, recovery
+
+    /** Streams "first sentence" at once and the rest only when [gate] opens. */
+    private class StreamingProvider(private val gate: kotlinx.coroutines.CompletableDeferred<Unit>) : AiProvider {
+        override val id = ProviderId.GEMINI
+        override val streams = true
+        override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+        override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>) = AiResult.Success("unused")
+        override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {
+            onDelta("Aaj Delhi mein dhoop hai. ")
+            gate.await()
+            onDelta("Shaam ko baarish ho sakti hai.")
+            return AiResult.Success("Aaj Delhi mein dhoop hai. Shaam ko baarish ho sakti hai.")
+        }
+    }
+
+    private fun TestScope.engineFor(p: AiProvider, fallbacks: List<ProviderId> = emptyList(), providerFor: ((ProviderId) -> AiProvider)? = null) = AssistantEngine(
+        scope = backgroundScope, settings = settings, secret = { keys[it] },
+        providerFor = { id, _ -> providerFor?.invoke(id) ?: p }, searchFor = { search },
+        history = store, memories = store, actionLog = store, tools = tools,
+        speaker = speaker, voice = voice, isOnline = { online }, clock = { testScheduler.currentTime }, nowDescription = { "now" },
+        fallbackProviders = { fallbacks },
+    )
+
+    @Test
+    fun seemaStartsSpeakingBeforeTheWholeReplyArrived() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val e = engineFor(StreamingProvider(gate))
+        e.submit("aaj mausam kaisa hai")
+        runCurrent()
+        // The first sentence is already spoken while the AI is still writing.
+        assertEquals(listOf("Aaj Delhi mein dhoop hai."), speaker.spoken)
+        gate.complete(Unit)
+        settle()
+        assertEquals(listOf("Aaj Delhi mein dhoop hai.", "Shaam ko baarish ho sakti hai."), speaker.spoken)
+        assertEquals("Aaj Delhi mein dhoop hai. Shaam ko baarish ho sakti hai.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        val latency = e.latencies.value.single()
+        assertTrue(latency.ok && latency.streamed)
+        assertEquals(0L, latency.firstTextMs)
+    }
+
+    @Test
+    fun aSilentProviderEndsInATimeoutNotAnEndlessThinking() = runTest {
+        val hanging = object : AiProvider {
+            override val id = ProviderId.GEMINI
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> {
+                kotlinx.coroutines.awaitCancellation()
+            }
+        }
+        val e = engineFor(hanging)
+        e.submit("hello")
+        advanceTimeBy(46_000)
+        runCurrent()
+        assertTrue(e.lastError.value!!.contains("did not answer"))
+        assertTrue(e.canRetry)
+        assertTrue(e.latencies.value.single().let { !it.ok })
+        settle()
+        assertEquals(AssistantState.Idle, e.state.value)
+    }
+
+    @Test
+    fun anEmptyReplyIsAnsweredByAnotherProvider() = runTest {
+        keys[SecretId.GROQ_API_KEY] = "groq"
+        val empty = FakeProvider(ArrayDeque(listOf(AiResult.Success("   "))))
+        val groq = object : AiProvider {
+            override val id = ProviderId.GROQ
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("llama-3.3-70b-versatile", "Llama")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>) = AiResult.Success("Groq ka jawab")
+        }
+        val e = engineFor(empty, listOf(ProviderId.GEMINI, ProviderId.GROQ)) { id -> if (id == ProviderId.GROQ) groq else empty }
+        e.submit("hello")
+        settle()
+        assertEquals("Groq ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertNull(e.lastError.value)
+    }
 }
