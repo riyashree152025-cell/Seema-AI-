@@ -1,29 +1,24 @@
 package com.raju.aiassistant.ui.navigation
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -49,11 +44,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun RajuNavHost(navController: NavHostController = rememberNavController()) {
@@ -136,36 +126,8 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            // The 3D Holographic design gets its own slim glass bar; the Arc Reactor keeps the classic one.
-            if (container.resolveCore(settings.coreAppearance) == com.raju.aiassistant.domain.model.CoreAppearance.MODERN) {
-                HoloNavBar(current, navigateTo)
-            } else {
-                val glow = MaterialTheme.colorScheme.primary
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    // A thin emerald horizon line above the bar.
-                    modifier = Modifier.drawBehind {
-                        drawLine(
-                            Brush.horizontalGradient(listOf(Color.Transparent, glow.copy(alpha = 0.7f), Color.Transparent)),
-                            Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx(),
-                        )
-                    },
-                ) {
-                    Destination.entries.forEach { dest ->
-                        NavigationBarItem(
-                            selected = current == dest,
-                            onClick = { navigateTo(dest) },
-                            icon = { Icon(dest.icon, contentDescription = dest.label) },
-                            label = { Text(dest.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            ),
-                        )
-                    }
-                }
-            }
+            // Slim floating glass navigation on both designs.
+            HoloNavBar(current, navigateTo)
         },
     ) { padding ->
         NavHost(

@@ -132,6 +132,25 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * The "Mode" tag on Home: switches between always listening (app open) and tap-to-talk.
+     * Returns true when listening should start now (the screen asks for the mic first if needed).
+     */
+    fun toggleAlwaysListening(): Boolean {
+        val always = c.currentSettings.value.voiceMode == VoiceMode.ALWAYS
+        viewModelScope.launch { c.settingsRepository.setVoiceMode(if (always) VoiceMode.PUSH_TO_TALK else VoiceMode.ALWAYS) }
+        if (always) {
+            if (engine.handsFreeActive.value) c.stopEverything()
+            return false
+        }
+        return true
+    }
+
+    fun startAlwaysListening() {
+        preview.value = null
+        engine.startHandsFree()
+    }
+
     /** Tap on the reactor: stops her talking, or wakes her from sleep mode. */
     fun tapReactor() {
         if (engine.state.value == AssistantState.Sleeping) engine.wakeUp() else engine.interrupt()

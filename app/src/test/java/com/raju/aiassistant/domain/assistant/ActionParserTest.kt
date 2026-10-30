@@ -20,6 +20,24 @@ class ActionParserTest {
     }
 
     @Test
+    fun acceptsTheJsonEscapedClosingTagOfGptOss() {
+        // Exactly what openai/gpt-oss-120b on Groq sent (seen on a phone): "<\/action>".
+        val raw = "Bilkul, \u201cSuneet\u201d \u0915\u094b \u092e\u0948\u0938\u0947\u091c \u092d\u0947\u091c \u0930\u0939\u0940 \u0939\u0942\u0901\n\n" +
+            "<action>{\"type\":\"whatsapp\",\"contact\":\"Suneet\",\"text\":\"mai galti kyun karti ho?\"}<\\/action>"
+        val parsed = parseReply(raw)
+        assertEquals(listOf(AssistantAction.WhatsApp("Suneet", "mai galti kyun karti ho?")), parsed.actions)
+        assertTrue(parsed.text, !parsed.text.contains("action") && !parsed.text.contains("{"))
+    }
+
+    @Test
+    fun aCutOffActionIsNeverShown() {
+        val parsed = parseReply("Theek hai. <action>{\"type\":\"call\",\"contact\":\"Mo")
+        assertEquals("Theek hai.", parsed.text)
+        assertTrue(parsed.actions.isEmpty())
+        assertEquals("Haan ji", parseReply("Haan ji </action>").text)
+    }
+
+    @Test
     fun ignoresMalformedAndUnknownActions() {
         val parsed = parseReply("""Hi <action>{not json}</action> <action>{"type":"format_phone"}</action> <action>{"type":"call"}</action>""")
         assertTrue(parsed.actions.isEmpty())

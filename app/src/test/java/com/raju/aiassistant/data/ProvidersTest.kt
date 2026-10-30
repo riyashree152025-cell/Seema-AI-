@@ -49,6 +49,22 @@ class ProvidersTest {
     }
 
     @Test
+    fun fastRepliesSwitchOffLongThinking() = runBlocking {
+        enqueue(200, """{"candidates":[{"content":{"parts":[{"text":"Haan"}]}}]}""")
+        GeminiProvider(http, "k", url).chat("gemini-2.5-flash", "sys", listOf(Turn(TurnRole.USER, "hi")))
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"thinkingBudget\":0"))
+        enqueue(200, """{"candidates":[{"content":{"parts":[{"text":"Haan"}]}}]}""")
+        GeminiProvider(http, "k", url).chat("gemini-2.5-pro", "sys", listOf(Turn(TurnRole.USER, "hi")))
+        assertTrue(!server.takeRequest().body.readUtf8().contains("thinkingBudget")) // Pro cannot switch it off
+        enqueue(200, """{"choices":[{"message":{"content":"Haan"},"finish_reason":"stop"}]}""")
+        OpenAiCompatibleProvider(ProviderId.GROQ, http, "k", url).chat("openai/gpt-oss-120b", "sys", listOf(Turn(TurnRole.USER, "hi")))
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"reasoning_effort\":\"low\""))
+        enqueue(200, """{"choices":[{"message":{"content":"Haan"},"finish_reason":"stop"}]}""")
+        OpenAiCompatibleProvider(ProviderId.GROQ, http, "k", url).chat("llama-3.3-70b-versatile", "sys", listOf(Turn(TurnRole.USER, "hi")))
+        assertTrue(!server.takeRequest().body.readUtf8().contains("reasoning_effort"))
+    }
+
+    @Test
     fun geminiModelsKeepOnlyChatModels() = runBlocking {
         enqueue(200, """{"models":[{"name":"models/gemini-2.5-flash","displayName":"Gemini 2.5 Flash","supportedGenerationMethods":["generateContent"]},{"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]}]}""")
         val r = GeminiProvider(http, "k", url).listModels() as AiResult.Success
