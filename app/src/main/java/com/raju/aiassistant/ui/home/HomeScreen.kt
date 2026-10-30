@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -102,6 +103,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.ui.home.visuals.HoloCore
+import com.raju.aiassistant.ui.home.visuals.HoloCodeStream
 import com.raju.aiassistant.ui.home.visuals.holoCoreStyleFor
 
 @Composable
@@ -187,12 +189,15 @@ fun HomeScreen(
             color = Color(style.primaryArgb),
             accent = Color(style.paletteArgb[2]),
             time = timeProvider,
-            density = profile.backgroundDensity,
+            // The 3D dashboard's own code stream is the star of its backdrop: lighter rain there.
+            density = if (modern) profile.backgroundDensity * 0.45f else profile.backgroundDensity,
             // The 3D dashboard shows the same facts in its own panels (and the clock sits there).
             telemetry = if (modern) ({ emptyList() }) else telemetry,
             modifier = Modifier.fillMaxSize(),
             liveClock = running,
         )
+        // 3D dashboard only: JARVIS-style terminals of code and system logs scrolling behind the core.
+        if (modern) HoloCodeStream(Color(style.primaryArgb), Color(style.paletteArgb[1]), timeProvider, Modifier.fillMaxSize())
 
         Column(
             Modifier
@@ -298,21 +303,35 @@ fun HomeScreen(
                     .semantics { contentDescription = "Assistant status: ${assistantState.label}" },
                 contentAlignment = Alignment.Center,
             ) {
-                val coreSize = minOf(maxWidth, maxHeight) * 0.96f
+                // The 3D core fills all the free space; the Arc Reactor keeps its original size.
+                val coreSize = minOf(maxWidth, maxHeight) * (if (modern) 1f else 0.96f)
                 Crossfade(targetState = modern, animationSpec = tween(400), label = "core") { showModern ->
                     if (showModern) HoloCore(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
                     else ArcReactor(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
                 }
+                if (modern) {
+                    // The state name sits on the hologram itself, so the core gets the space.
+                    val stateColor = Color(style.primaryArgb)
+                    Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+                        DecodingText(
+                            assistantState.label.uppercase(),
+                            style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 5.sp, shadow = Shadow(stateColor.copy(alpha = 0.9f), blurRadius = 18f)),
+                            color = stateColor,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                        VoiceWaveform(assistantState, stateColor, timeProvider, speechLevel, Modifier.width(maxWidth * 0.55f).height(18.dp))
+                    }
+                }
             }
 
             val stateColor = Color(style.primaryArgb)
-            DecodingText(
+            if (!modern) DecodingText(
                 assistantState.label.uppercase(),
                 style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 4.sp, shadow = Shadow(stateColor.copy(alpha = 0.8f), blurRadius = 16f)),
                 color = stateColor,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
-            if (!(modern && compact)) VoiceWaveform(
+            if (!modern) VoiceWaveform(
                 assistantState, stateColor, timeProvider, speechLevel,
                 Modifier
                     .fillMaxWidth(0.7f)
@@ -335,7 +354,7 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                maxLines = if (modern && compact) 1 else if (modern) 2 else 3,
+                maxLines = if (modern) 1 else 3,
                 overflow = TextOverflow.Ellipsis,
             )
 
@@ -365,24 +384,30 @@ fun HomeScreen(
                 else -> "Voice"
             }
             if (modern) {
-                // 3D dashboard: live weather + system tiles, quick controls, and the big mic in the middle.
+                // 3D dashboard: weather, phone status and quick controls in one sliding strip (swipe
+                // sideways for more), so the core keeps the space; then the holographic control dock.
                 val weatherTile: @Composable (Modifier) -> Unit = { m -> WeatherTile(Color(style.primaryArgb), viewModel::loadWeather, m) }
-                if (compact) {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DeviceStatsRow(Color(style.primaryArgb), weatherTile, fill = false)
-                        QuickControlsRow(Color(style.paletteArgb[1]), fill = false)
-                    }
-                } else {
-                    DeviceStatsRow(Color(style.primaryArgb), weatherTile)
-                    QuickControlsRow(Color(style.paletteArgb[1]))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DeviceStatsRow(Color(style.primaryArgb), weatherTile, fill = false)
+                    QuickControlsRow(Color(style.paletteArgb[1]), fill = false)
                 }
-            }
-            Row(
+                HoloDock(
+                    accent = Color(style.primaryArgb),
+                    micActive = state.handsFree || state.listening,
+                    micLabel = voiceLabel,
+                    stopEnabled = busy || state.handsFree || state.previewState != null,
+                    time = timeProvider,
+                    onChat = onOpenChat,
+                    onMic = onVoice,
+                    onStop = viewModel::stop,
+                    onSettings = onOpenSettings,
+                )
+            } else Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!modern) ControlButton(
+                ControlButton(
                     voiceLabel,
                     if (state.handsFree) Icons.Filled.Mic else Icons.Filled.MicOff,
                     enabled = true,
@@ -391,7 +416,6 @@ fun HomeScreen(
                     highlighted = state.handsFree,
                 )
                 ControlButton("Chat", Icons.AutoMirrored.Filled.Chat, enabled = true, onClick = onOpenChat, modifier = Modifier.weight(1f))
-                if (modern) BigVoiceButton(state.handsFree || state.listening, voiceLabel, Color(style.primaryArgb), onVoice)
                 ControlButton("Stop", Icons.Filled.Stop, enabled = busy || state.handsFree || state.previewState != null, onClick = viewModel::stop, modifier = Modifier.weight(1f))
                 ControlButton("Settings", Icons.Filled.Settings, enabled = true, onClick = onOpenSettings, modifier = Modifier.weight(1f))
             }
