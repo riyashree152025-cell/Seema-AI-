@@ -5,9 +5,14 @@
     <!-- Install-time (normal) permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Wi-Fi / Bluetooth on/off status for the dashboard's quick controls (status only, nothing is changed). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
 
     <!-- Runtime permissions: requested only when the related feature is used -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Weather on the 3D dashboard (city-level only, asked when the user taps the weather panel). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Call-style audio (echo cancellation) while you talk with Seema hands-free, so you can interrupt her. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />

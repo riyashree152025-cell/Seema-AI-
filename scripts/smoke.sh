@@ -76,6 +76,46 @@ sleep 6
 echo "CORE[back-to-legacy] battery-tile-visible=$(screen_has 'BATTERY')"
 adb exec-out screencap -p > smoke-5-legacy.png
 measure legacy-core
+
+echo "===== RUN 6: demo recording (proof the cores really move and react) ====="
+# Real weather needs a location: grant city-level location and give the emulator a position (New Delhi).
+adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION || true
+adb emu geo fix 77.209 28.6139 || true
+preview() { adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_preview "$1" > /dev/null; sleep "$2"; }
+record() { # $1 = file name, $2 = seconds (screenrecord stops by itself)
+  adb shell rm -f /sdcard/$1
+  adb shell screenrecord --bit-rate 6000000 --time-limit "$2" /sdcard/$1 &
+  REC=$!
+}
+# Part 1: Legacy Arc Reactor — idle rotation/heartbeat, then Listening, Thinking, Speaking, Error.
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core LEGACY > /dev/null
+sleep 4
+record demo-1-legacy.mp4 46
+sleep 1
+preview NONE 8; preview Listening 8; preview Thinking 7; preview Speaking 9; preview Error 6; preview NONE 6
+wait $REC
+# Part 2: one tap on the "🎨 Arc Reactor ⇄" chip switches to the 3D core (live switch on camera),
+# then the 3D dashboard: clock seconds, weather, stats, quick controls, and the same state reactions.
+record demo-2-modern.mp4 60
+sleep 3
+CHIP=$(adb shell uiautomator dump /sdcard/ui-chip.xml > /dev/null 2>&1; adb shell cat /sdcard/ui-chip.xml | tr '>' '\n' | grep 'Arc Reactor ⇄' | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | head -1 | grep -oE '[0-9]+' | tr '\n' ' ')
+echo "DEMO chip bounds: $CHIP"
+if [ -n "$CHIP" ]; then set -- $CHIP; adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 )); else adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core MODERN > /dev/null; fi
+sleep 10
+preview Listening 9; preview Thinking 7; preview Speaking 10; preview Error 6; preview NONE 8
+wait $REC
+# Part 3: switch back to the Arc Reactor and show it running again.
+record demo-3-switch-back.mp4 15
+sleep 3
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core LEGACY > /dev/null
+wait $REC
+for f in demo-1-legacy.mp4 demo-2-modern.mp4 demo-3-switch-back.mp4; do adb pull /sdcard/$f $f || true; done
+ls -la demo-*.mp4 || true
+adb shell uiautomator dump /sdcard/ui-final.xml > /dev/null 2>&1
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core MODERN > /dev/null; sleep 5
+adb shell uiautomator dump /sdcard/ui-modern.xml > /dev/null 2>&1
+echo "DASHBOARD texts: $(adb shell cat /sdcard/ui-modern.xml | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | tr '\n' ' ')"
+adb exec-out screencap -p > smoke-6-dashboard.png
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|ANR in" | head -50 || true
 adb logcat -d > logcat.txt
 exit 0

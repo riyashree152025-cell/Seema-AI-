@@ -9,7 +9,6 @@ import com.raju.aiassistant.domain.model.ChatRole
 import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.power.ThermalLevel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -58,7 +57,8 @@ private data class EngineView(val state: AssistantState, val listening: Boolean,
 
 class HomeViewModel(private val c: AppContainer) : ViewModel() {
     private val engine = c.engine
-    private val preview = MutableStateFlow<AssistantState?>(null)
+    // Shared with MainActivity so debug builds can drive it from adb (demo recordings).
+    private val preview = c.debugPreview
 
     val speechLevel: StateFlow<Float> = engine.speechLevel
 
@@ -102,6 +102,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }
             .combine(c.powerMonitor.state) { ui, p -> ui.copy(thermal = p.thermal, systemPowerSave = p.systemPowerSave) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /** Real weather for the dashboard (or a clear reason why there is none). */
+    suspend fun loadWeather(force: Boolean) = c.weather.load(force)
 
     fun hasMicPermission() = c.voiceInput.hasPermission()
     fun startVoice() {
