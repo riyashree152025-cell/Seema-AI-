@@ -72,6 +72,8 @@ private const val DAY_MS = 24 * 60 * 60_000L
 private const val PNR_ENQUIRY_URL = "https://www.indianrail.gov.in/enquiry/PNR/PnrEnquiry.html?locale=en"
 private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
 private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
+/** "No time recorded yet" (0 is a valid clock reading in tests). */
+private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
@@ -559,7 +561,7 @@ class AssistantEngine(
         // Streaming: the reply arrives piece by piece; as soon as its first sentence is complete
         // Seema starts speaking it while the rest is still being written.
         val buffer = StringBuilder()
-        val firstTextAt = java.util.concurrent.atomic.AtomicLong(0L)
+        val firstTextAt = java.util.concurrent.atomic.AtomicLong(NOT_YET) // NOT_YET until the first text arrives
         val headReady = CompletableDeferred<String?>()
         var spokenHead: String? = null
         turnFirstAudioAt = null
@@ -569,7 +571,7 @@ class AssistantEngine(
                 val request = async {
                     val r = withTimeoutOrNull(AI_TIMEOUT_MS) {
                         provider.chatStream(model, system, turns) { delta ->
-                            firstTextAt.compareAndSet(0L, clock())
+                            firstTextAt.compareAndSet(NOT_YET, clock())
                             val head = synchronized(buffer) {
                                 buffer.append(delta)
                                 if (speak && provider.streams && !headReady.isCompleted) speakableHead(buffer) else null
@@ -670,9 +672,9 @@ class AssistantEngine(
         val now = clock()
         val entry = TurnLatency(
             at = now, provider = provider.shortName, model = model,
-            firstTextMs = firstTextAt.takeIf { it > 0 }?.let { it - turnStartedAt },
+            firstTextMs = firstTextAt.takeIf { it != NOT_YET }?.let { it - turnStartedAt },
             firstAudioMs = turnFirstAudioAt?.let { it - turnStartedAt },
-            totalMs = now - turnStartedAt, streamed = firstTextAt > 0, ok = ok,
+            totalMs = now - turnStartedAt, streamed = firstTextAt != NOT_YET, ok = ok,
         )
         _latencies.value = (_latencies.value + entry).takeLast(50)
         trace("latency: text ${entry.firstTextMs ?: "-"} ms, voice ${entry.firstAudioMs ?: "-"} ms, total ${entry.totalMs} ms" + if (ok) "" else " (failed)")
