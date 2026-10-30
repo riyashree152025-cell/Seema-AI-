@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # only to publish the demo recordings (API 35) as the "smoke-demo" pre-release
 
 concurrency:
   group: smoke-${{ github.ref }}
@@ -49,5 +49,17 @@ jobs:
           name: smoke-api${{ matrix.api-level }}
           path: |
             smoke-*.png
+            demo-*.mp4
             logcat.txt
           if-no-files-found: ignore
+      - name: Publish demo recordings
+        if: always() && matrix.api-level == 35 && hashFiles('demo-*.mp4') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete smoke-demo --yes --cleanup-tag || true
+          gh release create smoke-demo demo-*.mp4 smoke-*.png \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Emulator demo recordings (${GITHUB_SHA::7})" \
+            --notes "Screen recordings of the running debug app on an Android ${{ matrix.api-level }} emulator, made by scripts/smoke.sh. State reactions are shown with the debug visual preview (the same state the real assistant sets)."

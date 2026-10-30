@@ -83,6 +83,17 @@ class AppContainer(context: Context) {
     /** Thermal status and Battery Saver from Android (event-driven, no polling). */
     val powerMonitor by lazy { com.raju.aiassistant.core.power.PowerMonitor(appContext) }
 
+    /** Weather for the 3D dashboard (Open-Meteo, coarse location, cached 30 min). */
+    val weather by lazy {
+        com.raju.aiassistant.data.weather.WeatherRepository(
+            com.raju.aiassistant.data.weather.OpenMeteoClient(http),
+            com.raju.aiassistant.data.weather.CoarseLocation(appContext),
+        ) { online.value }
+    }
+
+    /** Debug builds only: lets the emulator test show a state's visuals (for the demo recording). */
+    val debugPreview = MutableStateFlow<com.raju.aiassistant.domain.model.AssistantState?>(null)
+
     /**
      * What "Auto" means on this phone, decided once per app start (never switches while in use):
      * the light Arc Reactor on low-memory phones or in Battery Saver, otherwise the 3D core.

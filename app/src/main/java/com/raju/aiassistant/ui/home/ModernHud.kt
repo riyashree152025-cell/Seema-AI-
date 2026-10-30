@@ -1,5 +1,42 @@
 package com.raju.aiassistant.ui.home
 
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.content.Intent
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.FlashlightOff
+import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import com.raju.aiassistant.data.weather.WeatherState
+import com.raju.aiassistant.data.weather.weatherLabel
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,29 +98,35 @@ fun HoloClock(color: Color, modifier: Modifier = Modifier) {
     }
     val time = remember(now / 1000) { SimpleDateFormat("HH:mm:ss", Locale.ENGLISH).format(Date(now)) }
     val date = remember(now / 60_000) { SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH).format(Date(now)).uppercase() }
+    val glow = MaterialTheme.typography.headlineMedium.copy(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 34.sp,
+        shadow = Shadow(color.copy(alpha = 0.9f), blurRadius = 24f),
+    )
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            time,
-            modifier = Modifier.graphicsLayer {
+        Row(
+            Modifier.graphicsLayer {
                 rotationX = 18f // tilted back: a real 3D layer, not a flat label
                 cameraDistance = 8f * density
             },
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 34.sp,
-                letterSpacing = 4.sp,
-                shadow = Shadow(color.copy(alpha = 0.9f), blurRadius = 24f),
-            ),
-            color = color,
-        )
+        ) {
+            // Each digit rolls up on its own when it changes (only the seconds move every second).
+            time.forEachIndexed { i, ch ->
+                AnimatedContent(
+                    targetState = ch,
+                    transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                    label = "digit$i",
+                ) { c -> Text(c.toString(), Modifier.padding(horizontal = 1.dp), style = glow, color = color) }
+            }
+        }
         Text(date, style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.75f))
     }
 }
 
 /** Battery, RAM, storage and CPU in glass panels, refreshed every 15 s while visible. CPU load is "N/A" (not available to apps). */
 @Composable
-fun DeviceStatsRow(accent: Color, modifier: Modifier = Modifier) {
+fun DeviceStatsRow(accent: Color, weather: @Composable (Modifier) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var stats by remember { mutableStateOf<DeviceStats?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -97,10 +140,11 @@ fun DeviceStatsRow(accent: Color, modifier: Modifier = Modifier) {
     }
     val s = stats
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        weather(Modifier.weight(1.2f))
         StatTile("BATTERY", s?.batteryPercent?.let { "$it%" + if (s.charging == true) " ⚡" else "" } ?: "N/A", accent, Modifier.weight(1f))
         StatTile("RAM", s?.ramUsedGb?.let { "%.1f/%.0fG".format(it, s.ramTotalGb ?: 0f) } ?: "N/A", accent, Modifier.weight(1f))
-        StatTile("STORAGE", s?.storageFreeGb?.let { "%.0fG free".format(it) } ?: "N/A", accent, Modifier.weight(1f))
-        StatTile("CPU", s?.let { "${it.cpuCores} cores · N/A" } ?: "N/A", accent, Modifier.weight(1f))
+        StatTile("FREE", s?.storageFreeGb?.let { "%.0f GB".format(it) } ?: "N/A", accent, Modifier.weight(1f))
+        StatTile("CPU", s?.let { "${it.cpuCores} core" } ?: "N/A", accent, Modifier.weight(1f))
     }
 }
 
@@ -109,11 +153,130 @@ private fun StatTile(label: String, value: String, accent: Color, modifier: Modi
     Column(
         modifier
             .hudFrame(accent, cut = 6.dp, fillAlpha = 0.10f)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = accent)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = accent, maxLines = 1)
+        // Values slide in when they change (an animated info card, not a static label).
+        AnimatedContent(value, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = label) { v ->
+            Text(v, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Real weather (Open-Meteo, city-level location). Loads when the dashboard is visible and every
+ * 30 minutes; tap to retry, or to allow location the first time. Never shows made-up values.
+ */
+@Composable
+fun WeatherTile(accent: Color, load: suspend (force: Boolean) -> WeatherState, modifier: Modifier = Modifier) {
+    var state by remember { mutableStateOf<WeatherState>(WeatherState.Loading) }
+    var attempt by remember { mutableIntStateOf(0) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, attempt) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var force = attempt > 0
+            while (true) {
+                if (state !is WeatherState.Ready) state = WeatherState.Loading
+                state = runCatching { load(force) }.getOrElse { WeatherState.Unavailable("weather service unreachable") }
+                force = false
+                delay(30 * 60_000L)
+            }
+        }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { attempt++ }
+    val (label, value) = when (val s = state) {
+        WeatherState.Loading -> "WEATHER" to "…"
+        WeatherState.NeedsPermission -> "WEATHER" to "Tap: allow"
+        is WeatherState.Unavailable -> "WEATHER" to if (s.reason == "offline") "Offline" else "N/A ↻"
+        is WeatherState.Ready -> weatherLabel(s.weather.code, s.weather.isDay).let { (text, emoji) ->
+            text.uppercase() to "$emoji ${s.weather.temperatureC.roundToInt()}°C"
+        }
+    }
+    StatTile(
+        label, value, accent,
+        modifier
+            .clickable(onClickLabel = "Weather") {
+                if (state == WeatherState.NeedsPermission) permission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) else attempt++
+            }
+            .semantics { contentDescription = "Weather: $label $value" + ((state as? WeatherState.Unavailable)?.let { ", ${it.reason}" } ?: "") },
+    )
+}
+
+/**
+ * Quick controls with real status: Wi-Fi and Bluetooth (Android lets apps only open their
+ * settings, not switch them), the torch (switched directly), camera and phone settings.
+ */
+@Composable
+fun QuickControlsRow(accent: Color, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var wifiOn by remember { mutableStateOf<Boolean?>(null) }
+    var btOn by remember { mutableStateOf<Boolean?>(null) }
+    var torchOn by remember { mutableStateOf(false) }
+    val cameraManager = remember { context.getSystemService(CameraManager::class.java) }
+    val torchId = remember {
+        runCatching { cameraManager?.cameraIdList?.firstOrNull { cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true } }.getOrNull()
+    }
+    // The torch's real state (also when switched from the notification shade).
+    DisposableEffect(cameraManager, torchId) {
+        val cb = object : CameraManager.TorchCallback() {
+            override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                if (cameraId == torchId) torchOn = enabled
+            }
+        }
+        if (torchId != null) runCatching { cameraManager?.registerTorchCallback(cb, Handler(Looper.getMainLooper())) }
+        onDispose { runCatching { cameraManager?.unregisterTorchCallback(cb) } }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                wifiOn = runCatching { context.getSystemService(WifiManager::class.java)?.isWifiEnabled }.getOrNull()
+                btOn = runCatching { context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled }.getOrNull()
+                delay(5_000)
+            }
+        }
+    }
+    fun open(intent: Intent) {
+        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { Toast.makeText(context, "Not available on this phone", Toast.LENGTH_SHORT).show() }
+    }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        QuickControl("Wi-Fi", if (wifiOn == false) Icons.Filled.WifiOff else Icons.Filled.Wifi, wifiOn, accent, Modifier.weight(1f)) {
+            open(Intent(Settings.ACTION_WIFI_SETTINGS))
+        }
+        QuickControl("Bluetooth", if (btOn == false) Icons.Filled.BluetoothDisabled else Icons.Filled.Bluetooth, btOn, accent, Modifier.weight(1f)) {
+            open(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        }
+        QuickControl("Torch", if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff, if (torchId == null) null else torchOn, accent, Modifier.weight(1f)) {
+            if (torchId == null) Toast.makeText(context, "No flashlight on this phone", Toast.LENGTH_SHORT).show()
+            else runCatching { cameraManager?.setTorchMode(torchId, !torchOn) }
+                .onFailure { Toast.makeText(context, "Flashlight is busy (camera in use?)", Toast.LENGTH_SHORT).show() }
+        }
+        QuickControl("Camera", Icons.Filled.PhotoCamera, null, accent, Modifier.weight(1f)) {
+            open(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
+        }
+        QuickControl("Phone", Icons.Filled.Tune, null, accent, Modifier.weight(1f)) {
+            open(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+}
+
+/** A glass quick-control button; [on] lights it up (null = no on/off state, or unknown). */
+@Composable
+private fun QuickControl(label: String, icon: ImageVector, on: Boolean?, accent: Color, modifier: Modifier, onClick: () -> Unit) {
+    val lit = on == true
+    val stateText = when (on) { true -> "on"; false -> "off"; null -> "" }
+    Column(
+        modifier
+            .hudFrame(accent, cut = 6.dp, fillAlpha = if (lit) 0.30f else 0.08f)
+            .clickable(onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = "$label $stateText".trim() }
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = null, tint = if (lit) Color.White else accent, modifier = Modifier.size(22.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = if (lit) Color.White else TextSecondary, maxLines = 1)
     }
 }
 

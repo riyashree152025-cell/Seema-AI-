@@ -1,6 +1,7 @@
 package com.raju.aiassistant
 
 import android.content.Intent
+import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.CoreAppearance
 import kotlinx.coroutines.launch
 import android.os.Bundle
@@ -42,6 +43,10 @@ class MainActivity : ComponentActivity() {
                 val c = (application as RajuApp).container
                 c.appScope.launch { c.settingsRepository.setCoreAppearance(core) }
             }
+        }
+        // Debug builds only: `--es seema_preview Listening` shows that state's visuals, NONE returns to the real state.
+        if (BuildConfig.DEBUG) intent?.getStringExtra("seema_preview")?.let { name ->
+            (application as RajuApp).container.debugPreview.value = AssistantState.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
         }
     }
 

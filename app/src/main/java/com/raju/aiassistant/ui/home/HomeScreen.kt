@@ -328,7 +328,7 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                maxLines = 3,
+                maxLines = if (modern) 2 else 3,
                 overflow = TextOverflow.Ellipsis,
             )
 
@@ -358,10 +358,15 @@ fun HomeScreen(
                 else -> "Voice"
             }
             if (modern) {
-                DeviceStatsRow(Color(style.primaryArgb))
-                BigVoiceButton(state.handsFree || state.listening, voiceLabel, Color(style.primaryArgb), onVoice)
+                // 3D dashboard: live weather + system tiles, quick controls, and the big mic in the middle.
+                DeviceStatsRow(Color(style.primaryArgb), weather = { m -> WeatherTile(Color(style.primaryArgb), viewModel::loadWeather, m) })
+                QuickControlsRow(Color(style.paletteArgb[1]))
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 if (!modern) ControlButton(
                     voiceLabel,
                     if (state.handsFree) Icons.Filled.Mic else Icons.Filled.MicOff,
@@ -371,6 +376,7 @@ fun HomeScreen(
                     highlighted = state.handsFree,
                 )
                 ControlButton("Chat", Icons.AutoMirrored.Filled.Chat, enabled = true, onClick = onOpenChat, modifier = Modifier.weight(1f))
+                if (modern) BigVoiceButton(state.handsFree || state.listening, voiceLabel, Color(style.primaryArgb), onVoice)
                 ControlButton("Stop", Icons.Filled.Stop, enabled = busy || state.handsFree || state.previewState != null, onClick = viewModel::stop, modifier = Modifier.weight(1f))
                 ControlButton("Settings", Icons.Filled.Settings, enabled = true, onClick = onOpenSettings, modifier = Modifier.weight(1f))
             }
