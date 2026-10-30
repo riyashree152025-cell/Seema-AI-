@@ -248,6 +248,12 @@ fun HomeScreen(
             ) {
                 // The state tag breathes with the reactor's own (frame-capped) clock.
                 StatusChip(assistantState.label, Color(style.primaryArgb), pulse = if (running) ({ 0.65f + 0.35f * sin(timeProvider() * 3f) }) else null)
+                // One tap switches the design (also in Settings → AI core appearance).
+                StatusChip(
+                    if (modern) "🎨 3D Core ⇄" else "🎨 Arc Reactor ⇄",
+                    Color(style.paletteArgb[1]),
+                    Modifier.clickable(onClickLabel = "Switch AI core design") { viewModel.toggleCore() },
+                )
                 StatusChip(if (state.online) "Online" else "Offline", if (state.online) SuccessGreen else ErrorRed)
                 StatusChip("Mode: ${state.listenMode}", MaterialTheme.colorScheme.secondary)
                 StatusChip(

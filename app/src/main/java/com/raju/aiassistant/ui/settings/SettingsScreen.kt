@@ -132,6 +132,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
         info?.let { Text(it, color = TextSecondary) }
 
         // ---------------------------------------------------------------- diagnostics
+        // First on the page: the most visible choice (Arc Reactor or 3D core).
+        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
+
         HudPanel(title = "Status & permissions") {
             Text("Each item shows the real current state. Tap a button to fix it in Android settings.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             val test = s.lastTests[s.defaultProvider]
@@ -246,8 +249,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
         SecretCard(SecretId.TAVILY_API_KEY, state.secrets[SecretId.TAVILY_API_KEY] ?: SecretStatus(), viewModel, title = "Web search (Tavily)") {
             Text("Used when you ask about news, prices, weather or anything current. Sources are shown with links.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
-
-        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
 
         // ---------------------------------------------------------------- voice
         HudPanel(title = "Voice") {
