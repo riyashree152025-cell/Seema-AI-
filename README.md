@@ -1,15 +1,26 @@
 # Seema AI Assistant (Android)
 
-Personal Hindi/Hinglish/English AI assistant for Android — Kotlin, Jetpack Compose, Material 3.
+Personal Hindi + Bengali (हिन्दी / বাংলা, Hinglish counts as Hindi) AI assistant for Android — Kotlin, Jetpack Compose, Material 3.
+
+Latest reports: [`SEEMA_AI_COMPLETE_PROJECT_AUDIT.md`](SEEMA_AI_COMPLETE_PROJECT_AUDIT.md) · [`SEEMA_AI_IMPLEMENTATION_REPORT.md`](SEEMA_AI_IMPLEMENTATION_REPORT.md) · [`SEEMA_AI_TEST_REPORT.md`](SEEMA_AI_TEST_REPORT.md)
 
 | | |
 |---|---|
 | Package | `com.raju.aiassistant` (debug build: `com.raju.aiassistant.debug`) |
 | minSdk / targetSdk / compileSdk | 26 / 35 / 35 |
 | Build | Gradle 8.11.1 (wrapper), AGP 8.7.3, Kotlin 2.0.21 — use **JVM 21** in Android Studio |
-| Version | 1.7.1 — see `docs/FINAL_REPORT.md` for the original feature checklist |
+| Version | 1.8.0 — see `docs/FINAL_REPORT.md` for the original feature checklist |
 
 ## What it does
+- **New in v1.8:**
+  - **Hindi + Bengali.** Auto-detects which of the two you use, or you can fix one in Settings → Voice → Language. Speech recognition and the voice follow that language; Bengali is never read by an English voice.
+  - **Knowledge Base (RAG).** Settings → Knowledge Base. Add PDF, DOCX, TXT or Markdown files. Seema searches them on the phone and answers with `[Doc: name]` sources. This is document search; the AI model is not trained.
+  - **3D dashboard.** Real weather (Open-Meteo, location asked on tap), and quick controls: Wi-Fi, Bluetooth, torch, camera, settings.
+  - **New states.** Speaking is shown only when audio really plays, and there is a new "Permission needed" state.
+  - **Auto fallback.** If the chosen AI fails, another AI whose key is saved answers instead.
+  - **Chat.** Copy and 🔊 Repeat buttons, mute, new conversation, and search across saved chats.
+  - **Voice pitch**, and memory export/import.
+- **Two AI cores** (Settings → AI core appearance, or the 🎨 chip on Home): the original Legacy Arc Reactor or the 3D Holographic Core with clock, weather, phone status and quick controls. Only the chosen one runs.
 - **Home:** large heart-beating Arc Reactor with a colour and rhythm for each state (Ready, Listening, Thinking, Speaking, Executing, Done, Error, Offline). It pulses with the real voice audio.
 - **AI chat:** Google Gemini or Groq. Model list comes from your key, with a real connection test and clear errors (invalid key, rate limit, quota, timeout, offline). Requests are retried once on network errors and can be cancelled with Stop.
 - **Voice:**
