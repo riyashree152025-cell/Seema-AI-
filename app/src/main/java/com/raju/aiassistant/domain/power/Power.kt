@@ -26,13 +26,13 @@ enum class ActivityPhase(val label: String) {
     ACTIVE("active"),
     /** Nothing happening for a while: slower, lighter visuals. */
     IDLE("idle"),
-    /** Nothing happening for a long time: visuals frozen (no frames drawn at all). */
+    /** Nothing happening for a long time: slowest visuals (still turning and beating). */
     SLEEP("sleep"),
 }
 
 /** After this long without any touch or assistant activity the screen counts as idle… */
 const val IDLE_AFTER_MS = 30_000L
-/** …and after this long its animation stops completely until the next touch or event. */
+/** …and after this long it runs at its slowest until the next touch or event. */
 const val SLEEP_AFTER_MS = 120_000L
 
 /** [busy]: listening, thinking, speaking or working (never idle then). */

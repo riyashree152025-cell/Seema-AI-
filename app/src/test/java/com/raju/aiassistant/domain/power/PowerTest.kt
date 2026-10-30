@@ -37,8 +37,10 @@ class PowerTest {
         assertFalse(critical.animate)
 
         val idle = motionProfileFor(false, false, true, phase = ActivityPhase.IDLE)
-        assertTrue(idle.maxFps <= 12 && !idle.richEffects)
-        assertFalse(motionProfileFor(false, false, true, phase = ActivityPhase.SLEEP).animate)
+        assertTrue(idle.animate && idle.maxFps <= 20)
+        // Sleep only slows the reactor down: it keeps turning and beating, it never freezes.
+        val sleep = motionProfileFor(false, false, true, phase = ActivityPhase.SLEEP)
+        assertTrue(sleep.animate && sleep.maxFps <= 12 && !sleep.richEffects)
         // Battery saver + hot + idle together never exceed the smallest limit.
         val all = motionProfileFor(true, false, true, ThermalLevel.HOT, ActivityPhase.IDLE)
         assertTrue(all.maxFps <= 8)

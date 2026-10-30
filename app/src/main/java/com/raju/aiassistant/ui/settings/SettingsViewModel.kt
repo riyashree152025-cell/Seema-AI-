@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import com.raju.aiassistant.data.tts.TtsDiagnostics
 import com.raju.aiassistant.domain.ai.ModelAdvice
 import androidx.lifecycle.ViewModel
+import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.model.VoiceMode
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -345,6 +346,10 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setLowPowerMode(v: Boolean) = launch { repo.setLowPowerMode(v) }
     fun setSmartPower(v: Boolean) = launch { repo.setSmartPower(v) }
     fun setThermalProtection(v: Boolean) = launch { repo.setThermalProtection(v) }
+    fun setCoreAppearance(v: CoreAppearance) = launch { repo.setCoreAppearance(v) }
+
+    /** What Auto means on this phone (decided once per app start). */
+    val autoCoreAppearance: CoreAppearance get() = c.autoCoreAppearance
     fun setVoiceMode(v: VoiceMode) = launch {
         repo.setVoiceMode(v)
         // Leaving a continuous mode: switch the microphone off now, not at the next restart.
