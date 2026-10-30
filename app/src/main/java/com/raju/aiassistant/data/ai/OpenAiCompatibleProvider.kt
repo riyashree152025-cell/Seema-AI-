@@ -53,6 +53,8 @@ class OpenAiCompatibleProvider(
             put("model", model)
             put("temperature", 0.7)
             put("max_tokens", 4096)
+            // gpt-oss models reason before answering; "low" keeps spoken replies fast (Groq supports it).
+            if (model.contains("gpt-oss")) put("reasoning_effort", "low")
             putJsonArray("messages") {
                 addJsonObject { put("role", "system"); put("content", systemPrompt) }
                 turns.forEach { t ->

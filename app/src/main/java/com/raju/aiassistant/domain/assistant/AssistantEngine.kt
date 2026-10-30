@@ -632,9 +632,13 @@ class AssistantEngine(
             speaker.playing.first { it }
             if (_state.value == AssistantState.Thinking || _state.value == AssistantState.Executing) _state.value = AssistantState.Speaking
         }
-        // In a voice conversation the user can talk over Seema, like interrupting a person.
-        val canBargeIn = allowBargeIn && settings.value.bargeIn && (handsFree || _voiceSession.value)
-        val capture = canBargeIn && transcriber?.isAvailable() == true
+        // In a voice conversation the user can talk over Seema, like interrupting a person — but only
+        // when the phone's echo canceller is on (call-style audio) and what was heard can be checked
+        // by speech-to-text. Without both, her own voice coming back from the speaker into the mic
+        // would stop her after a few words (tested on a phone). Tapping the core always stops her.
+        val canBargeIn = allowBargeIn && settings.value.bargeIn && (handsFree || _voiceSession.value) &&
+            conversationMode.active && transcriber?.isAvailable() == true
+        val capture = canBargeIn
         val utterance = CompletableDeferred<ByteArray?>()
         // Set from the microphone thread: atomic, so the speaking coroutine always sees it.
         val interrupted = java.util.concurrent.atomic.AtomicBoolean(false)

@@ -102,7 +102,8 @@ class AssistantEngineTest {
         override suspend fun log(type: String, summary: String, status: ActionStatus) { logs += type to status }
     }
 
-    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true))
+    // The engine tests were written for tap-to-talk; tests for the other modes set them explicitly.
+    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK))
     private val store = Store()
     private val speaker = FakeSpeaker()
     private val voice = FakeVoice()
@@ -433,14 +434,24 @@ class AssistantEngineTest {
         override suspend fun transcribe(pcm16k: ByteArray) = text
     }
 
-    private fun TestScope.engineWith(bargeIn: BargeIn, transcriber: Transcriber?, vararg replies: AiResult<String>): AssistantEngine {
+    /** Call-style audio with the phone's echo canceller (always on here). */
+    private object EchoCancelled : ConversationMode {
+        override val active = true
+        override fun enter() {}
+        override fun exit() {}
+    }
+
+    private fun TestScope.engineWith(
+        bargeIn: BargeIn, transcriber: Transcriber?, vararg replies: AiResult<String>,
+        mode: ConversationMode = EchoCancelled,
+    ): AssistantEngine {
         provider = FakeProvider(ArrayDeque(replies.toList()))
         return AssistantEngine(
             scope = backgroundScope, settings = settings, secret = { keys[it] },
             providerFor = { _, _ -> provider }, searchFor = { search },
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
-            bargeIn = bargeIn, transcriber = transcriber,
+            bargeIn = bargeIn, transcriber = transcriber, conversationMode = mode,
         )
     }
 
@@ -487,13 +498,29 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun withoutTranscriberTheRecogniserTakesOverAtOnce() = runTest {
-        val e = engineWith(InstantBargeIn(), null, AiResult.Success("Bahut lamba jawab hai."))
+    fun withoutSpeechToTextSheIsNotInterruptedByHerOwnVoice() = runTest {
+        // Nothing could check what the microphone heard: barge-in stays off, the whole reply is spoken.
+        val bargeIn = InstantBargeIn()
+        val e = engineWith(bargeIn, null, AiResult.Success("Bahut lamba jawab hai."))
         e.startHandsFree()
         voice.onResult!!("kuch batao")
         settle()
-        assertEquals(2, voice.starts)
-        assertEquals(AssistantState.Listening, e.state.value)
+        assertEquals(0, bargeIn.starts)
+        assertEquals("Bahut lamba jawab hai.", speaker.spoken.last())
+        assertEquals(1, provider.calls.size)
+    }
+
+    @Test
+    fun withoutEchoCancellationSheIsNotInterruptedByHerOwnVoice() = runTest {
+        // Tap-to-talk with the phone's recogniser: no echo canceller, so the mic would hear her voice.
+        val bargeIn = InstantBargeIn()
+        val e = engineWith(bargeIn, FakeTranscriber("Bahut lamba"), AiResult.Success("Bahut lamba jawab hai."), mode = NoConversationMode)
+        e.startVoice()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals(0, bargeIn.starts)
+        assertEquals("Bahut lamba jawab hai.", speaker.spoken.last())
+        assertEquals(1, provider.calls.size)
     }
 
     @Test

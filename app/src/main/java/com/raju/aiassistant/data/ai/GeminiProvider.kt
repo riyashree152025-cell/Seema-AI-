@@ -56,6 +56,9 @@ class GeminiProvider(
             putJsonObject("generationConfig") {
                 put("temperature", 0.7)
                 put("maxOutputTokens", 4096)
+                // Gemini 2.5 Flash "thinks" before answering by default, which adds seconds to every
+                // spoken reply. A chatty assistant does not need it: switch it off (Flash allows 0).
+                if (model.contains("2.5-flash")) putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
             }
         }
         val request = Request.Builder()

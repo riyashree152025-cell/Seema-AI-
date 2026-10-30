@@ -133,7 +133,12 @@ enum class EventRepeat(val rrule: String) {
 
 data class ParsedReply(val text: String, val actions: List<AssistantAction>)
 
-private val ACTION_TAG = Regex("<action>(.*?)</action>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+// Some models (e.g. gpt-oss) JSON-escape the slash: <\/action>. Both forms are accepted.
+private val ACTION_TAG = Regex("<action>(.*?)<\\\\?/action>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+/** An action whose closing tag never came (reply cut off): its JSON is never shown or spoken. */
+private val UNCLOSED_ACTION = Regex("<action>\\s*\\{[^<]*", RegexOption.IGNORE_CASE)
+/** Any leftover lone tag. */
+private val STRAY_TAG = Regex("<\\\\?/?action>", RegexOption.IGNORE_CASE)
 private val lenientJson = Json { isLenient = true; ignoreUnknownKeys = true }
 const val MAX_ACTIONS_PER_REPLY = 5
 
@@ -143,7 +148,7 @@ fun parseReply(raw: String): ParsedReply {
         .mapNotNull { parseAction(it.groupValues[1].trim()) }
         .take(MAX_ACTIONS_PER_REPLY)
         .toList()
-    val text = raw.replace(ACTION_TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
+    val text = raw.replace(ACTION_TAG, "").replace(UNCLOSED_ACTION, "").replace(STRAY_TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
     return ParsedReply(text, actions)
 }
 

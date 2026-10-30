@@ -51,9 +51,9 @@ data class ConnectionTest(val success: Boolean, val message: String, val timesta
  *   Only while the app is on screen — there is no background microphone service.
  */
 enum class VoiceMode(val label: String, val hint: String) {
-    PUSH_TO_TALK("Push-to-talk (battery saver)", "★ Mic opens only when you tap it"),
+    PUSH_TO_TALK("Push-to-talk (battery saver)", "Mic opens only when you tap it"),
     SESSION("Conversation session", "Tap Mic once, talk freely; it stops after a quiet while"),
-    ALWAYS("Always listening (app open)", "Listens as soon as the app opens; sleeps and wakes on \"Seema\""),
+    ALWAYS("Always listening (app open)", "★ Listens as soon as the app opens; sleeps and wakes on \"Seema\""),
 }
 
 /** The two Home screen designs (Settings → AI core appearance). Only the chosen one runs. */
@@ -94,8 +94,8 @@ data class UserSettings(
     val speechLanguage: String = com.raju.aiassistant.domain.language.LANGUAGE_AUTO,
     val autoSpeakReplies: Boolean = true,
     val continuousConversation: Boolean = false,
-    /** How the microphone is used. Battery saver (push-to-talk) by default. */
-    val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
+    /** How the microphone is used. Listening while the app is open by default (the user's choice). */
+    val voiceMode: VoiceMode = VoiceMode.ALWAYS,
     /** Talking while Seema speaks stops her (voice conversations only). */
     val bargeIn: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
