@@ -127,6 +127,17 @@ class AndroidTts(private val context: Context) {
         tts?.stop()
     }
 
+    /** True while connected to the phone's TTS service. */
+    val isConnected: Boolean get() = tts != null
+
+    /** Unbinds from the TTS service (frees its memory); the next synthesis connects again. */
+    fun release() {
+        if (waiting.isNotEmpty()) return // something is being spoken right now
+        tts?.let { runCatching { it.stop(); it.shutdown() } }
+        tts = null
+        ready = null
+    }
+
     private companion object {
         const val SYNTH_TIMEOUT_MS = 15_000L
     }

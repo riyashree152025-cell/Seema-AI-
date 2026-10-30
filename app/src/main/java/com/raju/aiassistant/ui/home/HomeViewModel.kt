@@ -6,6 +6,8 @@ import com.raju.aiassistant.di.AppContainer
 import com.raju.aiassistant.domain.ai.ProviderId
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.ChatRole
+import com.raju.aiassistant.domain.model.VoiceMode
+import com.raju.aiassistant.domain.power.ThermalLevel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +42,13 @@ data class HomeUiState(
     val hint: String? = null,
     /** "Hands-free", "Continuous" or "Tap to talk": how listening continues after a reply. */
     val listenMode: String = "",
+    val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
+    val smartPower: Boolean = true,
+    val thermalProtection: Boolean = true,
+    /** Real thermal status from Android. */
+    val thermal: ThermalLevel = ThermalLevel.NORMAL,
+    /** The phone's own Battery Saver is on. */
+    val systemPowerSave: Boolean = false,
 )
 
 private data class EngineView(val state: AssistantState, val listening: Boolean, val partial: String, val lastReply: String?, val handsFree: Boolean)
@@ -77,12 +86,17 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 voiceEngine = settings.ttsEngine.label.substringBefore(" ").uppercase(),
                 listenEngine = settings.sttEngine.label.substringBefore(" ").uppercase(),
                 listenMode = when {
+                    ev.handsFree && settings.voiceMode == VoiceMode.SESSION -> "Session"
                     ev.handsFree -> "Hands-free"
                     settings.continuousConversation -> "Continuous"
                     else -> "Tap to talk"
                 },
+                voiceMode = settings.voiceMode,
+                smartPower = settings.smartPower,
+                thermalProtection = settings.thermalProtection,
             )
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }
+            .combine(c.powerMonitor.state) { ui, p -> ui.copy(thermal = p.thermal, systemPowerSave = p.systemPowerSave) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     fun hasMicPermission() = c.voiceInput.hasPermission()
@@ -94,9 +108,12 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Mic button: turns hands-free listening on, or off when it is already on. */
     fun toggleHandsFree() {
         preview.value = null
+        val listeningNow = engine.listening.value || engine.state.value == AssistantState.Listening
         when {
             engine.state.value == AssistantState.Sleeping -> engine.wakeUp()
             engine.handsFreeActive.value -> c.stopEverything()
+            // Push-to-talk: one request per tap; tapping again while listening cancels.
+            c.currentSettings.value.voiceMode == VoiceMode.PUSH_TO_TALK -> if (listeningNow) c.stopEverything() else engine.startVoice()
             else -> engine.startHandsFree()
         }
     }

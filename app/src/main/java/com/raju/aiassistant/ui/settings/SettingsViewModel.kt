@@ -10,6 +10,10 @@ import androidx.core.content.ContextCompat
 import com.raju.aiassistant.data.tts.TtsDiagnostics
 import com.raju.aiassistant.domain.ai.ModelAdvice
 import androidx.lifecycle.ViewModel
+import com.raju.aiassistant.domain.model.VoiceMode
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import com.raju.aiassistant.core.security.maskSecret
 import com.raju.aiassistant.data.search.TavilyClient
@@ -339,6 +343,47 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
     fun setLowPowerMode(v: Boolean) = launch { repo.setLowPowerMode(v) }
+    fun setSmartPower(v: Boolean) = launch { repo.setSmartPower(v) }
+    fun setThermalProtection(v: Boolean) = launch { repo.setThermalProtection(v) }
+    fun setVoiceMode(v: VoiceMode) = launch {
+        repo.setVoiceMode(v)
+        // Leaving a continuous mode: switch the microphone off now, not at the next restart.
+        if (v == VoiceMode.PUSH_TO_TALK && c.engine.handsFreeActive.value) c.engine.stop()
+        if (v == VoiceMode.ALWAYS && c.voiceInput.hasPermission() && !c.engine.handsFreeActive.value) c.engine.startHandsFree()
+    }
+
+    private val _resources = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    /** Resource dashboard rows; read only when the user taps Refresh (no background sampling). */
+    val resources: StateFlow<List<Pair<String, String>>> = _resources.asStateFlow()
+
+    fun refreshResources() = launch {
+        val snap = c.powerMonitor.snapshot()
+        val power = c.powerMonitor.state.value
+        val s = c.currentSettings.value
+        val e = c.engine
+        val work = withContext(Dispatchers.IO) {
+            listOf("morning_briefing" to "Morning briefing", "weekly_expense_report" to "Weekly report").joinToString(" · ") { (name, label) ->
+                val st = runCatching { WorkManager.getInstance(c.appContext).getWorkInfosForUniqueWork(name).get().firstOrNull()?.state?.name }.getOrNull()
+                "$label: ${st?.lowercase() ?: "not scheduled"}"
+            }
+        }
+        val recent = runCatching { c.actionLogRepository.recent.first().take(3).joinToString("\n") { "• " + it.summary.take(70) } }.getOrNull()
+        _resources.value = listOf(
+            "App memory (PSS)" to "${snap.appMemoryMb} MB",
+            "Java heap" to "${snap.javaHeapUsedMb} / ${snap.javaHeapMaxMb} MB",
+            "CPU usage" to "not available — Android does not give apps their CPU load; use Android Studio Profiler",
+            "Battery" to (snap.batteryPercent?.let { "$it%" } ?: "not reported") + when (snap.charging) { true -> " · charging"; false -> " · not charging"; null -> "" } +
+                " · phone Battery Saver " + if (power.systemPowerSave) "ON" else "off",
+            "Thermal status" to "${power.thermal.label} (Android status ${power.thermalStatus})" +
+                (snap.thermalHeadroom?.let { " · headroom ${(it * 100).toInt()}% of throttling" } ?: " · headroom not reported by this phone"),
+            "Activity state" to "${e.state.value.label} · voice mode ${s.voiceMode.label}" + if (e.handsFreeActive.value) " · mic session on" else " · mic off",
+            "Home screen" to "Arc Reactor (no 3D avatar in this app)",
+            "Active modules" to "AI ${s.defaultProvider.shortName} (per request) · voice ${s.ttsEngine.label}" +
+                " · listening ${s.sttEngine.label}" + if (c.androidTts.isConnected) " · Android TTS connected" else " · Android TTS released",
+            "Background work" to "No foreground service, no wake locks, no polling. $work",
+            "Recent tasks" to (recent?.ifBlank { null } ?: "none"),
+        )
+    }
     fun setReducedMotion(v: Boolean) = launch { repo.setReducedMotion(v) }
     fun setSaveHistory(v: Boolean) = launch { repo.setSaveHistory(v) }
     fun setHistoryLimit(v: Int) = launch { repo.setHistoryLimit(v) }
