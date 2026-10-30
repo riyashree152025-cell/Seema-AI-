@@ -61,6 +61,10 @@ class ElevenLabsTtsProvider(
             is AiResult.Success -> VoiceCatalog.bestDefault(r.value)?.also { rememberVoice(it) }?.id
             is AiResult.Failure -> null
         } ?: VoiceCatalog.ELEVEN_FALLBACK_VOICE
+        // Bengali is spoken only by ElevenLabs v3; other models would mispronounce it, so the next voice takes over.
+        if (languageTag.startsWith("bn") && !s.elevenModel.startsWith("eleven_v3")) {
+            return AiResult.Failure(FailureKind.UNKNOWN, "model ${s.elevenModel} does not speak Bengali")
+        }
         val result = client.synthesize(text, voice, s.elevenModel, rate)
         // A Voice Library voice on the free plan → speak with a default voice instead of falling back to Android.
         if (result is AiResult.Failure && voice != VoiceCatalog.ELEVEN_FALLBACK_VOICE && VoiceCatalog.isPaidVoiceError(result.message)) {
@@ -108,10 +112,10 @@ class DeepgramTtsProvider(
     override val label = "Deepgram Aura (cloud, English)"
 
     override suspend fun isAvailable() =
-        isOnline() && !settings().speechLanguage.startsWith("hi") && !secret(SecretId.DEEPGRAM_API_KEY).isNullOrBlank()
+        isOnline() && settings().speechLanguage.startsWith("en") && !secret(SecretId.DEEPGRAM_API_KEY).isNullOrBlank()
 
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
-        if (languageTag.startsWith("hi")) return AiResult.Failure(FailureKind.UNKNOWN, "Deepgram voices speak English only")
+        if (!languageTag.startsWith("en")) return AiResult.Failure(FailureKind.UNKNOWN, "Deepgram voices speak English only")
         val key = secret(SecretId.DEEPGRAM_API_KEY) ?: return AiResult.Failure(FailureKind.NOT_CONFIGURED, "Deepgram API key is not set")
         return wavOrFailure(DeepgramClient(http, key).synthesize(text, settings().deepgramVoice), "Deepgram")
     }
@@ -121,6 +125,8 @@ class DeepgramTtsProvider(
 class AndroidTtsProvider(
     private val tts: AndroidTts,
     private val voiceName: () -> String?,
+    /** Voice pitch (below 1 = deeper, calmer). */
+    private val pitch: () -> Float = { 1f },
 ) : TtsProvider {
     override val engine = TtsEngine.ANDROID
     override val label = "Android TTS (offline)"
@@ -128,7 +134,7 @@ class AndroidTtsProvider(
     override suspend fun isAvailable() = true
 
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
-        val (bytes, error) = tts.synthesize(text, languageTag, voiceName(), rate)
+        val (bytes, error) = tts.synthesize(text, languageTag, voiceName(), rate, pitch())
         if (bytes == null) return AiResult.Failure(FailureKind.UNKNOWN, error ?: "Android text-to-speech failed")
         return parseWav(bytes)?.let { AiResult.Success(it) }
             ?: AiResult.Failure(FailureKind.UNKNOWN, "Android TTS produced audio in an unsupported format")

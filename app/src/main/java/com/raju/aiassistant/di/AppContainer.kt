@@ -76,6 +76,10 @@ class AppContainer(context: Context) {
     val memoryRepository by lazy { MemoryRepository(database.memoryDao()) }
     val actionLogRepository by lazy { ActionLogRepository(database.actionLogDao()) }
     val businessRepository by lazy { BusinessRepository(database.businessDao()) }
+    /** Imported documents (RAG), stored and searched on the phone. */
+    val knowledgeRepository by lazy { com.raju.aiassistant.data.knowledge.KnowledgeRepository(appContext, database.knowledgeDao()) }
+    /** Hindi or Bengali right now: set by the engine from what the user says, used by the voice. */
+    val conversationLanguage = MutableStateFlow(com.raju.aiassistant.domain.language.SeemaLanguage.HINDI)
 
     val connectivityObserver by lazy { ConnectivityObserver(appContext) }
     val online: StateFlow<Boolean> by lazy { connectivityObserver.isOnline.stateIn(appScope, SharingStarted.Eagerly, true) }
@@ -139,9 +143,9 @@ class AppContainer(context: Context) {
                 settingsRepository.setCartesiaVoice(v.id, v.name)
             },
             DeepgramTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }),
-            AndroidTtsProvider(androidTts) { currentSettings.value.androidVoice },
+            AndroidTtsProvider(androidTts, { currentSettings.value.androidVoice }) { currentSettings.value.speechPitch },
         )
-        TtsManager(appScope, SpeechPipeline(audioPlayer), providers, androidTts, currentSettings)
+        TtsManager(appScope, SpeechPipeline(audioPlayer), providers, androidTts, currentSettings, conversationLanguage)
     }
     val voiceInput by lazy { VoiceInputManager(appContext) { android.util.Log.i("SeemaVoice", it) } }
     val deepgramVoiceInput by lazy {
@@ -187,10 +191,13 @@ class AppContainer(context: Context) {
             voiceInput,
             deepgramVoiceInput,
             useDeepgram = {
-                // Hands-free restarts the recogniser often; Deepgram does that silently, so it is
-                // preferred whenever its key is saved.
-                currentSettings.value.sttEngine == SttEngine.DEEPGRAM ||
-                    (engine.handsFreeActive.value && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value)
+                // Deepgram's models used here understand Hindi/Hinglish, not Bengali: Bengali uses the phone's recogniser.
+                (com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(currentSettings.value.speechLanguage) ?: conversationLanguage.value) !=
+                    com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI &&
+                    // Hands-free restarts the recogniser often; Deepgram does that silently, so it is
+                    // preferred whenever its key is saved.
+                    (currentSettings.value.sttEngine == SttEngine.DEEPGRAM ||
+                        (engine.handsFreeActive.value && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value))
             },
             scope = appScope,
         )
@@ -239,6 +246,10 @@ class AppContainer(context: Context) {
             wakeListener = MicWakeListener(appContext, appScope),
             business = businessRepository,
             log = { android.util.Log.i("SeemaVoice", it) },
+            conversationLanguage = conversationLanguage,
+            knowledge = knowledgeRepository,
+            // Auto fallback: the other AI providers whose keys are saved, tried when the chosen one fails.
+            fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it.secret in secureKeyStore.configured.value } },
             nowDescription = { SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a (yyyy-MM-dd'T'HH:mm, z)", Locale.ENGLISH).format(Date()) },
         ).also { e -> appScope.launch { e.load() } }
     }

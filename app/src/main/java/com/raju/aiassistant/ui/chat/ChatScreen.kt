@@ -23,6 +23,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
@@ -88,10 +96,47 @@ fun ChatScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        var searching by rememberSaveable { mutableStateOf(false) }
+        var query by rememberSaveable { mutableStateOf("") }
+        var results by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
+        LaunchedEffect(query, searching) { results = if (searching) viewModel.search(query) else emptyList() }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Chat · ${state.providerName}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Text("Chat · ${state.providerName}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f), maxLines = 1)
+            IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
+                Icon(if (searching) Icons.Filled.Close else Icons.Filled.Search, contentDescription = if (searching) "Close search" else "Search chats")
+            }
+            IconButton(onClick = { viewModel.setSpeakReplies(!state.speakReplies) }) {
+                Icon(
+                    if (state.speakReplies) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                    contentDescription = if (state.speakReplies) "Mute replies" else "Speak replies",
+                )
+            }
+            IconButton(onClick = viewModel::newConversation) { Icon(Icons.Filled.AddComment, contentDescription = "New conversation") }
             TextButton(onClick = onOpenSettings) { Text("Settings") }
         }
+        if (searching) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Search saved chats… / খুঁজুন…") },
+                singleLine = true,
+            )
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (query.isNotBlank() && results.isEmpty()) item { Text("No matches.", color = TextSecondary) }
+                items(results, key = { it.id }) { m ->
+                    Column {
+                        Text(
+                            java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(m.createdAt)) +
+                                " · " + if (m.role == ChatRole.USER) "You" else "Seema",
+                            style = MaterialTheme.typography.labelSmall, color = TextSecondary,
+                        )
+                        MessageBubble(m, onRepeat = null)
+                    }
+                }
+            }
+        }
+        if (!searching) {
         state.model?.let { m ->
             Text("Model: $m", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
@@ -112,13 +157,13 @@ fun ChatScreen(
             if (state.messages.isEmpty()) {
                 item {
                     Text(
-                        "Namaste! Kuch bhi poochhiye — Hindi, Hinglish ya English mein.\nTry: \"Mom ko call karo\", \"5 minute ka timer\", \"Kal 5 baje meeting add karo\", \"India Gate ka rasta\"",
+                        "Namaste! Kuch bhi poochhiye — हिन्दी, Hinglish ya বাংলা mein.\nTry: \"Mom ko call karo\", \"5 minute ka timer\", \"Kal 5 baje meeting add karo\", \"India Gate ka rasta\"",
                         style = MaterialTheme.typography.bodyLarge,
                         color = TextSecondary,
                     )
                 }
             }
-            items(state.messages, key = { it.id }) { MessageBubble(it) }
+            items(state.messages, key = { it.id }) { MessageBubble(it, onRepeat = viewModel::repeat) }
             if (state.canRetry) {
                 item {
                     OutlinedButton(onClick = viewModel::retry) { Text("Retry") }
@@ -157,6 +202,7 @@ fun ChatScreen(
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
         }
+        }
     }
 }
 
@@ -181,7 +227,7 @@ private fun linkify(text: String): AnnotatedString = buildAnnotatedString {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, onRepeat: ((String) -> Unit)?) {
     if (message.role == ChatRole.SYSTEM) {
         Text(
             message.text,
@@ -203,9 +249,18 @@ private fun MessageBubble(message: ChatMessage) {
             border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
             modifier = Modifier.widthIn(max = 320.dp),
         ) {
-            // Long-press to select and copy.
-            SelectionContainer {
-                Text(linkify(message.text), Modifier.padding(12.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Column {
+                // Long-press to select part of it; Copy takes the whole message.
+                SelectionContainer {
+                    Text(linkify(message.text), Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = if (isUser) 12.dp else 0.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                }
+                if (!isUser) {
+                    val clipboard = LocalClipboardManager.current
+                    Row(Modifier.padding(horizontal = 4.dp)) {
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) { Text("Copy", style = MaterialTheme.typography.labelMedium) }
+                        if (onRepeat != null) TextButton(onClick = { onRepeat(message.text) }) { Text("🔊 Repeat", style = MaterialTheme.typography.labelMedium) }
+                    }
+                }
             }
         }
     }

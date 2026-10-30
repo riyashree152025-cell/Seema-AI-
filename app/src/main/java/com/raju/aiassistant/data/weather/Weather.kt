@@ -88,20 +88,26 @@ class CoarseLocation(private val context: Context) {
     suspend fun locate(): Location? {
         if (!hasPermission()) return null
         val lm = context.getSystemService(LocationManager::class.java) ?: return null
-        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER, LocationManager.GPS_PROVIDER)
+        // Android 12+ has the fused provider (Wi-Fi, cell and GPS combined); older phones use network/GPS.
+        val providers = buildList {
+            if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+            add(LocationManager.NETWORK_PROVIDER); add(LocationManager.GPS_PROVIDER); add(LocationManager.PASSIVE_PROVIDER)
+        }
         val last = providers.mapNotNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }.maxByOrNull { it.time }
         if (last != null && System.currentTimeMillis() - last.time < 6 * 60 * 60_000L) return last
-        if (Build.VERSION.SDK_INT >= 30 && runCatching { lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)) {
-            val fresh = withTimeoutOrNull(10_000) {
-                suspendCancellableCoroutine<Location?> { cont ->
-                    val signal = android.os.CancellationSignal()
-                    cont.invokeOnCancellation { signal.cancel() }
-                    runCatching {
-                        lm.getCurrentLocation(LocationManager.NETWORK_PROVIDER, signal, context.mainExecutor) { loc -> if (cont.isActive) cont.resume(loc) }
-                    }.onFailure { if (cont.isActive) cont.resume(null) }
+        if (Build.VERSION.SDK_INT >= 30) {
+            for (provider in providers.filter { it != LocationManager.PASSIVE_PROVIDER && runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }) {
+                val fresh = withTimeoutOrNull(10_000) {
+                    suspendCancellableCoroutine<Location?> { cont ->
+                        val signal = android.os.CancellationSignal()
+                        cont.invokeOnCancellation { signal.cancel() }
+                        runCatching {
+                            lm.getCurrentLocation(provider, signal, context.mainExecutor) { loc -> if (cont.isActive) cont.resume(loc) }
+                        }.onFailure { if (cont.isActive) cont.resume(null) }
+                    }
                 }
+                if (fresh != null) return fresh
             }
-            if (fresh != null) return fresh
         }
         return last
     }

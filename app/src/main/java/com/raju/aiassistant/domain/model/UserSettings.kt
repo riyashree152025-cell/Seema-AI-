@@ -87,8 +87,11 @@ data class UserSettings(
     val sttEngine: SttEngine = SttEngine.ANDROID,
     val deepgramSttModel: String = VoiceCatalog.DEEPGRAM_DEFAULT_STT,
     val speechRate: Float = 1.0f,
+    /** Voice pitch for the Android voice: a little below 1 sounds deeper and calmer. */
+    val speechPitch: Float = 0.92f,
     val androidVoice: String? = null,
-    val speechLanguage: String = "hi-IN",
+    /** "auto" (Hindi/Bengali detected from the user), "hi-IN" or "bn-IN". */
+    val speechLanguage: String = com.raju.aiassistant.domain.language.LANGUAGE_AUTO,
     val autoSpeakReplies: Boolean = true,
     val continuousConversation: Boolean = false,
     /** How the microphone is used. Battery saver (push-to-talk) by default. */
@@ -138,4 +141,4 @@ val SARVAM_FEMALE_SPEAKERS = listOf("priya", "ritu", "kavya", "neha", "simran", 
 
 /** A saved Bulbul v2 voice (anushka, manisha, ...) is rejected by v3, so it falls back to the default. */
 fun validSarvamSpeaker(saved: String?): String = saved?.takeIf { it in SARVAM_FEMALE_SPEAKERS } ?: SARVAM_FEMALE_SPEAKERS.first()
-val SPEECH_LANGUAGES = listOf("hi-IN" to "Hindi / Hinglish", "en-IN" to "English (India)")
+val SPEECH_LANGUAGES = com.raju.aiassistant.domain.language.LANGUAGE_CHOICES

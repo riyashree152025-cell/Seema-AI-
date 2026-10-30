@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, MemoryEntity::class, ActionLogEntity::class, ExpenseEntity::class, JourneyEntity::class],
-    version = 3,
+    entities = [ConversationEntity::class, MessageEntity::class, MemoryEntity::class, ActionLogEntity::class, ExpenseEntity::class, JourneyEntity::class, KbDocumentEntity::class, KbChunkEntity::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class RajuDatabase : RoomDatabase() {
@@ -17,6 +17,7 @@ abstract class RajuDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun actionLogDao(): ActionLogDao
     abstract fun businessDao(): BusinessDao
+    abstract fun knowledgeDao(): com.raju.aiassistant.data.knowledge.KnowledgeDao
 
     companion object {
         /** v1 → v2: adds memories and action history. Existing chats are kept. */
@@ -44,9 +45,22 @@ abstract class RajuDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 → v4: adds the Knowledge Base (imported documents and their passages). Existing data is kept. */
+        val MIGRATION_3_4_SQL = listOf(
+            "CREATE TABLE IF NOT EXISTS `kb_documents` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `text` TEXT NOT NULL, `chunkCount` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS `kb_chunks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `documentId` INTEGER NOT NULL, `chunkIndex` INTEGER NOT NULL, `text` TEXT NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS `index_kb_chunks_documentId` ON `kb_chunks` (`documentId`)",
+        )
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_4_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
         fun create(context: Context): RajuDatabase =
             Room.databaseBuilder(context, RajuDatabase::class.java, "raju_ai.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

@@ -117,7 +117,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
             // Hinglish: let the recogniser also accept Indian English words in the same sentence.
-            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(if (languageTag.startsWith("hi")) "en-IN" else "hi-IN"))
+            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", com.raju.aiassistant.domain.language.additionalSpeechLanguages(languageTag))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
@@ -213,7 +213,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         ERROR_TOO_MANY_REQUESTS -> VoiceError("Speech recognition is rate-limited right now. Wait a minute, or use Deepgram (Settings → Speech input).")
         ERROR_SERVER_DISCONNECTED -> VoiceError("The speech service disconnected.", transient = true)
         ERROR_LANGUAGE_NOT_SUPPORTED, ERROR_LANGUAGE_UNAVAILABLE ->
-            VoiceError("Hindi speech recognition is not available on this phone. In the Google app → Settings → Voice → Offline speech recognition, add Hindi; or use Deepgram (Settings → Speech input).")
+            VoiceError("Hindi/Bengali speech recognition is not available on this phone. In the Google app → Settings → Voice → Offline speech recognition, add Hindi (हिन्दी) and Bengali (বাংলা); or use Deepgram (Settings → Speech input).")
         else -> VoiceError("Speech recognition error ($code).")
     }
 

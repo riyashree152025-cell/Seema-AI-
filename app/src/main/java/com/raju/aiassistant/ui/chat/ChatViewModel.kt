@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -21,6 +22,8 @@ data class ChatUiState(
     val historyEnabled: Boolean = true,
     /** The last request failed: offer a Retry button. */
     val canRetry: Boolean = false,
+    /** Replies are spoken aloud (the speaker button toggles it). */
+    val speakReplies: Boolean = true,
 )
 
 class ChatViewModel(private val c: AppContainer) : ViewModel() {
@@ -37,6 +40,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
                 modelWarning = ModelAdvice.warning(model),
                 historyEnabled = settings.saveHistory,
                 canRetry = error != null && !state.isBusy && engine.canRetry,
+                speakReplies = settings.autoSpeakReplies,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
@@ -45,4 +49,18 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     fun retry() = engine.retry()
     fun hasMicPermission() = c.voiceInput.hasPermission()
     fun startVoice() = engine.startVoice()
+    fun repeat(text: String? = null) = if (text == null) engine.repeatLast() else engine.speakAgain(text)
+    fun setSpeakReplies(on: Boolean) {
+        if (!on) c.speaker.stop()
+        viewModelScope.launch { c.settingsRepository.setAutoSpeak(on) }
+    }
+
+    /** Clears the screen and starts a new conversation; earlier chats stay saved (and searchable). */
+    fun newConversation() {
+        c.stopEverything()
+        engine.clearTranscript()
+        viewModelScope.launch { runCatching { c.conversationRepository.startNew() } }
+    }
+
+    suspend fun search(query: String): List<ChatMessage> = runCatching { c.conversationRepository.search(query) }.getOrDefault(emptyList())
 }

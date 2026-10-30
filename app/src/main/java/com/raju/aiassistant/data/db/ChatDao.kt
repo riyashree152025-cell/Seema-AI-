@@ -27,6 +27,13 @@ interface ChatDao {
 
     @Query("DELETE FROM conversations")
     suspend fun deleteAllConversations()
+
+    @Query("SELECT * FROM (SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC, id DESC LIMIT :limit) ORDER BY createdAt ASC, id ASC")
+    suspend fun recentMessagesIn(conversationId: Long, limit: Int): List<MessageEntity>
+
+    /** Search in all saved chats (newest first). */
+    @Query("SELECT * FROM messages WHERE text LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun searchMessages(query: String, limit: Int): List<MessageEntity>
 }
 
 @Dao

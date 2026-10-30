@@ -44,6 +44,8 @@ fun holoCoreStyleFor(state: AssistantState): ReactorStyle = when (state) {
     AssistantState.Error -> ReactorStyle(listOf(RED, ORANGE, MAGENTA, ORANGE, RED), glow = 0.7f, rotationSpeed = 0.03f, bpm = 112f, flicker = true)
     AssistantState.Offline -> ReactorStyle(listOf(GREY, GREY_LIGHT, GREY, GREY_LIGHT, GREY), glow = 0.2f, rotationSpeed = 0f, bpm = 40f)
     AssistantState.Sleeping -> ReactorStyle(listOf(ROYAL, VIOLET, GREY_LIGHT, ROYAL, VIOLET), glow = 0.35f, rotationSpeed = 0.015f, bpm = 34f)
+    // Amber, slow and steady: waiting for the user to allow a permission.
+    AssistantState.WaitingPermission -> ReactorStyle(listOf(AMBER, ORANGE, AMBER, CYAN, AMBER), glow = 0.6f, rotationSpeed = 0.04f, bpm = 56f)
 }
 
 /** Tilt, size and speed of the three holographic rings (radians, units, revolutions per second). */

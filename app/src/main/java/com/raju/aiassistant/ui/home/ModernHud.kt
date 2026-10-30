@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -85,7 +86,7 @@ import java.util.Locale
  * and the date under it. Ticks once a second, only while the screen is visible.
  */
 @Composable
-fun HoloClock(color: Color, modifier: Modifier = Modifier) {
+fun HoloClock(color: Color, modifier: Modifier = Modifier, compact: Boolean = false) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
@@ -101,7 +102,7 @@ fun HoloClock(color: Color, modifier: Modifier = Modifier) {
     val glow = MaterialTheme.typography.headlineMedium.copy(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Bold,
-        fontSize = 34.sp,
+        fontSize = if (compact) 26.sp else 34.sp,
         shadow = Shadow(color.copy(alpha = 0.9f), blurRadius = 24f),
     )
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -126,7 +127,7 @@ fun HoloClock(color: Color, modifier: Modifier = Modifier) {
 
 /** Battery, RAM, storage and CPU in glass panels, refreshed every 15 s while visible. CPU load is "N/A" (not available to apps). */
 @Composable
-fun DeviceStatsRow(accent: Color, weather: @Composable (Modifier) -> Unit, modifier: Modifier = Modifier) {
+fun DeviceStatsRow(accent: Color, weather: @Composable (Modifier) -> Unit, modifier: Modifier = Modifier, fill: Boolean = true) {
     val context = LocalContext.current
     var stats by remember { mutableStateOf<DeviceStats?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -139,12 +140,14 @@ fun DeviceStatsRow(accent: Color, weather: @Composable (Modifier) -> Unit, modif
         }
     }
     val s = stats
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        weather(Modifier.weight(1.2f))
-        StatTile("BATTERY", s?.batteryPercent?.let { "$it%" + if (s.charging == true) " ⚡" else "" } ?: "N/A", accent, Modifier.weight(1f))
-        StatTile("RAM", s?.ramUsedGb?.let { "%.1f/%.0fG".format(it, s.ramTotalGb ?: 0f) } ?: "N/A", accent, Modifier.weight(1f))
-        StatTile("FREE", s?.storageFreeGb?.let { "%.0f GB".format(it) } ?: "N/A", accent, Modifier.weight(1f))
-        StatTile("CPU", s?.let { "${it.cpuCores} core" } ?: "N/A", accent, Modifier.weight(1f))
+    // fill = share the screen width; otherwise fixed-width tiles (for a scrolling strip on small screens).
+    Row(if (fill) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        fun item(weight: Float = 1f, width: Int = 72) = if (fill) Modifier.weight(weight) else Modifier.width(width.dp)
+        weather(item(1.2f, 92))
+        StatTile("BATTERY", s?.batteryPercent?.let { "$it%" + if (s.charging == true) " ⚡" else "" } ?: "N/A", accent, item())
+        StatTile("RAM", s?.ramUsedGb?.let { "%.1f/%.0fG".format(it, s.ramTotalGb ?: 0f) } ?: "N/A", accent, item())
+        StatTile("FREE", s?.storageFreeGb?.let { "%.0f GB".format(it) } ?: "N/A", accent, item())
+        StatTile("CPU", s?.let { "${it.cpuCores} core" } ?: "N/A", accent, item())
     }
 }
 
@@ -188,7 +191,11 @@ fun WeatherTile(accent: Color, load: suspend (force: Boolean) -> WeatherState, m
     val (label, value) = when (val s = state) {
         WeatherState.Loading -> "WEATHER" to "…"
         WeatherState.NeedsPermission -> "WEATHER" to "Tap: allow"
-        is WeatherState.Unavailable -> "WEATHER" to if (s.reason == "offline") "Offline" else "N/A ↻"
+        is WeatherState.Unavailable -> "WEATHER" to when {
+            s.reason == "offline" -> "Offline"
+            s.reason.startsWith("location") -> "No location"
+            else -> "N/A ↻"
+        }
         is WeatherState.Ready -> weatherLabel(s.weather.code, s.weather.isDay).let { (text, emoji) ->
             text.uppercase() to "$emoji ${s.weather.temperatureC.roundToInt()}°C"
         }
@@ -208,7 +215,7 @@ fun WeatherTile(accent: Color, load: suspend (force: Boolean) -> WeatherState, m
  * settings, not switch them), the torch (switched directly), camera and phone settings.
  */
 @Composable
-fun QuickControlsRow(accent: Color, modifier: Modifier = Modifier) {
+fun QuickControlsRow(accent: Color, modifier: Modifier = Modifier, fill: Boolean = true) {
     val context = LocalContext.current
     var wifiOn by remember { mutableStateOf<Boolean?>(null) }
     var btOn by remember { mutableStateOf<Boolean?>(null) }
@@ -241,22 +248,23 @@ fun QuickControlsRow(accent: Color, modifier: Modifier = Modifier) {
         runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { Toast.makeText(context, "Not available on this phone", Toast.LENGTH_SHORT).show() }
     }
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        QuickControl("Wi-Fi", if (wifiOn == false) Icons.Filled.WifiOff else Icons.Filled.Wifi, wifiOn, accent, Modifier.weight(1f)) {
+    Row(if (fill) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        fun item() = if (fill) Modifier.weight(1f) else Modifier.width(68.dp)
+        QuickControl("Wi-Fi", if (wifiOn == false) Icons.Filled.WifiOff else Icons.Filled.Wifi, wifiOn, accent, item()) {
             open(Intent(Settings.ACTION_WIFI_SETTINGS))
         }
-        QuickControl("Bluetooth", if (btOn == false) Icons.Filled.BluetoothDisabled else Icons.Filled.Bluetooth, btOn, accent, Modifier.weight(1f)) {
+        QuickControl("Bluetooth", if (btOn == false) Icons.Filled.BluetoothDisabled else Icons.Filled.Bluetooth, btOn, accent, item()) {
             open(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
         }
-        QuickControl("Torch", if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff, if (torchId == null) null else torchOn, accent, Modifier.weight(1f)) {
+        QuickControl("Torch", if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff, if (torchId == null) null else torchOn, accent, item()) {
             if (torchId == null) Toast.makeText(context, "No flashlight on this phone", Toast.LENGTH_SHORT).show()
             else runCatching { cameraManager?.setTorchMode(torchId, !torchOn) }
                 .onFailure { Toast.makeText(context, "Flashlight is busy (camera in use?)", Toast.LENGTH_SHORT).show() }
         }
-        QuickControl("Camera", Icons.Filled.PhotoCamera, null, accent, Modifier.weight(1f)) {
+        QuickControl("Camera", Icons.Filled.PhotoCamera, null, accent, item()) {
             open(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
         }
-        QuickControl("Phone", Icons.Filled.Tune, null, accent, Modifier.weight(1f)) {
+        QuickControl("Phone", Icons.Filled.Tune, null, accent, item()) {
             open(Intent(Settings.ACTION_SETTINGS))
         }
     }

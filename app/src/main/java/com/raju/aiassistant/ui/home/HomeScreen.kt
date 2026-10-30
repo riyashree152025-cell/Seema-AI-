@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -148,7 +149,7 @@ fun HomeScreen(
     }
 
     val handsFreeMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.toggleHandsFree()
+        if (granted) viewModel.toggleHandsFree() else viewModel.micDenied()
     }
     val onVoice = {
         if (viewModel.hasMicPermission()) viewModel.toggleHandsFree() else handsFreeMic.launch(Manifest.permission.RECORD_AUDIO)
@@ -165,6 +166,9 @@ fun HomeScreen(
     }
 
     var showPreview by rememberSaveable { mutableStateOf(false) }
+    // Small screens (e.g. 640 dp tall): the 3D dashboard packs its tiles into one scrolling strip
+    // so the core always keeps a large share of the screen.
+    val compact = LocalConfiguration.current.screenHeightDp < 760
 
     Box(
         Modifier
@@ -184,7 +188,8 @@ fun HomeScreen(
             accent = Color(style.paletteArgb[2]),
             time = timeProvider,
             density = profile.backgroundDensity,
-            telemetry = telemetry,
+            // The 3D dashboard shows the same facts in its own panels (and the clock sits there).
+            telemetry = if (modern) ({ emptyList() }) else telemetry,
             modifier = Modifier.fillMaxSize(),
             liveClock = running,
         )
@@ -194,7 +199,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (modern && compact) 4.dp else 8.dp),
         ) {
             HoloTitle("SEEMA AI", Color(style.primaryArgb))
 
@@ -256,6 +261,8 @@ fun HomeScreen(
                 )
                 StatusChip(if (state.online) "Online" else "Offline", if (state.online) SuccessGreen else ErrorRed)
                 StatusChip("Mode: ${state.listenMode}", MaterialTheme.colorScheme.secondary)
+                StatusChip("🌐 ${state.language.label.substringBefore(' ')}", MaterialTheme.colorScheme.secondary)
+                StatusChip("🗣 Voice: ${state.voiceEngine}", MaterialTheme.colorScheme.secondary)
                 StatusChip(
                     when {
                         state.listening -> "Mic: listening"
@@ -275,7 +282,7 @@ fun HomeScreen(
                 if (state.paused) StatusChip("Paused", WarningAmber)
             }
 
-            if (modern) HoloClock(Color(style.primaryArgb))
+            if (modern) HoloClock(Color(style.primaryArgb), compact = compact)
 
             // Stage: one large, centred core — the Legacy Arc Reactor or the 3D Holographic Core.
             BoxWithConstraints(
@@ -305,7 +312,7 @@ fun HomeScreen(
                 color = stateColor,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
-            VoiceWaveform(
+            if (!(modern && compact)) VoiceWaveform(
                 assistantState, stateColor, timeProvider, speechLevel,
                 Modifier
                     .fillMaxWidth(0.7f)
@@ -328,7 +335,7 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                maxLines = if (modern) 2 else 3,
+                maxLines = if (modern && compact) 1 else if (modern) 2 else 3,
                 overflow = TextOverflow.Ellipsis,
             )
 
@@ -359,8 +366,16 @@ fun HomeScreen(
             }
             if (modern) {
                 // 3D dashboard: live weather + system tiles, quick controls, and the big mic in the middle.
-                DeviceStatsRow(Color(style.primaryArgb), weather = { m -> WeatherTile(Color(style.primaryArgb), viewModel::loadWeather, m) })
-                QuickControlsRow(Color(style.paletteArgb[1]))
+                val weatherTile: @Composable (Modifier) -> Unit = { m -> WeatherTile(Color(style.primaryArgb), viewModel::loadWeather, m) }
+                if (compact) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DeviceStatsRow(Color(style.primaryArgb), weatherTile, fill = false)
+                        QuickControlsRow(Color(style.paletteArgb[1]), fill = false)
+                    }
+                } else {
+                    DeviceStatsRow(Color(style.primaryArgb), weatherTile)
+                    QuickControlsRow(Color(style.paletteArgb[1]))
+                }
             }
             Row(
                 Modifier.fillMaxWidth(),

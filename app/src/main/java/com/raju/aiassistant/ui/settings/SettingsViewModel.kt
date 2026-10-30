@@ -3,6 +3,7 @@ package com.raju.aiassistant.ui.settings
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
@@ -308,6 +309,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setSttEngine(v: SttEngine) = launch { repo.setSttEngine(v) }
     fun setDeepgramSttModel(v: String) = launch { repo.setDeepgramSttModel(v) }
     fun setSpeechRate(v: Float) = launch { repo.setSpeechRate(v) }
+    fun setSpeechPitch(v: Float) = launch { repo.setSpeechPitch(v) }
     fun setAndroidVoice(v: String?) = launch { repo.setAndroidVoice(v) }
     fun setSpeechLanguage(v: String) = launch { repo.setSpeechLanguage(v) }
     fun setAutoSpeak(v: Boolean) = launch { repo.setAutoSpeak(v) }
@@ -405,6 +407,70 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         _info.value = runCatching { c.memoryRepository.deleteAll() }.fold({ "All memories deleted." }, { "Could not delete memories." })
     }
 
+    // ---------------------------------------------------------------- knowledge base & memory files
+
+    val documents: StateFlow<List<com.raju.aiassistant.data.knowledge.KbDocumentInfo>> =
+        c.knowledgeRepository.documents.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _kbBusy = MutableStateFlow(false)
+    val kbBusy: StateFlow<Boolean> = _kbBusy.asStateFlow()
+
+    fun importDocuments(uris: List<Uri>) = launch {
+        _kbBusy.value = true
+        val results = uris.map { c.knowledgeRepository.import(it) }
+        _kbBusy.value = false
+        _info.value = results.joinToString("\n") { r ->
+            when (r) {
+                is com.raju.aiassistant.data.knowledge.KnowledgeRepository.ImportResult.Imported -> "📄 “${r.name}” added (${r.chunks} passages)."
+                is com.raju.aiassistant.data.knowledge.KnowledgeRepository.ImportResult.Failed -> "⚠️ ${r.reason}"
+            }
+        }
+    }
+
+    fun removeDocument(id: Long) = launch {
+        _info.value = if (runCatching { c.knowledgeRepository.remove(id) }.getOrDefault(false)) "Document removed." else "Could not remove the document."
+    }
+
+    fun rebuildIndex() = launch {
+        _kbBusy.value = true
+        _info.value = runCatching { c.knowledgeRepository.rebuildIndex() }.fold({ "Knowledge index rebuilt." }, { "Could not rebuild the index: ${it.message}" })
+        _kbBusy.value = false
+    }
+
+    /** Saves all memories as a JSON file the user picked (nothing else is exported). */
+    fun exportMemories(uri: Uri) = launch {
+        _info.value = runCatching {
+            val list = c.memoryRepository.all()
+            val json = kotlinx.serialization.json.JsonArray(list.map { m ->
+                kotlinx.serialization.json.JsonObject(mapOf(
+                    "text" to kotlinx.serialization.json.JsonPrimitive(m.text),
+                    "createdAt" to kotlinx.serialization.json.JsonPrimitive(m.createdAt),
+                ))
+            })
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                c.appContext.contentResolver.openOutputStream(uri, "wt")?.use { it.write(json.toString().toByteArray()) } ?: error("cannot write")
+            }
+            list.size
+        }.fold({ "Exported $it memories." }, { "Export failed: ${it.message}" })
+    }
+
+    /** Adds memories from a JSON file exported by Seema AI. Duplicates and secrets (passwords, keys) are skipped. */
+    fun importMemories(uri: Uri) = launch {
+        _info.value = runCatching {
+            val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                c.appContext.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: error("cannot read")
+            }
+            require(text.length < 2_000_000) { "file too large" }
+            val items = parseMemoryExport(text)
+            val existing = c.memoryRepository.all().map { it.text.trim() }.toMutableSet()
+            var added = 0; var skipped = 0
+            for (t in items) {
+                if (t in existing || com.raju.aiassistant.domain.assistant.looksSensitive(t)) { skipped++; continue }
+                c.memoryRepository.add(t); existing += t; added++
+            }
+            added to skipped
+        }.fold({ (a, sk) -> "Imported $a memories" + if (sk > 0) " ($sk skipped: duplicates or sensitive)." else "." }, { "Import failed: ${it.message}" })
+    }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }
@@ -416,4 +482,13 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     private fun setStatus(id: SecretId, text: String, isError: Boolean, busy: Boolean = false) {
         messages.value = messages.value + (id to SecretStatus(message = text, isError = isError, busy = busy))
     }
+}
+
+/** Memory texts from an exported JSON array (`[{"text": …}]`); anything else is ignored. */
+internal fun parseMemoryExport(json: String): List<String> {
+    val root = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(json) }.getOrNull() as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+    return root.mapNotNull { e ->
+        ((e as? kotlinx.serialization.json.JsonObject)?.get("text") as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() && it.length <= 1_000 }
+    }.distinct()
 }

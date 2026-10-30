@@ -9,6 +9,7 @@ import com.raju.aiassistant.domain.model.ChatRole
 import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.power.ThermalLevel
+import com.raju.aiassistant.domain.language.SeemaLanguage
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -51,6 +52,8 @@ data class HomeUiState(
     val thermal: ThermalLevel = ThermalLevel.NORMAL,
     /** The phone's own Battery Saver is on. */
     val systemPowerSave: Boolean = false,
+    /** Hindi or Bengali, as Seema is speaking right now. */
+    val language: SeemaLanguage = SeemaLanguage.HINDI,
 )
 
 private data class EngineView(val state: AssistantState, val listening: Boolean, val partial: String, val lastReply: String?, val handsFree: Boolean)
@@ -101,12 +104,16 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             )
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }
             .combine(c.powerMonitor.state) { ui, p -> ui.copy(thermal = p.thermal, systemPowerSave = p.systemPowerSave) }
+            .combine(engine.language) { ui, l -> ui.copy(language = SeemaLanguage.fromTag(c.currentSettings.value.speechLanguage) ?: l) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     /** Real weather for the dashboard (or a clear reason why there is none). */
     suspend fun loadWeather(force: Boolean) = c.weather.load(force)
 
     fun hasMicPermission() = c.voiceInput.hasPermission()
+
+    /** The user refused the microphone: the core shows "Permission needed". */
+    fun micDenied() = engine.permissionMissing("Microphone permission is needed for voice. Allow it in Settings → Apps → Seema AI → Permissions, or type in Chat.")
     fun startVoice() {
         preview.value = null
         engine.startVoice()

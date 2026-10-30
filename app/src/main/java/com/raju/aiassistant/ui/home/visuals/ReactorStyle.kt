@@ -54,6 +54,8 @@ fun reactorStyleFor(state: AssistantState): ReactorStyle = when (state) {
     AssistantState.Offline -> ReactorStyle(listOf(GREY, GREY_LIGHT, GREY, GREY_LIGHT, GREY), glow = 0.2f, rotationSpeed = 0f, bpm = 40f)
     // Slow, dim breathing: asleep but listening for the user's voice.
     AssistantState.Sleeping -> ReactorStyle(listOf(VIOLET, BLUE, GREY_LIGHT, VIOLET, BLUE), glow = 0.35f, rotationSpeed = 0.015f, bpm = 34f)
+    // Amber, slow and steady: waiting for the user to allow a permission.
+    AssistantState.WaitingPermission -> ReactorStyle(listOf(AMBER, ORANGE, AMBER, CYAN, AMBER), glow = 0.6f, rotationSpeed = 0.04f, bpm = 56f)
 }
 
 /** Short bilingual hint shown under the reactor. */
@@ -62,9 +64,10 @@ fun statusHintFor(state: AssistantState): String = when (state) {
     AssistantState.Listening -> "सुन रही हूँ… Listening"
     AssistantState.Thinking -> "सोच रही हूँ… Thinking"
     AssistantState.Speaking -> "बोल रही हूँ… (बीच में बोलें या reactor दबाएँ तो रुक जाऊँगी)"
-    AssistantState.Executing -> "काम कर रही हूँ… Executing a task"
+    AssistantState.Executing -> "काम कर रही हूँ… Processing"
     AssistantState.Success -> "हो गया! Task completed"
     AssistantState.Error -> "कुछ गड़बड़ हुई — Something went wrong"
     AssistantState.Offline -> "No internet connection — AI features unavailable"
     AssistantState.Sleeping -> "😴 सो रही हूँ… \"सीमा\" बोलकर जगाइए या reactor छुएँ"
+    AssistantState.WaitingPermission -> "🔒 Permission चाहिए — Mic की अनुमति दीजिए (Settings → Apps → Seema AI → Permissions)"
 }

@@ -146,6 +146,8 @@ class SpeechPipelineTest {
         assertEquals("hi-IN", languageFor("आप कैसे हैं?", "en-IN"))
         assertEquals("en-IN", languageFor("How are you?", "en-IN"))
         assertEquals("hi-IN", languageFor("Aap kaise ho?", "hi-IN"))
+        assertEquals("bn-IN", languageFor("আপনি কেমন আছেন?", "hi-IN"))
+        assertEquals("bn-IN", languageFor("Apni kemon achen?", "bn-IN"))
     }
 
     @Test

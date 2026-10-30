@@ -87,12 +87,13 @@ record() { # $1 = file name, $2 = seconds (screenrecord stops by itself)
   adb shell screenrecord --bit-rate 6000000 --time-limit "$2" /sdcard/$1 &
   REC=$!
 }
-# Part 1: Legacy Arc Reactor — idle rotation/heartbeat, then Listening, Thinking, Speaking, Error.
+# Part 1: Legacy Arc Reactor — idle rotation/heartbeat, then Listening, Thinking, Processing, Speaking,
+# Error, Permission needed and Offline.
 adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core LEGACY > /dev/null
 sleep 4
-record demo-1-legacy.mp4 46
+record demo-1-legacy.mp4 66
 sleep 1
-preview NONE 8; preview Listening 8; preview Thinking 7; preview Speaking 9; preview Error 6; preview NONE 6
+preview NONE 8; preview Listening 8; preview Thinking 7; preview Executing 6; preview Speaking 9; preview Error 6; preview WaitingPermission 6; preview Offline 5; preview NONE 6
 wait $REC
 # Part 2: one tap on the "🎨 Arc Reactor ⇄" chip switches to the 3D core (live switch on camera),
 # then the 3D dashboard: clock seconds, weather, stats, quick controls, and the same state reactions.
