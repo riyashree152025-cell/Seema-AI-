@@ -31,6 +31,8 @@ class TtsManager(
     private val settings: StateFlow<UserSettings>,
     /** The conversation's language (Hindi or Bengali), used when "Auto" is chosen. */
     private val conversationLanguage: StateFlow<SeemaLanguage>,
+    /** Which engines to try, in order (Automatic / Manual voice engine selection). */
+    private val engineOrder: (UserSettings) -> List<com.raju.aiassistant.domain.model.TtsEngine> = { providerOrder(it.ttsEngine) },
 ) : Speaker {
     private val _speaking = MutableStateFlow(false)
     override val speaking: StateFlow<Boolean> = _speaking.asStateFlow()
@@ -49,7 +51,12 @@ class TtsManager(
     private val lock = Mutex()
     private var current: Job? = null
 
-    override suspend fun speak(text: String): SpeakResult {
+    override suspend fun speak(text: String): SpeakResult = speak(text, only = null)
+
+    /** Voice Engine Manager → Preview: speaks [text] with exactly [engine] (no fallback). */
+    suspend fun preview(engine: com.raju.aiassistant.domain.model.TtsEngine, text: String): SpeakResult = speak(text, only = engine)
+
+    private suspend fun speak(text: String, only: com.raju.aiassistant.domain.model.TtsEngine?): SpeakResult {
         stop()
         chunksDone = 0
         var result = SpeakResult(false, "none")
@@ -58,7 +65,7 @@ class TtsManager(
                 _speaking.value = true
                 try {
                     val s = settings.value
-                    val ordered = providerOrder(s.ttsEngine).mapNotNull { e -> providers.firstOrNull { it.engine == e } }
+                    val ordered = (only?.let { listOf(it) } ?: engineOrder(s)).mapNotNull { e -> providers.firstOrNull { it.engine == e } }
                     result = pipeline.speak(
                         text = text,
                         providers = ordered,

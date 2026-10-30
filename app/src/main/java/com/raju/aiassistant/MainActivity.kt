@@ -3,6 +3,7 @@ package com.raju.aiassistant
 import android.content.Intent
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.CoreAppearance
+import com.raju.aiassistant.data.tts.local.runOfflineVoiceTest
 import kotlinx.coroutines.launch
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -47,6 +48,13 @@ class MainActivity : ComponentActivity() {
         // Debug builds only: `--es seema_preview Listening` shows that state's visuals, NONE returns to the real state.
         if (BuildConfig.DEBUG) intent?.getStringExtra("seema_preview")?.let { name ->
             (application as RajuApp).container.debugPreview.value = AssistantState.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        }
+        // Debug builds only: `--es seema_voice_test PIPER` downloads that offline voice for real, speaks a Hindi
+        // sentence through the normal speech path and logs the measured numbers (emulator proof of the engine).
+        if (BuildConfig.DEBUG) intent?.getStringExtra("seema_voice_test")?.let { name ->
+            val engine = com.raju.aiassistant.domain.model.TtsEngine.entries.firstOrNull { it.name == name } ?: return@let
+            val c = (application as RajuApp).container
+            c.appScope.launch { runOfflineVoiceTest(c, engine) }
         }
     }
 

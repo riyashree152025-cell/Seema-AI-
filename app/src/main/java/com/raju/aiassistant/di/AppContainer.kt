@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.ui.LaunchRequest
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,7 +118,11 @@ class AppContainer(context: Context) {
      * recreate. The TTS engine binding is rebuilt on the next reply; chats and memories are untouched.
      */
     fun trimForBackground() {
-        if (!engine.voiceSession.value) androidTts.release()
+        if (!engine.voiceSession.value) {
+            androidTts.release()
+            // The offline voice models hold 50–200 MB of native memory: free it; the next reply reloads it.
+            appScope.launch { sherpaHost.release() }
+        }
         cleanSharedFiles()
     }
 
@@ -133,8 +138,15 @@ class AppContainer(context: Context) {
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }
     val audioPlayer by lazy { AudioPlayer(appContext) { conversationAudio.active } }
+    /** Offline voices: model downloads, the sherpa-onnx runtime and measured engine speed. */
+    val voiceModels by lazy { com.raju.aiassistant.data.tts.local.VoiceModelManager(appContext, http, appScope) }
+    val sherpaHost by lazy { com.raju.aiassistant.data.tts.local.SherpaTtsHost(voiceModels) }
+    val voiceEngineStats by lazy { com.raju.aiassistant.data.tts.local.VoiceEngineStatsStore(appContext) }
+
     val speaker by lazy {
         val providers = listOf(
+            com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.KOKORO, sherpaHost, voiceModels) { currentSettings.value },
+            com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.PIPER, sherpaHost, voiceModels) { currentSettings.value },
             SarvamTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value.sarvamSpeaker }),
             ElevenLabsTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }) { v ->
                 settingsRepository.setElevenVoice(v.id, v.name)
@@ -145,7 +157,13 @@ class AppContainer(context: Context) {
             DeepgramTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }),
             AndroidTtsProvider(androidTts, { currentSettings.value.androidVoice }) { currentSettings.value.speechPitch },
         )
-        TtsManager(appScope, SpeechPipeline(audioPlayer), providers, androidTts, currentSettings, conversationLanguage)
+        TtsManager(
+            appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.local.MeasuredTtsProvider(it, voiceEngineStats) },
+            androidTts, currentSettings, conversationLanguage,
+        ) { s ->
+            val installed = if (sherpaHost.nativeAvailable) voiceModels.installedEngines() else emptySet()
+            com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, installed, voiceEngineStats.stats.value)
+        }
     }
     val voiceInput by lazy { VoiceInputManager(appContext) { android.util.Log.i("SeemaVoice", it) } }
     val deepgramVoiceInput by lazy {

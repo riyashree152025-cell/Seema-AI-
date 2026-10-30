@@ -17,6 +17,7 @@ okhttp = "4.12.0"
 serializationJson = "1.7.3"
 work = "2.9.1"
 pdfbox = "2.0.27.0"
+commonsCompress = "1.27.1"
 
 [libraries]
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
@@ -48,6 +49,8 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+# Unpacks the offline voice models (.tar.bz2).
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 # PDF text for the Knowledge Base (Apache PDFBox port for Android).
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfbox" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
