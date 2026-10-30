@@ -70,6 +70,7 @@ import com.raju.aiassistant.domain.model.SecretId
 import com.raju.aiassistant.domain.model.Personality
 import com.raju.aiassistant.domain.model.SttEngine
 import com.raju.aiassistant.domain.model.TtsEngine
+import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.domain.voice.VoiceCatalog
 import com.raju.aiassistant.ui.RajuViewModelFactory
 import com.raju.aiassistant.ui.components.HudPanel
@@ -285,9 +286,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Speech input language", style = MaterialTheme.typography.titleMedium)
             ChipRow(SPEECH_LANGUAGES.map { it.first }, s.speechLanguage, { tag -> SPEECH_LANGUAGES.first { it.first == tag }.second }) { viewModel.setSpeechLanguage(it) }
             ToggleRow("Speak replies aloud", s.autoSpeakReplies, viewModel::setAutoSpeak)
-            ToggleRow("Hands-free: start listening when the app opens and keep listening until you press Stop", s.autoListen, viewModel::setAutoListen)
+            Text("Voice mode (microphone & battery)", style = MaterialTheme.typography.titleMedium)
+            VoiceMode.entries.forEach { m -> HintRadioRow(m.label, m.hint, s.voiceMode == m) { viewModel.setVoiceMode(m) } }
             Text(
-                "The microphone is used only while Seema AI is on screen; it stops when you leave the app. With a Deepgram key saved, hands-free listening uses Deepgram (completely silent); otherwise the Google recogniser's start beep is muted.",
+                "The microphone is used only while Seema AI is on screen; it stops when you leave the app — there is no background microphone service. Push-to-talk uses the least battery. With a Deepgram key saved, continuous listening uses Deepgram (completely silent); otherwise the Google recogniser's start beep is muted.",
                 style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
             )
             ToggleRow("Interrupt by voice: start talking while Seema speaks and she stops to listen", s.bargeIn, viewModel::setBargeIn)
@@ -408,10 +410,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Edit individual memories in Tools.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
 
-        HudPanel(title = "Performance") {
-            ToggleRow("Low-power animation mode", s.lowPowerMode, viewModel::setLowPowerMode)
-            ToggleRow("Reduced motion", s.reducedMotion, viewModel::setReducedMotion)
-        }
+        PerformanceAndBattery(s, viewModel)
 
         HudPanel(title = "About") {
             Text("Seema AI Assistant ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
@@ -552,7 +551,7 @@ private fun StatusRow(label: String, status: String, ok: Boolean, action: Pair<S
 }
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked = checked, onCheckedChange = onChange)

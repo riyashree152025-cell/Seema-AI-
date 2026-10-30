@@ -12,6 +12,7 @@ import com.raju.aiassistant.domain.model.ChatMessage
 import com.raju.aiassistant.domain.model.ChatRole
 import com.raju.aiassistant.domain.model.SecretId
 import com.raju.aiassistant.domain.model.UserSettings
+import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.domain.tools.Contact
 import com.raju.aiassistant.domain.tools.ContactLookup
 import com.raju.aiassistant.domain.tools.DeviceTools
@@ -60,6 +61,8 @@ private const val PNR_ENQUIRY_URL = "https://www.indianrail.gov.in/enquiry/PNR/P
 private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 private const val MAX_LISTEN_FAILURES = 3
+/** Chat messages kept in memory (older ones stay in the database). */
+private const val MAX_TRANSCRIPT_IN_MEMORY = 300
 /** A voice message ending in one of these was cut off by a pause: wait for the rest. */
 private val CONTINUATION = Regex("(^|\\s)(aur|lekin|par|ki|ke|to|toh|matlab|jaise|and|but|or|so|because|और|लेकिन|पर|कि|के|तो|मतलब|जैसे|क्योंकि)[\\s,.…]*$", RegexOption.IGNORE_CASE)
 /** How long to wait for the rest of a sentence that ended in "aur…" / "lekin…". */
@@ -158,6 +161,8 @@ class AssistantEngine(
 
     /** Each listen() gets a number; a delayed re-listen only runs if no newer listen/stop happened. */
     private var listenGen = 0
+    /** Default model found per provider and key (when none is chosen in Settings). */
+    private val discoveredModels = mutableMapOf<Pair<ProviderId, Int>, String>()
     /** True while the current turn came from the user's voice (errors are then also spoken). */
     private var voiceTurn = false
 
@@ -319,7 +324,10 @@ class AssistantEngine(
                     }
                 } else if (keepGoing && (err.noSpeech || err.unclear)) {
                     // Silence is normal in hands-free mode: listen again, or doze off after a quiet while.
-                    if (sleepDue()) goToSleep() else relisten(300)
+                    if (sleepDue()) {
+                        // Always-listening sleeps and waits for her name; a session simply ends (mic off).
+                        if (settings.value.voiceMode == VoiceMode.ALWAYS) goToSleep() else endSession()
+                    } else relisten(300)
                 } else if (err.transient && _voiceSession.value && listenFailures < MAX_LISTEN_FAILURES) {
                     // Recogniser busy/restarting: harmless, try again shortly (also in tap-to-talk).
                     listenFailures++
@@ -370,6 +378,19 @@ class AssistantEngine(
         cancelWork()
         _heard.value = null
         trace("stop")
+        _state.value = AssistantState.Idle
+    }
+
+    /** A conversation session timed out: microphone off, nothing keeps running. */
+    private fun endSession() {
+        trace("session ended after silence")
+        handsFree = false
+        _handsFreeActive.value = false
+        listenGen++
+        voice.stop()
+        conversationMode.exit()
+        _voiceSession.value = false
+        _hint.value = if (prefersHindiUi()) "बातचीत बंद — फिर बात करने के लिए Mic दबाइए।" else "Conversation ended — tap Mic to talk again."
         _state.value = AssistantState.Idle
     }
 
@@ -473,8 +494,10 @@ class AssistantEngine(
             return
         }
         val provider = providerFor(providerId, key)
-        val model = s.modelFor(providerId) ?: when (val models = provider.listModels()) {
-            is AiResult.Success -> pickDefaultModel(providerId, models.value)?.id
+        // The model list is fetched once per provider and key, not before every request.
+        val cacheKey = providerId to key.hashCode()
+        val model = s.modelFor(providerId) ?: discoveredModels[cacheKey] ?: when (val models = provider.listModels()) {
+            is AiResult.Success -> pickDefaultModel(providerId, models.value)?.id?.also { discoveredModels[cacheKey] = it }
             is AiResult.Failure -> { fail(models.message); return }
         }
         if (model == null) {
@@ -987,7 +1010,8 @@ class AssistantEngine(
     private suspend fun record(role: ChatRole, text: String) {
         val saved = if (settings.value.saveHistory) runCatching { history.add(role, text) }.getOrNull() else null
         val message = ChatMessage(id = saved ?: localId--, conversationId = 0, role = role, text = text, createdAt = clock())
-        _transcript.value = _transcript.value + message
+        // Only the recent conversation is kept in memory; the full history stays in the database.
+        _transcript.value = (_transcript.value + message).takeLast(MAX_TRANSCRIPT_IN_MEMORY)
     }
 
     private suspend fun fail(message: String, state: AssistantState = AssistantState.Error) {

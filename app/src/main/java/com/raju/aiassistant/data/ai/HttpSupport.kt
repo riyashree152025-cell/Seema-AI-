@@ -120,8 +120,9 @@ suspend fun <T> withRetry(retries: Int = 1, backoffMs: Long = 1_000, block: susp
     while (true) {
         val result = block()
         if (result is AiResult.Failure && result.kind in RETRYABLE && attempt < retries) {
+            // Exponential backoff: 1 s, 2 s, 4 s …
+            delay(backoffMs shl attempt)
             attempt++
-            delay(backoffMs * attempt)
             continue
         }
         return result

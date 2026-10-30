@@ -36,7 +36,8 @@ class AssistantEngineTest {
     private class FakeProvider(val replies: ArrayDeque<AiResult<String>>) : AiProvider {
         override val id = ProviderId.GEMINI
         val calls = mutableListOf<List<Turn>>()
-        override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+        var modelListings = 0
+        override suspend fun listModels(): AiResult<List<AiModel>> { modelListings++; return AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash"))) }
         override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> {
             calls += turns; return replies.removeFirst()
         }
@@ -549,6 +550,7 @@ class AssistantEngineTest {
 
     @Test
     fun quietForAMinuteSheSleepsAndHerNameWakesHer() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()
         val e = sleepyEngine(wake, FakeTranscriber("Seema, time kya hua?"), AiResult.Success("Saade paanch baje hain."))
         e.startHandsFree()
@@ -569,6 +571,7 @@ class AssistantEngineTest {
 
     @Test
     fun otherTalkDoesNotWakeHer() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()
         val e = sleepyEngine(wake, FakeTranscriber("TV pe news chal rahi hai"))
         e.startHandsFree()
@@ -584,6 +587,7 @@ class AssistantEngineTest {
 
     @Test
     fun justHerNameGetsAGreetingAndOpeningTheAppWakesHer() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()
         val e = sleepyEngine(wake, FakeTranscriber("सीमा"))
         e.startHandsFree()
@@ -859,5 +863,33 @@ class AssistantEngineTest {
         assertTrue(e.transcript.value.any { it.text.contains("503") })
         assertEquals(2, voice.starts) // listening again after showing (and saying) the error
         assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    // ---------------------------------------------------------------- power
+
+    @Test
+    fun theModelListIsFetchedOnceNotBeforeEveryRequest() = runTest {
+        val e = engine(AiResult.Success("Ek."), AiResult.Success("Do."), AiResult.Success("Teen."))
+        e.submit("ek"); settle()
+        e.submit("do"); settle()
+        e.submit("teen"); settle()
+        assertEquals(3, provider.calls.size)
+        assertEquals(1, provider.modelListings)
+    }
+
+    @Test
+    fun aConversationSessionEndsByItselfAfterSilence() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.SESSION)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, null)
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        settle()
+        assertEquals(AssistantState.Idle, e.state.value) // not sleeping: the microphone is simply off
+        assertTrue(!e.handsFreeActive.value)
+        assertEquals(0, wake.starts) // no wake-word listener in session mode
+        assertEquals(1, voice.starts)
+        assertNotNull(e.hint.value)
     }
 }

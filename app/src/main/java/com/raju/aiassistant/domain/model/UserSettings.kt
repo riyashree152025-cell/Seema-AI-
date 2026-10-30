@@ -42,6 +42,20 @@ enum class AnnounceApp(val packageName: String, val label: String) {
 /** Result of the last real connection test for a provider. */
 data class ConnectionTest(val success: Boolean, val message: String, val timestamp: Long)
 
+/**
+ * How the microphone is used (power vs convenience):
+ * - PUSH_TO_TALK: the mic opens only when the user taps it, for one request (lowest battery use).
+ * - SESSION: tapping Mic starts a conversation that keeps listening and ends by itself after the
+ *   sleep timeout of silence (or Stop).
+ * - ALWAYS: listening starts when the app opens; after the timeout she sleeps and wakes on her name.
+ *   Only while the app is on screen — there is no background microphone service.
+ */
+enum class VoiceMode(val label: String, val hint: String) {
+    PUSH_TO_TALK("Push-to-talk (battery saver)", "★ Mic opens only when you tap it"),
+    SESSION("Conversation session", "Tap Mic once, talk freely; it stops after a quiet while"),
+    ALWAYS("Always listening (app open)", "Listens as soon as the app opens; sleeps and wakes on \"Seema\""),
+}
+
 /** Non-secret user preferences (persisted in DataStore). */
 data class UserSettings(
     val defaultProvider: ProviderId = ProviderId.GEMINI,
@@ -70,8 +84,8 @@ data class UserSettings(
     val speechLanguage: String = "hi-IN",
     val autoSpeakReplies: Boolean = true,
     val continuousConversation: Boolean = false,
-    /** Hands-free: start listening as soon as the app is open and keep listening until Stop is pressed. */
-    val autoListen: Boolean = true,
+    /** How the microphone is used. Battery saver (push-to-talk) by default. */
+    val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
     /** Talking while Seema speaks stops her (voice conversations only). */
     val bargeIn: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
@@ -80,6 +94,10 @@ data class UserSettings(
     val wakeWord: Boolean = true,
     /** Morning briefing (journeys, yesterday's spending) and the Sunday expense report as notifications. */
     val businessReminders: Boolean = true,
+    /** Smart power: animations slow down and stop when nobody is using the app. */
+    val smartPower: Boolean = true,
+    /** Thermal protection: lighter visuals when Android reports the phone is getting hot. */
+    val thermalProtection: Boolean = true,
     val personality: Personality = Personality.MASTI,
     val announceNotifications: Boolean = false,
     val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),
@@ -98,6 +116,9 @@ data class UserSettings(
     val assistantPaused: Boolean = false,
 ) {
     fun modelFor(provider: ProviderId): String? = models[provider]
+
+    /** Start listening as soon as the app opens (only in Always-listening mode). */
+    val autoListen: Boolean get() = voiceMode == VoiceMode.ALWAYS
 
     /** Notification announcements are allowed right now. */
     val announcementsActive: Boolean get() = announceNotifications && !assistantPaused && !safetyMode

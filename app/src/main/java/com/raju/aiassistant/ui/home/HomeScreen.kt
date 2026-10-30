@@ -84,6 +84,18 @@ import com.raju.aiassistant.ui.theme.SuccessGreen
 import com.raju.aiassistant.ui.theme.TextSecondary
 import com.raju.aiassistant.ui.theme.WarningAmber
 import kotlin.math.abs
+import android.os.SystemClock
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import com.raju.aiassistant.domain.power.ActivityPhase
+import com.raju.aiassistant.domain.power.IDLE_AFTER_MS
+import com.raju.aiassistant.domain.power.SLEEP_AFTER_MS
+import com.raju.aiassistant.domain.power.ThermalLevel
+import com.raju.aiassistant.domain.power.activityPhaseFor
+import kotlinx.coroutines.delay
+import com.raju.aiassistant.domain.model.VoiceMode
 import kotlin.math.sin
 
 @Composable
@@ -96,7 +108,23 @@ fun HomeScreen(
     val assistantState = state.assistantState
     val style = reactorStyleFor(assistantState)
 
-    val profile = motionProfileFor(state.lowPowerMode, state.reducedMotion, rememberSystemAnimationsEnabled())
+    // Smart power: when nobody touches the screen and Seema is not busy, the visuals slow down
+    // (idle) and then stop drawing altogether (sleep) until the next touch or event.
+    var lastTouch by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    var phase by remember { mutableStateOf(ActivityPhase.ACTIVE) }
+    val engaged = state.previewState != null || state.listening ||
+        assistantState !in setOf(AssistantState.Idle, AssistantState.Offline, AssistantState.Sleeping)
+    LaunchedEffect(engaged, assistantState, lastTouch, state.smartPower) {
+        phase = activityPhaseFor(state.smartPower, engaged, 0)
+        if (engaged || !state.smartPower) return@LaunchedEffect
+        delay(IDLE_AFTER_MS)
+        phase = ActivityPhase.IDLE
+        delay(SLEEP_AFTER_MS - IDLE_AFTER_MS)
+        phase = ActivityPhase.SLEEP
+    }
+    val thermal = if (state.thermalProtection) state.thermal else ThermalLevel.NORMAL
+    val batterySaver = state.lowPowerMode || (state.smartPower && state.systemPowerSave)
+    val profile = motionProfileFor(batterySaver, state.reducedMotion, rememberSystemAnimationsEnabled(), thermal, phase)
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val running = profile.animate && lifecycleState.isAtLeast(Lifecycle.State.STARTED)
     val time = rememberAnimationTime(running, profile.maxFps)
@@ -131,12 +159,24 @@ fun HomeScreen(
 
     var showPreview by rememberSaveable { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            // Any touch counts as activity (observed only, never consumed: buttons work as before).
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        lastTouch = SystemClock.uptimeMillis()
+                    }
+                }
+            },
+    ) {
         CyberBackground(
             color = Color(style.primaryArgb),
             accent = Color(style.paletteArgb[2]),
             time = timeProvider,
-            density = if (!profile.animate) 0.35f else if (state.lowPowerMode) 0.3f else 0.62f,
+            density = profile.backgroundDensity,
             telemetry = telemetry,
             modifier = Modifier.fillMaxSize(),
             liveClock = running,
@@ -166,6 +206,16 @@ fun HomeScreen(
                     )
                     FilledTonalButton(onClick = viewModel::resume) { Text("Resume") }
                 }
+            }
+
+            if (thermal >= ThermalLevel.HOT) {
+                // Android reports real heat: say why the visuals went quiet.
+                Text(
+                    "🌡 फ़ोन गरम है (${state.thermal.label}) — animations कम कर दी हैं; ठंडा होते ही अपने-आप वापस।",
+                    Modifier.fillMaxWidth().hudFrame(ErrorRed, cut = 8.dp, fillAlpha = 0.08f).padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ErrorRed,
+                )
             }
 
             if (state.safetyMode) {
@@ -288,7 +338,11 @@ fun HomeScreen(
             val busy = assistantState.isBusy || state.listening
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ControlButton(
-                    if (state.handsFree) "Mic ON" else "Voice",
+                    when {
+                        state.handsFree -> "Mic ON"
+                        state.voiceMode == VoiceMode.PUSH_TO_TALK -> "Talk"
+                        else -> "Voice"
+                    },
                     if (state.handsFree) Icons.Filled.Mic else Icons.Filled.MicOff,
                     enabled = true,
                     onClick = onVoice,

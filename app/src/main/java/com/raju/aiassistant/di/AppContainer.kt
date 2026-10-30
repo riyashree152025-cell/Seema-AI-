@@ -80,6 +80,25 @@ class AppContainer(context: Context) {
     val connectivityObserver by lazy { ConnectivityObserver(appContext) }
     val online: StateFlow<Boolean> by lazy { connectivityObserver.isOnline.stateIn(appScope, SharingStarted.Eagerly, true) }
 
+    /** Thermal status and Battery Saver from Android (event-driven, no polling). */
+    val powerMonitor by lazy { com.raju.aiassistant.core.power.PowerMonitor(appContext) }
+
+    /**
+     * The app went to the background for a while (Android trims memory): free what is cheap to
+     * recreate. The TTS engine binding is rebuilt on the next reply; chats and memories are untouched.
+     */
+    fun trimForBackground() {
+        if (!engine.voiceSession.value) androidTts.release()
+        cleanSharedFiles()
+    }
+
+    /** Files Seema created for sharing (code, notes) are deleted after a day; nothing else is touched. */
+    fun cleanSharedFiles() {
+        val dir = java.io.File(appContext.cacheDir, "shared")
+        val cutoff = System.currentTimeMillis() - 24 * 60 * 60_000L
+        dir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
+    }
+
     val providerFactory by lazy { AiProviderFactory(http) }
     val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */

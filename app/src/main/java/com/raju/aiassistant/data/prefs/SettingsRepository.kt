@@ -19,6 +19,7 @@ import com.raju.aiassistant.domain.model.Personality
 import com.raju.aiassistant.domain.model.SttEngine
 import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.domain.model.UserSettings
+import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.domain.model.validSarvamSpeaker
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -61,11 +62,16 @@ class SettingsRepository(private val context: Context) {
             speechLanguage = this[Keys.SPEECH_LANGUAGE] ?: d.speechLanguage,
             autoSpeakReplies = this[Keys.AUTO_SPEAK] ?: d.autoSpeakReplies,
             continuousConversation = this[Keys.CONTINUOUS] ?: d.continuousConversation,
-            autoListen = this[Keys.AUTO_LISTEN] ?: d.autoListen,
+            // Older versions stored a hands-free switch: keep a user's explicit choice.
+            voiceMode = this[Keys.VOICE_MODE]?.let { m -> VoiceMode.entries.firstOrNull { it.name == m } }
+                ?: this[Keys.AUTO_LISTEN]?.let { if (it) VoiceMode.ALWAYS else VoiceMode.PUSH_TO_TALK }
+                ?: d.voiceMode,
             bargeIn = this[Keys.BARGE_IN] ?: d.bargeIn,
             sleepAfterSeconds = this[Keys.SLEEP_AFTER] ?: d.sleepAfterSeconds,
             wakeWord = this[Keys.WAKE_WORD] ?: d.wakeWord,
             businessReminders = this[Keys.BUSINESS_REMINDERS] ?: d.businessReminders,
+            smartPower = this[Keys.SMART_POWER] ?: d.smartPower,
+            thermalProtection = this[Keys.THERMAL_PROTECTION] ?: d.thermalProtection,
             personality = enumOr(this[Keys.PERSONALITY], d.personality),
             announceNotifications = this[Keys.ANNOUNCE] ?: d.announceNotifications,
             announceApps = this[Keys.ANNOUNCE_APPS] ?: d.announceApps,
@@ -107,7 +113,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSpeechLanguage(v: String) = edit { it[Keys.SPEECH_LANGUAGE] = v }
     suspend fun setAutoSpeak(v: Boolean) = edit { it[Keys.AUTO_SPEAK] = v }
     suspend fun setContinuous(v: Boolean) = edit { it[Keys.CONTINUOUS] = v }
-    suspend fun setAutoListen(v: Boolean) = edit { it[Keys.AUTO_LISTEN] = v }
+    suspend fun setAutoListen(v: Boolean) = setVoiceMode(if (v) VoiceMode.ALWAYS else VoiceMode.PUSH_TO_TALK)
+    suspend fun setVoiceMode(v: VoiceMode) = edit { it[Keys.VOICE_MODE] = v.name }
+    suspend fun setSmartPower(v: Boolean) = edit { it[Keys.SMART_POWER] = v }
+    suspend fun setThermalProtection(v: Boolean) = edit { it[Keys.THERMAL_PROTECTION] = v }
     suspend fun setBargeIn(v: Boolean) = edit { it[Keys.BARGE_IN] = v }
     suspend fun setSleepAfterSeconds(v: Int) = edit { it[Keys.SLEEP_AFTER] = v.coerceIn(0, 3600) }
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
@@ -165,6 +174,9 @@ class SettingsRepository(private val context: Context) {
         val AUTO_SPEAK = booleanPreferencesKey("auto_speak")
         val CONTINUOUS = booleanPreferencesKey("continuous_conversation")
         val AUTO_LISTEN = booleanPreferencesKey("auto_listen")
+        val VOICE_MODE = stringPreferencesKey("voice_mode")
+        val SMART_POWER = booleanPreferencesKey("smart_power")
+        val THERMAL_PROTECTION = booleanPreferencesKey("thermal_protection")
         val BARGE_IN = booleanPreferencesKey("barge_in")
         val SLEEP_AFTER = intPreferencesKey("sleep_after_seconds")
         val WAKE_WORD = booleanPreferencesKey("wake_word")
