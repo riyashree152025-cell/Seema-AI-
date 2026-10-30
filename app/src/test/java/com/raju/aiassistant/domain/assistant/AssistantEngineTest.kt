@@ -675,7 +675,8 @@ class AssistantEngineTest {
         assertTrue(e.transcript.value.any { it.text.contains("Today's total ₹200") })
         e.submit("aaj kitna kharcha hua?")
         settle()
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("200 rupees")) // "₹" is spoken as a word
+        // Summaries are in Hindi now (English is not a reply language); the amount is spoken, not "₹".
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("200") && speaker.spoken.last().contains("खर्चा") && !speaker.spoken.last().contains("₹"))
     }
 
     @Test
@@ -804,7 +805,7 @@ class AssistantEngineTest {
         voice.onResult!!("hello")
         settle()
         assertTrue(e.transcript.value.any { it.text.contains("empty reply") })
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("couldn't answer"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("जवाब नहीं दे पाई"))
     }
 
     @Test
