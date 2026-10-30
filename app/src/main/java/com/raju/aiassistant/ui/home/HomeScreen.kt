@@ -309,6 +309,7 @@ fun HomeScreen(
                     if (showModern) HoloCore(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
                     else ArcReactor(style, profile.particleCount, profile.richEffects, timeProvider, speechLevel, Modifier.size(coreSize))
                 }
+                val waveWidth = maxWidth * 0.55f
                 if (modern) {
                     // The state name sits on the hologram itself, so the core gets the space.
                     val stateColor = Color(style.primaryArgb)
@@ -319,7 +320,7 @@ fun HomeScreen(
                             color = stateColor,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         )
-                        VoiceWaveform(assistantState, stateColor, timeProvider, speechLevel, Modifier.width(maxWidth * 0.55f).height(18.dp))
+                        VoiceWaveform(assistantState, stateColor, timeProvider, speechLevel, Modifier.width(waveWidth).height(18.dp))
                     }
                 }
             }
