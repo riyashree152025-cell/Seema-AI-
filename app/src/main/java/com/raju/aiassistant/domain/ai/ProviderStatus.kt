@@ -29,16 +29,18 @@ private val HTTP_CODE = Regex("""\(HTTP (\d{3})\)""")
 fun httpCodeOf(message: String?): Int? = message?.let { HTTP_CODE.find(it)?.groupValues?.get(1)?.toIntOrNull() }
 
 fun statusFor(kind: FailureKind?, httpCode: Int?): ProviderStatus = when (kind) {
-    null -> ProviderStatus.FAILED
     FailureKind.NOT_CONFIGURED -> ProviderStatus.NOT_CONFIGURED
     FailureKind.INVALID_KEY -> if (httpCode == 403) ProviderStatus.AUTH_FAILED else ProviderStatus.INVALID_KEY
     FailureKind.RATE_LIMITED -> ProviderStatus.RATE_LIMITED
     FailureKind.QUOTA_EXCEEDED -> ProviderStatus.QUOTA_EXCEEDED
     FailureKind.NETWORK, FailureKind.TIMEOUT -> ProviderStatus.NETWORK_ERROR
     FailureKind.SERVER -> ProviderStatus.UNAVAILABLE
-    FailureKind.BLOCKED, FailureKind.UNKNOWN -> when (httpCode) {
+    // null = a result saved by an older version: only its HTTP code is known.
+    null, FailureKind.BLOCKED, FailureKind.UNKNOWN -> when (httpCode) {
         401 -> ProviderStatus.INVALID_KEY
         403 -> ProviderStatus.AUTH_FAILED
+        429 -> ProviderStatus.RATE_LIMITED
+        in 500..599 -> ProviderStatus.UNAVAILABLE
         else -> ProviderStatus.FAILED
     }
 }

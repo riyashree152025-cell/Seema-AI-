@@ -143,6 +143,12 @@ class AppContainer(context: Context) {
     val sherpaHost by lazy { com.raju.aiassistant.data.tts.local.SherpaTtsHost(voiceModels) }
     val voiceEngineStats by lazy { com.raju.aiassistant.data.tts.local.VoiceEngineStatsStore(appContext) }
 
+    /** The voice engines that will be tried, in order (Automatic / Manual selection, installed offline voices, measured speed). */
+    fun voiceEnginesFor(s: com.raju.aiassistant.domain.model.UserSettings): List<TtsEngine> {
+        val installed = if (sherpaHost.nativeAvailable) voiceModels.installedEngines() else emptySet()
+        return com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, installed, voiceEngineStats.stats.value)
+    }
+
     val speaker by lazy {
         val providers = listOf(
             com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.KOKORO, sherpaHost, voiceModels) { currentSettings.value },
@@ -160,10 +166,7 @@ class AppContainer(context: Context) {
         TtsManager(
             appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.local.MeasuredTtsProvider(it, voiceEngineStats) },
             androidTts, currentSettings, conversationLanguage,
-        ) { s ->
-            val installed = if (sherpaHost.nativeAvailable) voiceModels.installedEngines() else emptySet()
-            com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, installed, voiceEngineStats.stats.value)
-        }
+        ) { s -> voiceEnginesFor(s) }
     }
     val voiceInput by lazy { VoiceInputManager(appContext) { android.util.Log.i("SeemaVoice", it) } }
     val deepgramVoiceInput by lazy {
