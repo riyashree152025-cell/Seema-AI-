@@ -1005,6 +1005,84 @@ class AssistantEngineTest {
         assertNull(e.lastError.value)
     }
 
+    private fun groqFallbackEngine(scope: kotlinx.coroutines.CoroutineScope, gemini: AiProvider): AssistantEngine {
+        keys[SecretId.GROQ_API_KEY] = "groq"
+        val groq = object : AiProvider {
+            override val id = ProviderId.GROQ
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("llama-3.3-70b-versatile", "Llama")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>) = AiResult.Success("Groq se jawab")
+        }
+        return AssistantEngine(
+            scope = scope, settings = settings, secret = { keys[it] },
+            providerFor = { id, _ -> if (id == ProviderId.GROQ) groq else gemini }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            fallbackProviders = { listOf(ProviderId.GEMINI, ProviderId.GROQ) },
+        )
+    }
+
+    @Test
+    fun theReplyShowsWhichProviderAndModelReallyAnswered() = runTest {
+        val e = groqFallbackEngine(backgroundScope, FakeProvider(ArrayDeque(listOf(AiResult.Failure(FailureKind.SERVER, "Gemini is overloaded (503)")))))
+        e.submit("hello")
+        settle()
+        assertEquals("Groq · llama-3.3-70b-versatile", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.via)
+        val route = e.lastRoute.value!!
+        assertEquals(ProviderId.GEMINI, route.requested)
+        assertEquals(ProviderId.GROQ, route.answeredBy)
+        assertEquals("llama-3.3-70b-versatile", route.model) // not Gemini's model
+        assertTrue(route.usedFallback)
+        assertEquals("llama-3.3-70b-versatile", e.latencies.value.last().model)
+    }
+
+    @Test
+    fun aDirectReplyIsMarkedWithTheChosenProvider() = runTest {
+        val e = engine(AiResult.Success("Namaste"))
+        e.submit("hello")
+        settle()
+        assertEquals("Gemini · gemini-2.5-flash", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.via)
+        assertEquals(false, e.lastRoute.value!!.usedFallback)
+    }
+
+    @Test
+    fun testActiveAiUsesTheRealChatPathAndLeavesTheChatAlone() = runTest {
+        val e = engine(AiResult.Success("OK"))
+        val r = e.testActiveAi()
+        assertTrue(r.ok)
+        assertEquals(ProviderId.GEMINI, r.answeredBy)
+        assertEquals("gemini-2.5-flash", r.model)
+        assertEquals("OK", r.reply)
+        assertEquals(false, r.usedFallback)
+        assertEquals(1, provider.calls.size) // a real request was sent
+        assertTrue(e.transcript.value.isEmpty())
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun testActiveAiReportsWhenAnotherProviderReallyAnswers() = runTest {
+        val e = groqFallbackEngine(backgroundScope, FakeProvider(ArrayDeque(listOf(AiResult.Failure(FailureKind.INVALID_KEY, "API key was rejected (HTTP 401)")))))
+        val r = e.testActiveAi()
+        assertTrue(r.ok)
+        assertTrue(r.usedFallback)
+        assertEquals(ProviderId.GROQ, r.answeredBy)
+        assertEquals("llama-3.3-70b-versatile", r.model)
+        assertEquals("API key was rejected (HTTP 401)", r.fallbackReason)
+    }
+
+    @Test
+    fun testActiveAiFailsHonestlyWithoutKeyOrInternetOrAnswer() = runTest {
+        val e = engine(AiResult.Failure(FailureKind.RATE_LIMITED, "Too many requests (HTTP 429)"))
+        val failed = e.testActiveAi()
+        assertEquals(false, failed.ok)
+        assertNull(failed.answeredBy)
+        assertEquals("Too many requests (HTTP 429)", failed.error)
+        online = false
+        assertEquals("No internet connection.", e.testActiveAi().error)
+        online = true
+        keys.remove(SecretId.GEMINI_API_KEY)
+        assertTrue(e.testActiveAi().error!!.contains("API key is not set"))
+    }
+
     @Test
     fun withoutAFallbackTheRealErrorIsShown() = runTest {
         val e = engine(AiResult.Failure(FailureKind.SERVER, "Gemini is overloaded (503)"))

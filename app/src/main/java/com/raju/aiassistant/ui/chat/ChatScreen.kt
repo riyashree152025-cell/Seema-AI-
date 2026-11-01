@@ -255,6 +255,9 @@ private fun MessageBubble(message: ChatMessage, onRepeat: ((String) -> Unit)?) {
                     Text(linkify(message.text), Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = if (isUser) 12.dp else 0.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
                 }
                 if (!isUser) {
+                    message.via?.let { via ->
+                        Text("via $via", Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     val clipboard = LocalClipboardManager.current
                     Row(Modifier.padding(horizontal = 4.dp)) {
                         TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) { Text("Copy", style = MaterialTheme.typography.labelMedium) }
