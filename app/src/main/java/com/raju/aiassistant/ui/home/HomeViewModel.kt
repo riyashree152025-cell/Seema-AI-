@@ -89,7 +89,10 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 paused = settings.assistantPaused,
                 safetyMode = settings.safetyMode,
                 handsFree = ev.handsFree,
-                voiceEngine = settings.ttsEngine.label.substringBefore(" ").uppercase(),
+                // The engine that is really tried first (Automatic mode may pick an offline voice, not the one chosen under Voice).
+                voiceEngine = (if (settings.voiceEngineAuto) "AUTO·" else "") +
+                    // (installed models only: loading the native runtime here would block the UI thread)
+                    com.raju.aiassistant.domain.voice.voiceEngineOrder(settings.voiceEngineAuto, settings.ttsEngine, c.voiceModels.installedEngines(), c.voiceEngineStats.stats.value).first().label.substringBefore(" ").uppercase(),
                 listenEngine = settings.sttEngine.label.substringBefore(" ").uppercase(),
                 listenMode = when {
                     ev.handsFree && settings.voiceMode == VoiceMode.SESSION -> "Session"

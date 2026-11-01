@@ -53,7 +53,8 @@ jobs:
             logcat.txt
           if-no-files-found: ignore
       - name: Publish demo recordings
-        if: always() && matrix.api-level == 35 && hashFiles('demo-*.mp4') != ''
+        # Publishing the demo pre-release only when started by hand (Actions → Run workflow), never on a branch push.
+        if: always() && github.event_name == 'workflow_dispatch' && matrix.api-level == 35 && hashFiles('demo-*.mp4') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

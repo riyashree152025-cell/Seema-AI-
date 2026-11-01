@@ -3,6 +3,7 @@ package com.raju.aiassistant.domain.assistant
 import com.raju.aiassistant.data.search.WebSearch
 import com.raju.aiassistant.domain.ai.AiProvider
 import com.raju.aiassistant.domain.ai.Turn
+import com.raju.aiassistant.domain.ai.TurnRole
 import com.raju.aiassistant.domain.knowledge.KnowledgeSearch
 import com.raju.aiassistant.domain.knowledge.NoKnowledge
 import com.raju.aiassistant.domain.language.Detection
@@ -77,6 +78,7 @@ private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
+private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 private const val MAX_LISTEN_FAILURES = 3
@@ -526,15 +528,13 @@ class AssistantEngine(
             return
         }
         val provider = providerFor(providerId, key)
-        // The model list is fetched once per provider and key, not before every request.
-        val cacheKey = providerId to key.hashCode()
-        val model = s.modelFor(providerId) ?: discoveredModels[cacheKey] ?: when (val models = provider.listModels()) {
-            is AiResult.Success -> pickDefaultModel(providerId, models.value)?.id?.also { discoveredModels[cacheKey] = it }
-            is AiResult.Failure -> { fail(models.message); return }
-        }
-        if (model == null) {
-            fail("No chat model is available for this ${providerId.shortName} key.")
-            return
+        val model = when (val m = resolveModel(providerId, key, provider)) {
+            is AiResult.Success -> m.value
+            is AiResult.Failure -> {
+                _lastRoute.value = AiRoute(providerId, null, null, clock(), m.message)
+                fail(m.message)
+                return
+            }
         }
 
         ModelAdvice.warning(model)?.let { w ->
@@ -597,6 +597,7 @@ class AssistantEngine(
             turnActive = false
         }
         var answeredBy = providerId
+        var answeredModel = model
         var raw = when (streamed) {
             is AiResult.Success -> streamed.value
             is AiResult.Failure -> {
@@ -605,33 +606,38 @@ class AssistantEngine(
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
                 val backup = if (streamed.kind in FALLBACK_KINDS && spokenHead == null) fallbackReply(providerId, system, turns) else null
                 if (backup == null) {
+                    _lastRoute.value = AiRoute(providerId, null, model, clock(), streamed.message)
                     fail(streamed.message, if (streamed.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
                     return
                 }
-                note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.first.shortName} instead.")
-                answeredBy = backup.first
-                backup.second
+                note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.provider.shortName} instead.")
+                answeredBy = backup.provider
+                answeredModel = backup.model
+                backup.text
             }
         }
         trace("ai reply (${raw.length} chars)")
         var parsedRaw = parseReply(raw)
         if (parsedRaw.text.isBlank() && parsedRaw.actions.isEmpty() && spokenHead == null && answeredBy == providerId) {
             // An empty answer is a failure too: let another AI try before giving up.
-            fallbackReply(providerId, system, turns)?.let { (id, text) ->
-                note("↪ ${providerId.shortName} returned an empty reply — answered by ${id.shortName} instead.")
-                answeredBy = id
-                raw = text
-                parsedRaw = parseReply(text)
+            fallbackReply(providerId, system, turns)?.let { b ->
+                note("↪ ${providerId.shortName} returned an empty reply — answered by ${b.provider.shortName} instead.")
+                answeredBy = b.provider
+                answeredModel = b.model
+                raw = b.text
+                parsedRaw = parseReply(b.text)
             }
         }
         val repetition = collapseRepetition(parsedRaw.text)
         val parsed = parsedRaw.copy(text = repetition.text)
         if (parsed.text.isBlank() && parsed.actions.isEmpty()) {
             recordLatency(providerId, model, firstTextAt.get(), ok = false)
+            _lastRoute.value = AiRoute(providerId, null, model, clock(), "empty reply")
             fail("${providerId.shortName} returned an empty reply (model $model). Tap Retry or choose another model.")
             return
         }
-        if (parsed.text.isNotBlank()) record(ChatRole.ASSISTANT, parsed.text)
+        _lastRoute.value = AiRoute(providerId, answeredBy, answeredModel, clock(), null)
+        if (parsed.text.isNotBlank()) record(ChatRole.ASSISTANT, parsed.text, via = "${answeredBy.shortName} · $answeredModel")
         if (repetition.degenerate) {
             note("⚠️ The reply from model \"$model\" was repeating itself, so the repeats were removed. A recommended model in Settings usually fixes this.")
         }
@@ -646,7 +652,7 @@ class AssistantEngine(
                 turnActive = false
             }
         }
-        recordLatency(answeredBy, model, firstTextAt.get(), ok = true)
+        recordLatency(answeredBy, answeredModel, firstTextAt.get(), ok = true)
 
         var hadActions = false
         for (action in parsed.actions) {
@@ -680,21 +686,65 @@ class AssistantEngine(
         trace("latency: text ${entry.firstTextMs ?: "-"} ms, voice ${entry.firstAudioMs ?: "-"} ms, total ${entry.totalMs} ms" + if (ok) "" else " (failed)")
     }
 
+    private class FallbackReply(val provider: ProviderId, val model: String, val text: String)
+
     /** Tries the other configured providers in turn; returns the first real reply, or null. */
-    private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): Pair<ProviderId, String>? {
+    private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): FallbackReply? {
         for (id in fallbackProviders().filter { it != failed }) {
             val key = secret(id.secret)?.takeIf { it.isNotBlank() } ?: continue
             val p = providerFor(id, key)
-            val cacheKey = id to key.hashCode()
-            val model = settings.value.modelFor(id) ?: discoveredModels[cacheKey] ?: when (val m = p.listModels()) {
-                is AiResult.Success -> pickDefaultModel(id, m.value)?.id?.also { discoveredModels[cacheKey] = it }
-                is AiResult.Failure -> null
-            } ?: continue
+            val model = (resolveModel(id, key, p) as? AiResult.Success)?.value ?: continue
             trace("ai fallback ${id.shortName}")
             val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
-            if (r is AiResult.Success && r.value.isNotBlank()) return id to r.value
+            if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
         }
         return null
+    }
+
+    /** The chosen model, or the best one the provider lists for this key (fetched once per key, not per request). */
+    private suspend fun resolveModel(id: ProviderId, key: String, provider: AiProvider): AiResult<String> {
+        settings.value.modelFor(id)?.let { return AiResult.Success(it) }
+        val cacheKey = id to key.hashCode()
+        discoveredModels[cacheKey]?.let { return AiResult.Success(it) }
+        return when (val models = provider.listModels()) {
+            is AiResult.Success -> pickDefaultModel(id, models.value)?.id?.also { discoveredModels[cacheKey] = it }?.let { AiResult.Success(it) }
+                ?: AiResult.Failure(FailureKind.UNKNOWN, "No chat model is available for this ${id.shortName} key.")
+            is AiResult.Failure -> models
+        }
+    }
+
+    private val _lastRoute = MutableStateFlow<AiRoute?>(null)
+    /** Which provider and model really answered the last message (or why it failed). */
+    val lastRoute: StateFlow<AiRoute?> = _lastRoute.asStateFlow()
+
+    /**
+     * Settings → AI & Brain → Test active AI: a tiny real request through the same path as a chat
+     * message (chosen provider, chosen or discovered model, automatic fallback). Nothing is added
+     * to the conversation.
+     */
+    suspend fun testActiveAi(): ActiveAiTest {
+        val id = settings.value.defaultProvider
+        val started = clock()
+        fun result(answeredBy: ProviderId? = null, model: String? = null, reply: String? = null, error: String? = null, fallbackReason: String? = null) =
+            ActiveAiTest(id, answeredBy, model, clock() - started, reply, error, fallbackReason)
+        if (!isOnline()) return result(error = "No internet connection.")
+        val key = secret(id.secret)?.takeIf { it.isNotBlank() } ?: return result(error = "${id.displayName} API key is not set.")
+        val provider = providerFor(id, key)
+        val model = when (val m = resolveModel(id, key, provider)) {
+            is AiResult.Success -> m.value
+            is AiResult.Failure -> return result(error = m.message)
+        }
+        val turns = listOf(Turn(TurnRole.USER, "Connection test. Reply with one short word."))
+        val r = withTimeoutOrNull(AI_TIMEOUT_MS) { provider.chat(model, TEST_SYSTEM_PROMPT, turns) }
+            ?: AiResult.Failure(FailureKind.TIMEOUT, "${id.shortName} did not answer within ${AI_TIMEOUT_MS / 1000} seconds.")
+        if (r is AiResult.Success && r.value.isNotBlank()) return result(id, model, r.value.trim().take(80))
+        val error = (r as? AiResult.Failure)?.message ?: "empty reply"
+        if (r !is AiResult.Failure || r.kind in FALLBACK_KINDS) {
+            fallbackReply(id, TEST_SYSTEM_PROMPT, turns)?.let { b ->
+                return result(b.provider, b.model, b.text.trim().take(80), fallbackReason = error)
+            }
+        }
+        return result(model = model, error = error)
     }
 
     private fun finishTurn() {
@@ -1187,9 +1237,9 @@ class AssistantEngine(
 
     private suspend fun note(text: String) = record(ChatRole.SYSTEM, text)
 
-    private suspend fun record(role: ChatRole, text: String) {
+    private suspend fun record(role: ChatRole, text: String, via: String? = null) {
         val saved = if (settings.value.saveHistory) runCatching { history.add(role, text) }.getOrNull() else null
-        val message = ChatMessage(id = saved ?: localId--, conversationId = 0, role = role, text = text, createdAt = clock())
+        val message = ChatMessage(id = saved ?: localId--, conversationId = 0, role = role, text = text, createdAt = clock(), via = via)
         // Only the recent conversation is kept in memory; the full history stays in the database.
         _transcript.value = (_transcript.value + message).takeLast(MAX_TRANSCRIPT_IN_MEMORY)
     }

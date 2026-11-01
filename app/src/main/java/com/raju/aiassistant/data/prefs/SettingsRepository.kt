@@ -41,7 +41,7 @@ class SettingsRepository(private val context: Context) {
         return UserSettings(
             defaultProvider = enumOr(this[Keys.DEFAULT_PROVIDER], d.defaultProvider),
             models = ProviderId.entries.mapNotNull { id -> this[modelKey(id)]?.let { id to it } }.toMap(),
-            lastTests = ProviderId.entries.mapNotNull { id -> this[testKey(id)]?.let { decodeTest(it) }?.let { id to it } }.toMap(),
+            lastTests = ProviderId.entries.mapNotNull { id -> this[testKey(id)]?.let { decodeConnectionTest(it) }?.let { id to it } }.toMap(),
             lowPowerMode = this[Keys.LOW_POWER] ?: d.lowPowerMode,
             reducedMotion = this[Keys.REDUCED_MOTION] ?: d.reducedMotion,
             saveHistory = this[Keys.SAVE_HISTORY] ?: d.saveHistory,
@@ -98,7 +98,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDefaultProvider(v: ProviderId) = edit { it[Keys.DEFAULT_PROVIDER] = v.name }
     suspend fun setModel(provider: ProviderId, model: String) = edit { it[modelKey(provider)] = model }
-    suspend fun setLastTest(provider: ProviderId, test: ConnectionTest) = edit { it[testKey(provider)] = encodeTest(test) }
+    suspend fun setLastTest(provider: ProviderId, test: ConnectionTest) = edit { it[testKey(provider)] = encodeConnectionTest(test) }
+    /** A new or removed key makes the old test result meaningless (never show a stale "Connected"). */
+    suspend fun clearLastTest(provider: ProviderId) = edit { it.remove(testKey(provider)) }
     suspend fun setLowPowerMode(v: Boolean) = edit { it[Keys.LOW_POWER] = v }
     suspend fun setReducedMotion(v: Boolean) = edit { it[Keys.REDUCED_MOTION] = v }
     suspend fun setSaveHistory(v: Boolean) = edit { it[Keys.SAVE_HISTORY] = v }
@@ -148,13 +150,6 @@ class SettingsRepository(private val context: Context) {
 
     private fun modelKey(p: ProviderId) = stringPreferencesKey("model_${p.name.lowercase()}")
     private fun testKey(p: ProviderId) = stringPreferencesKey("last_test_${p.name.lowercase()}")
-
-    private fun encodeTest(t: ConnectionTest) = "${if (t.success) 1 else 0}|${t.timestamp}|${t.message.replace('|', '/')}"
-    private fun decodeTest(s: String): ConnectionTest? {
-        val parts = s.split('|', limit = 3)
-        if (parts.size != 3) return null
-        return ConnectionTest(parts[0] == "1", parts[2], parts[1].toLongOrNull() ?: return null)
-    }
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: default
@@ -207,4 +202,17 @@ class SettingsRepository(private val context: Context) {
         val SAFETY = booleanPreferencesKey("safety_mode")
         val PAUSED = booleanPreferencesKey("assistant_paused")
     }
+}
+
+/** "success|time|kind|message"; also reads the older "success|time|message" form. */
+internal fun encodeConnectionTest(t: ConnectionTest) =
+    "${if (t.success) 1 else 0}|${t.timestamp}|${t.kind?.name.orEmpty()}|${t.message.replace('|', '/')}"
+
+internal fun decodeConnectionTest(s: String): ConnectionTest? {
+    val parts = s.split('|', limit = 4)
+    if (parts.size < 3) return null
+    val time = parts[1].toLongOrNull() ?: return null
+    val kind = com.raju.aiassistant.domain.ai.FailureKind.entries.firstOrNull { it.name == parts[2] }
+    val newForm = parts.size == 4 && (kind != null || parts[2].isEmpty())
+    return ConnectionTest(parts[0] == "1", if (newForm) parts[3] else parts.drop(2).joinToString("|"), time, if (newForm) kind else null)
 }

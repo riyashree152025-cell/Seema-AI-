@@ -42,7 +42,13 @@ enum class AnnounceApp(val packageName: String, val label: String) {
 }
 
 /** Result of the last real connection test for a provider. */
-data class ConnectionTest(val success: Boolean, val message: String, val timestamp: Long)
+data class ConnectionTest(
+    val success: Boolean,
+    val message: String,
+    val timestamp: Long,
+    /** Why it failed (null on success and for results saved by older versions). */
+    val kind: com.raju.aiassistant.domain.ai.FailureKind? = null,
+)
 
 /**
  * How the microphone is used (power vs convenience):

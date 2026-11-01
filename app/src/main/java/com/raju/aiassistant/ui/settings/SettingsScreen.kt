@@ -39,6 +39,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -121,117 +128,40 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else appNotificationSettings()
     }
 
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    // Where each section starts, for the "jump to section" chips at the top.
+    val sectionY = remember { mutableStateMapOf<String, Int>() }
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
         info?.let { Text(it, color = TextSecondary) }
 
-        // ---------------------------------------------------------------- diagnostics
-        // First on the page: the most visible choice (Arc Reactor or 3D core).
-        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
-
-        HudPanel(title = "Status & permissions") {
-            Text("Each item shows the real current state. Tap a button to fix it in Android settings.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            val test = s.lastTests[s.defaultProvider]
-            StatusRow(
-                "AI (${s.defaultProvider.shortName})",
-                when {
-                    test == null -> "not tested — tap Test below"
-                    test.success -> "last test connected"
-                    else -> "last test failed"
-                },
-                ok = test?.success == true,
-            )
-            StatusRow("Microphone", if (diag.micGranted) "allowed" else "not allowed", diag.micGranted, if (diag.micGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.RECORD_AUDIO) })
-            StatusRow("Speech recognition", if (diag.speechRecognitionAvailable) "available" else "not available — install Google speech services", diag.speechRecognitionAvailable)
-            StatusRow("Contacts", if (diag.contactsGranted) "allowed" else "not allowed (needed for calls by name)", diag.contactsGranted, if (diag.contactsGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.READ_CONTACTS) })
-            StatusRow(
-                "Notification access",
-                when {
-                    diag.listenerEnabled && diag.listenerConnected -> "on and connected"
-                    diag.listenerEnabled -> "on, waiting for Android to connect"
-                    else -> "off"
-                },
-                diag.listenerEnabled,
-                "Open" to { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-            )
-            if (!diag.listenerEnabled) {
-                Text(
-                    "If the Seema AI switch is greyed out or won't turn on: Android blocks this for apps installed from an APK file. Open App info → ⋮ (top right) → \"Allow restricted settings\" → confirm, then come back and switch it on.",
-                    style = MaterialTheme.typography.bodyMedium, color = WarningAmber,
-                )
-                OutlinedButton(onClick = { appInfo() }) { Text("Open App info") }
-            }
-            StatusRow(
-                "App notifications",
-                if (diag.appNotificationsAllowed) "allowed" else "blocked (needed for Read/Skip while the app is closed)",
-                diag.appNotificationsAllowed,
-                if (diag.appNotificationsAllowed) null else "Allow" to { askPostNotifications() },
-            )
-            StatusRow(
-                "Call announcements",
-                when {
-                    !diag.callRoleSupported -> "not supported on this phone"
-                    diag.callRoleHeld -> "call-screening role granted"
-                    else -> "role not granted"
-                },
-                diag.callRoleHeld,
-                if (diag.callRoleSupported && !diag.callRoleHeld) "Grant" to { viewModel.callRoleRequestIntent()?.let { callRole.launch(it) } } else null,
-            )
-            val tts = diag.tts
-            StatusRow(
-                "Android voice (Hindi)",
-                if (tts == null) "checking…" else "${tts.hindi.label} · engine ${tts.engine ?: "none"}",
-                tts?.hindi == LanguageSupport.AVAILABLE,
-                if (tts != null && tts.hindi != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
-            )
-            StatusRow(
-                "Android voice (বাংলা Bengali)",
-                if (tts == null) "checking…" else tts.bengali.label,
-                tts?.bengali == LanguageSupport.AVAILABLE,
-                if (tts != null && tts.bengali != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
-            )
-            val voiceKey = when (s.ttsEngine) {
-                TtsEngine.SARVAM -> SecretId.SARVAM_API_KEY
-                TtsEngine.ELEVENLABS -> SecretId.ELEVENLABS_API_KEY
-                TtsEngine.CARTESIA -> SecretId.CARTESIA_API_KEY
-                TtsEngine.DEEPGRAM -> SecretId.DEEPGRAM_API_KEY
-                TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> null
-            }
-            val voiceKeySaved = voiceKey == null || state.secrets[voiceKey]?.configured == true
-            StatusRow(
-                "Seema's voice",
-                s.ttsEngine.label + if (voiceKeySaved) " · ready" else " · key not set (Android voice is used)",
-                voiceKeySaved,
-            )
-            val deepgramSaved = state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true
-            StatusRow(
-                "Listening",
-                when {
-                    s.sttEngine == SttEngine.DEEPGRAM && deepgramSaved -> "Deepgram ${VoiceCatalog.sttOption(s.deepgramSttModel).title}" + if (s.autoListen) " · hands-free" else ""
-                    s.sttEngine == SttEngine.DEEPGRAM -> "Deepgram key not set — Google recogniser is used"
-                    else -> "Android / Google" + if (s.autoListen) " · hands-free" else ""
-                },
-                s.sttEngine != SttEngine.DEEPGRAM || deepgramSaved,
-            )
-            if (s.assistantPaused) StatusRow("Assistant", "paused — no listening or announcements", false, "Resume" to { viewModel.setPaused(false) })
-            OutlinedButton(onClick = { open(Intent("com.android.settings.TTS_SETTINGS")) }) { Text("Android text-to-speech settings") }
-        }
-
+        SectionJumpRow(
+            listOf("ai" to "AI & Brain", "voice" to "Voice", "appearance" to "Appearance", "permissions" to "Permissions", "automation" to "Automation", "system" to "System", "memory" to "Memory", "about" to "About"),
+        ) { key -> sectionY[key]?.let { y -> scope.launch { scroll.animateScrollTo(y) } } }
+        SectionHeader("AI & Brain", Modifier.onGloballyPositioned { sectionY["ai"] = it.positionInParent().y.toInt() })
         // ---------------------------------------------------------------- AI
-        HudPanel(title = "AI provider") {
-            Text("Keys are encrypted with Android Keystore and stored only on this phone. They are sent only to their own provider over HTTPS.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        ActiveAiPanel(
+            s,
+            keySaved = { state.secrets[it.secret]?.configured == true },
+            testing = { state.secrets[it.secret]?.busy == true },
+            viewModel = viewModel,
+        )
+        HudPanel(title = "Primary AI provider") {
+            Text("Keys are encrypted with Android Keystore and stored only on this phone. They are sent only to their own provider over HTTPS. If the primary provider fails, another provider with a saved key answers and the chat says so.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             ProviderId.entries.forEach { p ->
                 RadioRow(p.displayName, s.defaultProvider == p) { viewModel.setDefaultProvider(p) }
             }
         }
         ProviderId.entries.forEach { p ->
-            SecretCard(p.secret, state.secrets[p.secret] ?: SecretStatus(), viewModel) {
+            val secret = state.secrets[p.secret] ?: SecretStatus()
+            SecretCard(p.secret, secret, viewModel, providerStatus = com.raju.aiassistant.domain.ai.providerStatus(secret.configured, secret.busy, s.lastTests[p])) {
                 val test = s.lastTests[p]
                 if (test != null) {
                     Text(
@@ -247,6 +177,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                     options = models[p].orEmpty().map { it.id },
                     onLoad = { viewModel.loadModels(p) },
                     onSelect = { viewModel.selectModel(p, it) },
+                    keySaved = secret.configured,
+                    loading = secret.busy,
                 )
             }
         }
@@ -256,6 +188,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Used when you ask about news, prices, weather or anything current. Sources are shown with links.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
 
+        SectionHeader("Voice & Speech", Modifier.onGloballyPositioned { sectionY["voice"] = it.positionInParent().y.toInt() })
         // ---------------------------------------------------------------- voice
         HudPanel(title = "Voice") {
             Text("Speech output (Seema's voice)", style = MaterialTheme.typography.titleMedium)
@@ -349,6 +282,110 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             Text("Use a key that does not expire (the \"Auto-generated Playground\" key expires in hours). Console → API keys → Create a new API key.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
 
+        SectionHeader("Appearance & Performance", Modifier.onGloballyPositioned { sectionY["appearance"] = it.positionInParent().y.toInt() })
+        // ---------------------------------------------------------------- diagnostics
+        // The most visible choice (Arc Reactor or 3D core).
+        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
+
+        PerformanceAndBattery(s, viewModel)
+
+        SectionHeader("Permissions & Status", Modifier.onGloballyPositioned { sectionY["permissions"] = it.positionInParent().y.toInt() })
+        HudPanel(title = "Status & permissions") {
+            Text("Each item shows the real current state. Tap a button to fix it in Android settings.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            val aiStatus = com.raju.aiassistant.domain.ai.providerStatus(
+                state.secrets[s.defaultProvider.secret]?.configured == true,
+                state.secrets[s.defaultProvider.secret]?.busy == true,
+                s.lastTests[s.defaultProvider],
+            )
+            StatusRow("AI (${s.defaultProvider.shortName})", aiStatus.label.lowercase(), ok = aiStatus == com.raju.aiassistant.domain.ai.ProviderStatus.CONNECTED)
+            StatusRow("Microphone", if (diag.micGranted) "allowed" else "not allowed", diag.micGranted, if (diag.micGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.RECORD_AUDIO) })
+            StatusRow("Speech recognition", if (diag.speechRecognitionAvailable) "available" else "not available — install Google speech services", diag.speechRecognitionAvailable)
+            StatusRow("Contacts", if (diag.contactsGranted) "allowed" else "not allowed (needed for calls by name)", diag.contactsGranted, if (diag.contactsGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.READ_CONTACTS) })
+            StatusRow(
+                "Notification access",
+                when {
+                    diag.listenerEnabled && diag.listenerConnected -> "on and connected"
+                    diag.listenerEnabled -> "on, waiting for Android to connect"
+                    else -> "off"
+                },
+                diag.listenerEnabled,
+                "Open" to { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+            )
+            if (!diag.listenerEnabled) {
+                Text(
+                    "If the Seema AI switch is greyed out or won't turn on: Android blocks this for apps installed from an APK file. Open App info → ⋮ (top right) → \"Allow restricted settings\" → confirm, then come back and switch it on.",
+                    style = MaterialTheme.typography.bodyMedium, color = WarningAmber,
+                )
+                OutlinedButton(onClick = { appInfo() }) { Text("Open App info") }
+            }
+            StatusRow(
+                "App notifications",
+                if (diag.appNotificationsAllowed) "allowed" else "blocked (needed for Read/Skip while the app is closed)",
+                diag.appNotificationsAllowed,
+                if (diag.appNotificationsAllowed) null else "Allow" to { askPostNotifications() },
+            )
+            StatusRow(
+                "Call announcements",
+                when {
+                    !diag.callRoleSupported -> "not supported on this phone"
+                    diag.callRoleHeld -> "call-screening role granted"
+                    else -> "role not granted"
+                },
+                diag.callRoleHeld,
+                if (diag.callRoleSupported && !diag.callRoleHeld) "Grant" to { viewModel.callRoleRequestIntent()?.let { callRole.launch(it) } } else null,
+            )
+            val tts = diag.tts
+            StatusRow(
+                "Android voice (Hindi)",
+                if (tts == null) "checking…" else "${tts.hindi.label} · engine ${tts.engine ?: "none"}",
+                tts?.hindi == LanguageSupport.AVAILABLE,
+                if (tts != null && tts.hindi != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
+            )
+            StatusRow(
+                "Android voice (বাংলা Bengali)",
+                if (tts == null) "checking…" else tts.bengali.label,
+                tts?.bengali == LanguageSupport.AVAILABLE,
+                if (tts != null && tts.bengali != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
+            )
+            val voiceKey = when (s.ttsEngine) {
+                TtsEngine.SARVAM -> SecretId.SARVAM_API_KEY
+                TtsEngine.ELEVENLABS -> SecretId.ELEVENLABS_API_KEY
+                TtsEngine.CARTESIA -> SecretId.CARTESIA_API_KEY
+                TtsEngine.DEEPGRAM -> SecretId.DEEPGRAM_API_KEY
+                TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> null
+            }
+            val voiceKeySaved = voiceKey == null || state.secrets[voiceKey]?.configured == true
+            StatusRow(
+                "Seema's voice",
+                s.ttsEngine.label + if (voiceKeySaved) " · ready" else " · key not set (Android voice is used)",
+                voiceKeySaved,
+            )
+            val deepgramSaved = state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true
+            StatusRow(
+                "Listening",
+                when {
+                    s.sttEngine == SttEngine.DEEPGRAM && deepgramSaved -> "Deepgram ${VoiceCatalog.sttOption(s.deepgramSttModel).title}" + if (s.autoListen) " · hands-free" else ""
+                    s.sttEngine == SttEngine.DEEPGRAM -> "Deepgram key not set — Google recogniser is used"
+                    else -> "Android / Google" + if (s.autoListen) " · hands-free" else ""
+                },
+                s.sttEngine != SttEngine.DEEPGRAM || deepgramSaved,
+            )
+            if (s.assistantPaused) StatusRow("Assistant", "paused — no listening or announcements", false, "Resume" to { viewModel.setPaused(false) })
+            OutlinedButton(onClick = { open(Intent("com.android.settings.TTS_SETTINGS")) }) { Text("Android text-to-speech settings") }
+        }
+
+        SectionHeader("Automation & Assistant control", Modifier.onGloballyPositioned { sectionY["automation"] = it.positionInParent().y.toInt() })
+        // ---------------------------------------------------------------- control
+        HudPanel(title = "Assistant control") {
+            ToggleRow("Pause assistant (stops announcements and continuous listening)", s.assistantPaused, viewModel::setPaused)
+            ToggleRow("Safety Mode (for payment & banking apps)", s.safetyMode, viewModel::setSafetyMode)
+            Text(
+                "Safety Mode pauses notification announcements and blocks assistant-started calls, SMS, WhatsApp, app launches and music. Seema AI never reads or touches Google Pay, PhonePe or banking screens either way. Turn it off here to resume.",
+                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+            )
+        }
+
+        SectionHeader("System integration", Modifier.onGloballyPositioned { sectionY["system"] = it.positionInParent().y.toInt() })
         // ---------------------------------------------------------------- phone
         HudPanel(title = "Phone & music") {
             ToggleRow(
@@ -403,16 +440,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
             }
         }
 
-        // ---------------------------------------------------------------- control
-        HudPanel(title = "Assistant control") {
-            ToggleRow("Pause assistant (stops announcements and continuous listening)", s.assistantPaused, viewModel::setPaused)
-            ToggleRow("Safety Mode (for payment & banking apps)", s.safetyMode, viewModel::setSafetyMode)
-            Text(
-                "Safety Mode pauses notification announcements and blocks assistant-started calls, SMS, WhatsApp, app launches and music. Seema AI never reads or touches Google Pay, PhonePe or banking screens either way. Turn it off here to resume.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-        }
-
+        SectionHeader("Memory & Privacy", Modifier.onGloballyPositioned { sectionY["memory"] = it.positionInParent().y.toInt() })
         // ---------------------------------------------------------------- memory & privacy
         HudPanel(title = "Memory & privacy") {
             ToggleRow("Memory (assistant may remember facts you approve)", s.memoryEnabled, viewModel::setMemoryEnabled)
@@ -430,15 +458,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
 
         KnowledgeBaseSettings(viewModel)
 
-        PerformanceAndBattery(s, viewModel)
-
-        HudPanel(title = "About") {
+        SectionHeader("About SEEMA", Modifier.onGloballyPositioned { sectionY["about"] = it.positionInParent().y.toInt() })
+        HudPanel(title = "About SEEMA") {
             Text("Seema AI Assistant ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
             Text("AI answers can be wrong — check important information.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             Text(
-                "Needs internet: AI replies (Gemini/Groq), web search, weather, cloud voices (Sarvam, ElevenLabs, Cartesia, Deepgram). " +
+                "Needs internet: AI replies (Gemini/Groq/Cerebras), web search, weather, cloud voices (Sarvam, ElevenLabs, Cartesia, Deepgram), Deepgram listening. " +
                     "Works offline: the Arc Reactor / 3D core, clock and phone status, khata and PNR diary, memories and documents on the phone, " +
-                    "the Android voice (if its Hindi/Bengali voice data is installed) and phone speech recognition (if the offline language pack is installed). " +
+                    "the offline voices Piper and Kokoro once downloaded (Voice Engine Manager), the Android voice (if its Hindi/Bengali voice data is installed) and phone speech recognition (if the offline language pack is installed). " +
                     "There is no on-phone AI model: without internet Seema cannot answer questions.",
                 style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
             )
@@ -462,17 +489,23 @@ private fun SecretCard(
     status: SecretStatus,
     viewModel: SettingsViewModel,
     title: String = id.displayName,
+    /** Set for AI providers: the real connection state (CONNECTED only after a successful request). */
+    providerStatus: com.raju.aiassistant.domain.ai.ProviderStatus? = null,
     extra: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
 
     HudPanel(title = title) {
-        StatusChip(
-            label = if (status.configured) "Saved ${status.maskedValue}" else "Not set",
-            color = if (status.configured) SuccessGreen else WarningAmber,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusChip(
+                label = if (status.configured) "Key saved ${status.maskedValue}" else "No key",
+                color = if (status.configured) SuccessGreen else WarningAmber,
+            )
+            providerStatus?.let { ProviderStatusChip(it) }
+        }
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
@@ -491,30 +524,55 @@ private fun SecretCard(
             Button(onClick = { viewModel.saveSecret(id, input); input = ""; visible = false }, enabled = input.isNotBlank()) {
                 Text(if (status.configured) "Update" else "Save")
             }
-            OutlinedButton(onClick = { viewModel.testSecret(id) }, enabled = status.configured && !status.busy) { Text("Test") }
-            OutlinedButton(onClick = { viewModel.removeSecret(id) }, enabled = status.configured) { Text("Remove") }
+            OutlinedButton(onClick = { viewModel.testSecret(id) }, enabled = status.configured && !status.busy) {
+                Text(if (status.busy) "Testing…" else "Test connection")
+            }
+            OutlinedButton(onClick = { confirmRemove = true }, enabled = status.configured) { Text("Remove", color = if (status.configured) ErrorRed else Color.Unspecified) }
         }
+        if (status.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         status.message?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = if (status.isError) ErrorRed else TextSecondary)
+        }
+        providerStatus?.takeIf { it.isError && status.message == null }?.let {
+            Text(it.help, style = MaterialTheme.typography.bodyMedium, color = ErrorRed)
         }
         extra()
         TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(id.helpUrl))) } }) {
             Text("Get a key: ${id.helpUrl}")
         }
     }
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove ${title}?") },
+            text = { Text("The saved key is deleted from this phone. Seema cannot use this service until you add a key again.") },
+            confirmButton = { TextButton(onClick = { confirmRemove = false; viewModel.removeSecret(id) }) { Text("Remove", color = ErrorRed) } },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
-private fun ModelPicker(provider: ProviderId, selected: String?, options: List<String>, onLoad: () -> Unit, onSelect: (String) -> Unit) {
+private fun ModelPicker(provider: ProviderId, selected: String?, options: List<String>, onLoad: () -> Unit, onSelect: (String) -> Unit, keySaved: Boolean = true, loading: Boolean = false) {
     var open by remember { mutableStateOf(false) }
-    LaunchedEffect(open) { if (open && options.isEmpty()) onLoad() }
+    LaunchedEffect(open) { if (open && options.isEmpty() && keySaved) onLoad() }
     ModelAdvice.warning(selected)?.let { Text("⚠ $it", style = MaterialTheme.typography.bodyMedium, color = WarningAmber) }
+    Text(
+        when {
+            !keySaved -> "Models: save a key first — the list comes from ${provider.shortName} itself."
+            loading -> "Models: loading from ${provider.shortName}…"
+            options.isEmpty() -> "Models: not loaded yet. Tap Refresh models."
+            else -> "Models: ${options.size} confirmed by ${provider.shortName} for this key."
+        },
+        style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Model: ${selected ?: "auto (chosen on first use)"}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onLoad, enabled = keySaved && !loading) { Text("Refresh models") }
         Box {
-            TextButton(onClick = { open = true }) { Text("Change") }
+            TextButton(onClick = { open = true }, enabled = keySaved) { Text("Change") }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                if (options.isEmpty()) DropdownMenuItem(text = { Text("Loading models… (save a valid key first)") }, onClick = { open = false })
+                if (options.isEmpty()) DropdownMenuItem(text = { Text(if (loading) "Loading models…" else "No models loaded — tap Refresh models") }, onClick = { open = false })
                 options.forEach { m ->
                     val tag = when {
                         ModelAdvice.isRecommended(provider, m) -> "  ★ recommended"

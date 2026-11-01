@@ -8,4 +8,6 @@ data class ChatMessage(
     val role: ChatRole,
     val text: String,
     val createdAt: Long,
+    /** "Provider · model" that really wrote this reply (this session only; not stored in history). */
+    val via: String? = null,
 )

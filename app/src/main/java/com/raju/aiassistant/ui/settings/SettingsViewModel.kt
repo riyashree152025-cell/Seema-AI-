@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.raju.aiassistant.domain.ai.redactSecrets
 
 data class SecretStatus(
     val configured: Boolean = false,
@@ -154,7 +155,9 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             val ok = runCatching { c.secureKeyStore.save(id, value) }.getOrDefault(false)
             refreshMasks()
-            if (ok) setStatus(id, "Saved and encrypted on this device. Tap Test to check it.", false)
+            // A new key needs a new test: the old result must not keep saying "Connected".
+            ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
+            if (ok) setStatus(id, "Saved and encrypted on this device. Tap Test connection to check it.", false)
             else setStatus(id, "Save failed. The key was not stored.", true)
         }
     }
@@ -162,6 +165,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun removeSecret(id: SecretId) {
         viewModelScope.launch {
             val ok = c.secureKeyStore.remove(id)
+            ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
             refreshMasks()
             setStatus(id, if (ok) "Key removed." else "Could not remove key.", !ok)
         }
@@ -171,7 +175,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun testSecret(id: SecretId) {
         viewModelScope.launch {
             val key = c.secureKeyStore.get(id) ?: return@launch setStatus(id, "No key saved.", true)
-            setStatus(id, "Testing…", false, busy = true)
+            setStatus(id, "Testing connection…", false, busy = true)
             val provider = ProviderId.entries.firstOrNull { it.secret == id }
             val result: AiResult<String> = when {
                 provider != null -> when (val r = c.providerFactory.create(provider, key).listModels()) {
@@ -199,17 +203,44 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     is AiResult.Failure -> r
                 }
             }
+            // A provider could echo the key in an error: it is never shown or stored.
+            val failure = (result as? AiResult.Failure)?.let { it.copy(message = redactSecrets(it.message, key)) }
             when (result) {
                 is AiResult.Success -> setStatus(id, result.value, false)
-                is AiResult.Failure -> setStatus(id, result.message, true)
+                is AiResult.Failure -> setStatus(id, failure!!.message, true)
             }
             if (provider != null) {
-                repo.setLastTest(provider, ConnectionTest(result is AiResult.Success, (result as? AiResult.Failure)?.message ?: "OK", System.currentTimeMillis()))
+                repo.setLastTest(provider, ConnectionTest(failure == null, failure?.message ?: "OK", System.currentTimeMillis(), failure?.kind))
             }
         }
     }
 
     fun loadModels(provider: ProviderId) = testSecret(provider.secret)
+
+    // ------------------------------------------------------------ active AI
+
+    /** Which provider and model really answered the last chat message. */
+    val lastRoute: StateFlow<com.raju.aiassistant.domain.assistant.AiRoute?> = c.engine.lastRoute
+    private val _activeTest = MutableStateFlow<com.raju.aiassistant.domain.assistant.ActiveAiTest?>(null)
+    val activeTest: StateFlow<com.raju.aiassistant.domain.assistant.ActiveAiTest?> = _activeTest.asStateFlow()
+    private val _activeTesting = MutableStateFlow(false)
+    val activeTesting: StateFlow<Boolean> = _activeTesting.asStateFlow()
+
+    /** A small real request through the same provider/model/fallback path as a chat message. */
+    fun testActiveAi() {
+        if (_activeTesting.value) return
+        _activeTesting.value = true
+        viewModelScope.launch {
+            try {
+                val r = c.engine.testActiveAi()
+                val key = c.secureKeyStore.get(r.requested.secret)
+                _activeTest.value = r.copy(error = r.error?.let { redactSecrets(it, key) }, fallbackReason = r.fallbackReason?.let { redactSecrets(it, key) })
+                if (r.ok && !r.usedFallback) repo.setLastTest(r.requested, ConnectionTest(true, "OK", System.currentTimeMillis()))
+            } finally {
+                _activeTesting.value = false
+            }
+        }
+    }
 
     /** Real request with the chosen model and voice; also fills the model and voice pickers. */
     private suspend fun testElevenLabs(key: String): AiResult<String> {

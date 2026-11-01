@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognitionListener
@@ -67,11 +68,14 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         }
         recognizer = r
         _partial.value = ""
+        var readyAt = 0L
+        var speechBegan = false
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 if (id != session) return
                 // Only now is the microphone really open: show "listening" from here on.
                 _listening.value = true
+                readyAt = SystemClock.elapsedRealtime()
                 log("stt ready")
                 // The start beep has played (muted) by now: give the user their sound back shortly after.
                 handler.postDelayed(unmuteRunnable, 350)
@@ -79,6 +83,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             override fun onBeginningOfSpeech() {
                 if (id != session) return
                 log("stt speech started")
+                speechBegan = true
                 armWatchdog(id, SPEECH_MAX_MS) // the user is talking: allow a long sentence
             }
             override fun onRmsChanged(rmsdB: Float) {}
@@ -101,14 +106,27 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
                     .takeUnless { it.isNullOrBlank() } ?: _partial.value.trim()
                 finish {
                     log("stt result (${text.length} chars)")
-                    if (text.isBlank()) onError(VoiceError("I didn't catch that.", noSpeech = true)) else onResult(text)
+                    if (text.isBlank()) onError(VoiceError(if (speechBegan) "Speech was heard but no words were recognised." else "No speech was heard.", noSpeech = !speechBegan, unclear = speechBegan)) else onResult(text)
                 }
             }
 
             override fun onError(error: Int) {
+                val heard = _partial.value.trim()
+                val sinceReady = if (readyAt > 0) SystemClock.elapsedRealtime() - readyAt else -1L
                 finish {
-                    log("stt error $error")
-                    onError(mapError(error))
+                    log("stt error $error (partial ${heard.length} chars, speech ${if (speechBegan) "yes" else "no"}, ${sinceReady} ms after ready)")
+                    report(error, heard, speechBegan, sinceReady)
+                }
+            }
+
+            /** What a recogniser error really means for the user (see [classifyRecognizerError]). */
+            private fun report(error: Int, heard: String, speechBegan: Boolean, sinceReady: Long) {
+                when (classifyRecognizerError(error, heard, speechBegan, sinceReady)) {
+                    // Words were recognised but the final result was replaced by an error: use them.
+                    RecognizerOutcome.USE_PARTIAL -> onResult(heard)
+                    RecognizerOutcome.EARLY_NO_MATCH -> onError(VoiceError("The recogniser stopped before you spoke.", transient = true))
+                    RecognizerOutcome.UNCLEAR -> onError(VoiceError("Speech was heard but no words were recognised.", unclear = true))
+                    RecognizerOutcome.ERROR -> onError(mapError(error))
                 }
             }
         })
@@ -131,7 +149,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             finish { onError(VoiceError("Speech recognition could not start (${e.javaClass.simpleName}).")) }
         }
         // Watchdog outcome: the recogniser went quiet without a result or an error.
-        pendingTimeout = { finish { log("stt watchdog timeout"); onError(VoiceError("I didn't hear anything.", noSpeech = true)) } }
+        pendingTimeout = { finish { log("stt watchdog timeout"); onError(VoiceError("No speech was heard (the recogniser timed out).", noSpeech = true)) } }
     }
 
     private var pendingTimeout: (() -> Unit)? = null
@@ -203,7 +221,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     }
 
     private fun mapError(code: Int): VoiceError = when (code) {
-        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceError("I didn't hear anything.", noSpeech = true)
+        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceError("No speech was heard.", noSpeech = true)
         // Happen when the recogniser is restarted quickly: harmless, just listen again.
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_CLIENT -> VoiceError("The speech recogniser was busy.", transient = true)
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceError("Microphone permission denied.", permissionDenied = true)
@@ -231,5 +249,25 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         const val SPEECH_MAX_MS = 30_000L
         /** After the user stopped talking, the final text must arrive within this time. */
         const val RESULT_WAIT_MS = 8_000L
+    }
+}
+
+internal enum class RecognizerOutcome { USE_PARTIAL, EARLY_NO_MATCH, UNCLEAR, ERROR }
+
+/** A "no match" this soon after the microphone opened, without any speech, happened before the user could talk. */
+internal const val EARLY_NO_MATCH_MS = 1_200L
+
+/**
+ * Google's recogniser sometimes ends with ERROR_NO_MATCH / SPEECH_TIMEOUT although it already
+ * delivered partial words, and sometimes fires NO_MATCH right after opening, before anyone spoke.
+ * Both used to end as "nothing heard". [heard] = last partial result.
+ */
+internal fun classifyRecognizerError(code: Int, heard: String, speechBegan: Boolean, sinceReadyMs: Long): RecognizerOutcome {
+    val noMatch = code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+    return when {
+        noMatch && heard.isNotBlank() -> RecognizerOutcome.USE_PARTIAL
+        noMatch && !speechBegan && sinceReadyMs in 0 until EARLY_NO_MATCH_MS -> RecognizerOutcome.EARLY_NO_MATCH
+        code == SpeechRecognizer.ERROR_NO_MATCH && speechBegan -> RecognizerOutcome.UNCLEAR
+        else -> RecognizerOutcome.ERROR
     }
 }
