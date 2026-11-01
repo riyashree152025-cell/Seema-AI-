@@ -60,7 +60,10 @@ jobs:
           found=0
           for apk in app/build/outputs/apk/*/*.apk; do
             rm -rf /tmp/apkscan && mkdir /tmp/apkscan && unzip -q -o "$apk" -d /tmp/apkscan
-            if grep -raEo 'AIza[0-9A-Za-z_-]{35}|gsk_[0-9A-Za-z]{40,}|csk-[0-9a-z]{40,}|tvly-[0-9A-Za-z-]{20,}|sk-[0-9A-Za-z]{40,}' /tmp/apkscan | head -3; then
+            # Only a masked prefix and the file name are printed, never a whole match.
+            hits=$(grep -raEo 'AIza[0-9A-Za-z_-]{35}|gsk_[0-9A-Za-z]{40,}|csk-[0-9a-z]{40,}|tvly-[0-9A-Za-z-]{20,}|sk-[0-9A-Za-z]{40,}' /tmp/apkscan | sed -E 's/^(.*:)?(.{6}).*/\1\2…(masked)/' | sort -u | head -5)
+            if [ -n "$hits" ]; then
+              echo "$hits"
               echo "::error::Key-like string found in $apk"; found=1
             else
               echo "OK: no key-like strings in $apk"
