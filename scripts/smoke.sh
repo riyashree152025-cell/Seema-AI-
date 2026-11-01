@@ -117,6 +117,25 @@ adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --es seema_core MOD
 adb shell uiautomator dump /sdcard/ui-modern.xml > /dev/null 2>&1
 echo "DASHBOARD texts: $(adb shell cat /sdcard/ui-modern.xml | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | tr '\n' ' ')"
 adb exec-out screencap -p > smoke-6-dashboard.png
+echo "===== RUN 6b: Settings → AI & Brain renders real states (no key saved on the emulator) ====="
+tap_desc() { # taps the first element whose content-desc or text is $1
+  adb shell uiautomator dump /sdcard/ui-tap.xml > /dev/null 2>&1
+  B=$(adb shell cat /sdcard/ui-tap.xml | tr '>' '\n' | grep -E "(content-desc|text)=\"$1\"" | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | head -1 | grep -oE '[0-9]+' | tr '\n' ' ')
+  if [ -n "$B" ]; then set -- $B; adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 )); fi
+}
+tap_desc Settings
+sleep 4
+adb shell uiautomator dump /sdcard/ui-settings.xml > /dev/null 2>&1
+echo "SETTINGS texts: $(adb shell cat /sdcard/ui-settings.xml | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | head -60 | tr '\n' ' ')"
+adb exec-out screencap -p > smoke-7-settings.png
+tap_desc "TEST ACTIVE AI"
+sleep 4
+adb shell uiautomator dump /sdcard/ui-active.xml > /dev/null 2>&1
+echo "ACTIVE_AI texts: $(adb shell cat /sdcard/ui-active.xml | tr '>' '\n' | grep -oE 'text="[^"]+"' | grep -iE 'No AI answered|API key|CONNECTED|NOT CONFIGURED|KEY SAVED|Provider|Model' | head -12 | tr '\n' ' ')"
+adb exec-out screencap -p > smoke-8-active-ai.png
+tap_desc Home
+sleep 2
+
 echo "===== RUN 7: offline voice engines (real download, sherpa-onnx synthesis, playback, benchmark) ====="
 voice_test() { # $1 = PIPER or KOKORO, $2 = max seconds
   adb logcat -c
