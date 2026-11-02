@@ -2,23 +2,24 @@ package com.raju.aiassistant.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ---- Emerald Matrix palette: deep black/emerald base, luminous emerald accents, cyan highlights.
-val VoidBlack = Color(0xFF020806)
-val GlassPanel = Color(0xFF06150F)
-val GlassPanelHigh = Color(0xFF0B2219)
-val Emerald = Color(0xFF19F59A)
-val EmeraldBright = Color(0xFF7DFFC8)
-val EmeraldDeep = Color(0xFF00A86B)
-val EmeraldMist = Color(0xFF0E3B2A)
-val HoloCyan = Color(0xFF4DF3FF)
-val HoloViolet = Color(0xFF9A7BFF)
-val TextPrimary = Color(0xFFE6FFF4)
-val TextSecondary = Color(0xFF8DB8A6)
-val SuccessGreen = Color(0xFF6BFF8E)
+// ---- Midnight Holo palette: deep navy/graphite base, cyan primary, electric-blue and violet accents.
+// (The historic "Emerald" names are kept so every screen keeps compiling; the values are the new palette.)
+val VoidBlack = Color(0xFF05070F)
+val GlassPanel = Color(0xFF0B1224)
+val GlassPanelHigh = Color(0xFF131D36)
+val Emerald = Color(0xFF38E1FF)
+val EmeraldBright = Color(0xFFB4F4FF)
+val EmeraldDeep = Color(0xFF2F7BFF)
+val EmeraldMist = Color(0xFF0F2A4A)
+val HoloCyan = Color(0xFF7C9CFF)
+val HoloViolet = Color(0xFFA88BFF)
+val TextPrimary = Color(0xFFEAF2FF)
+val TextSecondary = Color(0xFFA3B3CF)
+val SuccessGreen = Color(0xFF5EF2A8)
 val WarningAmber = Color(0xFFFFC857)
-val ErrorRed = Color(0xFFFF5C7A)
+val ErrorRed = Color(0xFFFF6B8A)
 
-// Older names, kept so existing screens keep compiling; they now follow the emerald theme.
+// Older names, kept so existing screens keep compiling; they follow the same palette.
 val SpaceBlack = VoidBlack
 val PanelNavy = GlassPanel
 val PanelNavyHigh = GlassPanelHigh

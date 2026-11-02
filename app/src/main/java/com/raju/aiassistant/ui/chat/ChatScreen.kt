@@ -1,5 +1,9 @@
 package com.raju.aiassistant.ui.chat
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import com.raju.aiassistant.ui.components.VoiceHudOrb
+import com.raju.aiassistant.ui.components.VoiceHudMode
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +26,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AddComment
@@ -192,7 +195,18 @@ fun ChatScreen(
             } else {
                 FilledTonalIconButton(onClick = {
                     if (viewModel.hasMicPermission()) viewModel.startVoice() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                }) { Icon(Icons.Filled.Mic, contentDescription = "Speak") }
+                }) {
+                    // Futuristic voice HUD instead of a plain microphone icon (same action and label).
+                    VoiceHudOrb(
+                        when (state.state) {
+                            AssistantState.Listening -> VoiceHudMode.LISTENING
+                            AssistantState.Speaking -> VoiceHudMode.SPEAKING
+                            else -> VoiceHudMode.IDLE
+                        },
+                        MaterialTheme.colorScheme.primary,
+                        Modifier.size(34.dp).semantics { contentDescription = "Speak" },
+                    )
+                }
             }
             FilledIconButton(
                 onClick = { viewModel.send(input); input = "" },

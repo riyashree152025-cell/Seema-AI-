@@ -1,5 +1,8 @@
 package com.raju.aiassistant.ui.home
 
+import com.raju.aiassistant.ui.theme.HoloViolet
+import com.raju.aiassistant.ui.components.VoiceHudOrb
+import com.raju.aiassistant.ui.components.VoiceHudMode
 import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.content.Intent
@@ -60,11 +63,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicNone
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -306,13 +305,15 @@ private fun QuickControl(label: String, icon: ImageVector, on: Boolean?, accent:
 @Composable
 fun BigVoiceButton(active: Boolean, label: String, accent: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        FilledIconButton(
-            onClick = onClick,
-            modifier = Modifier.size(76.dp),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent.copy(alpha = if (active) 0.45f else 0.18f), contentColor = Color.White),
+        Box(
+            Modifier
+                .size(84.dp)
+                .clip(CircleShape)
+                .clickable(onClickLabel = label, onClick = onClick)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(if (active) Icons.Filled.Mic else Icons.Filled.MicNone, contentDescription = label, modifier = Modifier.size(38.dp))
+            VoiceHudOrb(if (active) VoiceHudMode.LISTENING else VoiceHudMode.IDLE, accent, Modifier.fillMaxSize())
         }
         Text(label, style = MaterialTheme.typography.labelLarge, color = TextSecondary)
     }
@@ -335,6 +336,9 @@ fun HoloDock(
     onStop: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    /** What the voice HUD shows (listening / speaking); visual only. */
+    voiceMode: VoiceHudMode = if (micActive) VoiceHudMode.LISTENING else VoiceHudMode.IDLE,
+    speechLevel: () -> Float = { 0f },
 ) {
     val shape = RoundedCornerShape(28.dp)
     Row(
@@ -342,14 +346,14 @@ fun HoloDock(
             .fillMaxWidth()
             .height(60.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.16f), Color(0xCC050B18))))
-            .border(1.dp, Brush.horizontalGradient(listOf(accent.copy(alpha = 0.15f), accent.copy(alpha = 0.8f), accent.copy(alpha = 0.15f))), shape)
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.16f), Color(0xCC070B1C))))
+            .border(1.dp, Brush.horizontalGradient(listOf(HoloViolet.copy(alpha = 0.25f), accent.copy(alpha = 0.8f), HoloViolet.copy(alpha = 0.25f))), shape)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         DockButton("Chat", Icons.AutoMirrored.Filled.Chat, accent, true, onChat)
-        DockMic(micActive, micLabel, accent, time, onMic)
+        DockMic(micActive, micLabel, accent, time, onMic, voiceMode, speechLevel)
         DockButton("Stop", Icons.Filled.Stop, accent, stopEnabled, onStop)
         DockButton("Settings", Icons.Filled.Settings, accent, true, onSettings)
     }
@@ -377,27 +381,24 @@ private fun DockButton(label: String, icon: ImageVector, accent: Color, enabled:
 }
 
 @Composable
-private fun DockMic(active: Boolean, label: String, accent: Color, time: () -> Float, onClick: () -> Unit) {
+private fun DockMic(
+    active: Boolean,
+    label: String,
+    accent: Color,
+    time: () -> Float,
+    onClick: () -> Unit,
+    mode: VoiceHudMode = if (active) VoiceHudMode.LISTENING else VoiceHudMode.IDLE,
+    level: () -> Float = { 0f },
+) {
     Box(
         Modifier
-            .size(54.dp)
+            .size(56.dp)
             .clip(CircleShape)
             .clickable(onClickLabel = label, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val t = time()
-            val spin = (t * (if (active) 220f else 60f)) % 360f
-            drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = if (active) 0.55f else 0.28f), Color.Transparent)), radius = size.minDimension / 2f)
-            val stroke = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
-            val inset = 3.dp.toPx()
-            val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-            val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
-            drawArc(accent, spin, 100f, false, topLeft, arcSize, style = stroke)
-            drawArc(accent.copy(alpha = 0.6f), spin + 180f, 60f, false, topLeft, arcSize, style = stroke)
-            drawCircle(accent.copy(alpha = 0.35f), radius = size.minDimension / 2f - 9.dp.toPx(), style = Stroke(1.dp.toPx()))
-        }
-        Icon(if (active) Icons.Filled.Mic else Icons.Filled.MicNone, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        // Futuristic voice HUD instead of a microphone icon (the tap action is unchanged).
+        VoiceHudOrb(mode, accent, Modifier.fillMaxSize(), time, level)
     }
 }

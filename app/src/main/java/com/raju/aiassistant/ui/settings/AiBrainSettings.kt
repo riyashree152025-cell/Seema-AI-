@@ -1,5 +1,13 @@
 package com.raju.aiassistant.ui.settings
 
+import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
+import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
+import com.raju.aiassistant.ui.home.visuals.ArcReactor
+import com.raju.aiassistant.ui.components.LocalHudEffects
+import com.raju.aiassistant.domain.model.AssistantState
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,6 +79,7 @@ fun ActiveAiPanel(s: UserSettings, keySaved: (ProviderId) -> Boolean, testing: (
     val status = providerStatus(keySaved(p), testing(p), lastTest)
 
     HudPanel(title = "Active AI") {
+        BrainArc(status)
         InfoRow("Provider", p.displayName)
         InfoRow("Model", s.modelFor(p) ?: "auto — the best model the key offers is picked on first use")
         InfoRow("API key", if (keySaved(p)) "Saved (encrypted on this phone)" else "Not saved", if (keySaved(p)) SuccessGreen else WarningAmber)
@@ -117,5 +126,19 @@ fun ActiveAiPanel(s: UserSettings, keySaved: (ProviderId) -> Boolean, testing: (
             "Test active AI sends one tiny message through the same path as a chat message (chosen provider and model, then the other providers with a saved key if it fails). Nothing is added to your chat.",
             style = MaterialTheme.typography.bodySmall, color = TextSecondary,
         )
+    }
+}
+
+/**
+ * Decorative only: a small copy of Home's Arc Reactor at the top of the AI Brain card. Calm and
+ * low-cost (few particles, 24 fps, still when animations are off); red tones when the AI fails.
+ */
+@Composable
+private fun BrainArc(status: ProviderStatus) {
+    val animate = LocalHudEffects.current.pulses
+    val time = rememberAnimationTime(running = animate, maxFps = 24)
+    val style = reactorStyleFor(if (status.isError) AssistantState.Error else AssistantState.Idle)
+    Box(Modifier.fillMaxWidth().clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+        ArcReactor(style, particleCount = 18, richEffects = false, time = { time.floatValue }, speechLevel = { 0f }, modifier = Modifier.size(112.dp))
     }
 }

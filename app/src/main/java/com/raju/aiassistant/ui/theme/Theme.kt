@@ -1,12 +1,15 @@
 package com.raju.aiassistant.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val RajuColors = darkColorScheme(
@@ -31,8 +34,17 @@ private val RajuColors = darkColorScheme(
     surfaceContainerLow = GlassPanel,
     error = ErrorRed,
     onError = VoidBlack,
-    outline = Emerald.copy(alpha = 0.4f),
+    outline = Emerald.copy(alpha = 0.45f),
     outlineVariant = Emerald.copy(alpha = 0.18f),
+)
+
+/** Softly rounded fields, menus and dialogs (cards keep their HUD cut corners). */
+private val RajuShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 private val RajuTypography = Typography(
@@ -51,5 +63,5 @@ private val RajuTypography = Typography(
 /** The app is always dark (sci-fi HUD look), independent of the system theme. */
 @Composable
 fun RajuTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = RajuColors, typography = RajuTypography, content = content)
+    MaterialTheme(colorScheme = RajuColors, typography = RajuTypography, shapes = RajuShapes, content = content)
 }

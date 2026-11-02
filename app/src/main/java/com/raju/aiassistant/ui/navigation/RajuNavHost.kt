@@ -8,6 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -133,7 +136,10 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
         NavHost(
             navController = navController,
             startDestination = Destination.start.route,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier
+                // A quiet navy → violet depth behind every screen (Home draws its own holographic background on top).
+                .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surface, Color(0xFF110D26))))
+                .padding(padding),
             // Short holographic fade between screens (the default is a slow 700 ms crossfade).
             enterTransition = { fadeIn(tween(if (hudEffects.pulses) 240 else 0)) + scaleIn(tween(240), initialScale = if (hudEffects.pulses) 0.985f else 1f) },
             exitTransition = { fadeOut(tween(if (hudEffects.pulses) 140 else 0)) },
