@@ -179,9 +179,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                     onSelect = { viewModel.selectModel(p, it) },
                     keySaved = secret.configured,
                     loading = secret.busy,
+                    costTag = { m -> costLabel(viewModel, p, m) },
                 )
             }
+            if (p == ProviderId.CLOUDFLARE) {
+                // Workers AI needs the account ID as well as the token (it is part of the request URL).
+                SecretCard(SecretId.CLOUDFLARE_ACCOUNT_ID, state.secrets[SecretId.CLOUDFLARE_ACCOUNT_ID] ?: SecretStatus(), viewModel, title = "Cloudflare account ID") {
+                    Text("Cloudflare dashboard → Workers AI → \"Use REST API\" shows the account ID. The token needs the \"Workers AI\" permission.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            }
         }
+        AiBudgetPanel(s, viewModel)
 
         // ---------------------------------------------------------------- search
         SecretCard(SecretId.TAVILY_API_KEY, state.secrets[SecretId.TAVILY_API_KEY] ?: SecretStatus(), viewModel, title = "Web search (Tavily)") {
@@ -553,7 +561,17 @@ private fun SecretCard(
 }
 
 @Composable
-private fun ModelPicker(provider: ProviderId, selected: String?, options: List<String>, onLoad: () -> Unit, onSelect: (String) -> Unit, keySaved: Boolean = true, loading: Boolean = false) {
+private fun ModelPicker(
+    provider: ProviderId,
+    selected: String?,
+    options: List<String>,
+    onLoad: () -> Unit,
+    onSelect: (String) -> Unit,
+    keySaved: Boolean = true,
+    loading: Boolean = false,
+    /** "free" / "paid $…" / "price unknown" for a model id (empty = nothing to show). */
+    costTag: (String) -> String = { "" },
+) {
     var open by remember { mutableStateOf(false) }
     LaunchedEffect(open) { if (open && options.isEmpty() && keySaved) onLoad() }
     ModelAdvice.warning(selected)?.let { Text("⚠ $it", style = MaterialTheme.typography.bodyMedium, color = WarningAmber) }
@@ -567,7 +585,7 @@ private fun ModelPicker(provider: ProviderId, selected: String?, options: List<S
         style = MaterialTheme.typography.bodySmall, color = TextSecondary,
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Model: ${selected ?: "auto (chosen on first use)"}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text("Model: ${selected ?: "auto (a free model is chosen on first use)"}" + (selected?.let(costTag)?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         TextButton(onClick = onLoad, enabled = keySaved && !loading) { Text("Refresh models") }
         Box {
             TextButton(onClick = { open = true }, enabled = keySaved) { Text("Change") }
@@ -579,7 +597,8 @@ private fun ModelPicker(provider: ProviderId, selected: String?, options: List<S
                         ModelAdvice.warning(m) != null -> "  ⚠ not for Hindi"
                         else -> ""
                     }
-                    DropdownMenuItem(text = { Text(m + tag) }, onClick = { onSelect(m); open = false })
+                    val cost = costTag(m)
+                    DropdownMenuItem(text = { Text(m + tag + if (cost.isNotEmpty()) "  · $cost" else "") }, onClick = { onSelect(m); open = false })
                 }
             }
         }
@@ -640,5 +659,16 @@ internal fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> U
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** Short cost label for a model: free, free tier, paid with its published price, or unknown. */
+internal fun costLabel(viewModel: SettingsViewModel, provider: ProviderId, model: String): String {
+    val cls = viewModel.costClassOf(provider, model)
+    return when (cls) {
+        com.raju.aiassistant.domain.ai.CostClass.PAID -> viewModel.priceOf(provider, model)?.let {
+            "paid $${"%.2f".format(it.inputUsdPerMTok)} / $${"%.2f".format(it.outputUsdPerMTok)} per M tokens"
+        } ?: cls.label
+        else -> cls.label
     }
 }

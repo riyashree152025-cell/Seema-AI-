@@ -13,4 +13,10 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     ELEVENLABS_API_KEY("elevenlabs_api_key", "ElevenLabs voice API key", "https://elevenlabs.io/app/settings/api-keys"),
     CARTESIA_API_KEY("cartesia_api_key", "Cartesia voice API key", "https://play.cartesia.ai/keys"),
     DEEPGRAM_API_KEY("deepgram_api_key", "Deepgram API key", "https://console.deepgram.com"),
+    SAMBANOVA_API_KEY("sambanova_api_key", "SambaNova Cloud API key", "https://cloud.sambanova.ai/apis"),
+    NVIDIA_API_KEY("nvidia_api_key", "NVIDIA NIM API key (nvapi-…)", "https://build.nvidia.com"),
+    OPENROUTER_API_KEY("openrouter_api_key", "OpenRouter API key", "https://openrouter.ai/keys"),
+    CLOUDFLARE_API_TOKEN("cloudflare_api_token", "Cloudflare Workers AI API token", "https://dash.cloudflare.com/profile/api-tokens"),
+    /** Not a secret, but stored with the token it belongs to (it is part of the Workers AI URL). */
+    CLOUDFLARE_ACCOUNT_ID("cloudflare_account_id", "Cloudflare account ID", "https://dash.cloudflare.com"),
 }

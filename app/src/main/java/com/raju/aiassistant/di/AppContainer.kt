@@ -133,7 +133,18 @@ class AppContainer(context: Context) {
         dir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
-    val providerFactory by lazy { AiProviderFactory(http) }
+    val providerFactory by lazy { AiProviderFactory(http) { secureKeyStore.get(SecretId.CLOUDFLARE_ACCOUNT_ID) } }
+    /** Estimated AI use and published model prices for this month (Settings → AI & Brain → Budget). */
+    val aiUsage by lazy { com.raju.aiassistant.data.ai.AiUsageStore(com.raju.aiassistant.data.ai.PrefsUsageStorage(appContext)) }
+    /** Providers resting after a failure (rate limit, bad key, quota). */
+    val aiCooldowns by lazy { com.raju.aiassistant.domain.ai.ProviderCooldowns() }
+
+    /** Every AI request goes through the cost / cool-down guard. */
+    fun guardedProvider(id: com.raju.aiassistant.domain.ai.ProviderId, key: String): com.raju.aiassistant.domain.ai.AiProvider =
+        com.raju.aiassistant.data.ai.GuardedAiProvider(providerFactory.create(id, key), aiUsage, aiCooldowns) {
+            val s = currentSettings.value
+            com.raju.aiassistant.domain.ai.BudgetLimits(s.aiMonthlyBudgetUsd.toDouble(), s.aiFreeOnly)
+        }
     val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }
@@ -252,7 +263,7 @@ class AppContainer(context: Context) {
             scope = appScope,
             settings = currentSettings,
             secret = { secureKeyStore.get(it) },
-            providerFor = { id, key -> providerFactory.create(id, key) },
+            providerFor = { id, key -> guardedProvider(id, key) },
             searchFor = { key -> TavilyClient(http, key) },
             history = conversationRepository,
             memories = memoryRepository,

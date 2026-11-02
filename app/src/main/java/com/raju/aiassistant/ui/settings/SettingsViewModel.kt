@@ -156,7 +156,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             val ok = runCatching { c.secureKeyStore.save(id, value) }.getOrDefault(false)
             refreshMasks()
             // A new key needs a new test: the old result must not keep saying "Connected".
-            ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
+            providerOfSecret(id)?.let { repo.clearLastTest(it); c.aiCooldowns.clear(it) }
             if (ok) setStatus(id, "Saved and encrypted on this device. Tap Test connection to check it.", false)
             else setStatus(id, "Save failed. The key was not stored.", true)
         }
@@ -165,7 +165,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun removeSecret(id: SecretId) {
         viewModelScope.launch {
             val ok = c.secureKeyStore.remove(id)
-            ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
+            providerOfSecret(id)?.let { repo.clearLastTest(it); c.aiCooldowns.clear(it) }
             refreshMasks()
             setStatus(id, if (ok) "Key removed." else "Could not remove key.", !ok)
         }
@@ -174,12 +174,17 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     /** Real authenticated request; the result (and only a real success) is shown as Connected. */
     fun testSecret(id: SecretId) {
         viewModelScope.launch {
-            val key = c.secureKeyStore.get(id) ?: return@launch setStatus(id, "No key saved.", true)
+            // The Cloudflare account ID is tested together with the Workers AI token.
+            val keyId = if (id == SecretId.CLOUDFLARE_ACCOUNT_ID) SecretId.CLOUDFLARE_API_TOKEN else id
+            val key = c.secureKeyStore.get(keyId) ?: return@launch setStatus(
+                id, if (keyId != id) "Save the Cloudflare API token too, then test." else "No key saved.", true,
+            )
             setStatus(id, "Testing connection…", false, busy = true)
-            val provider = ProviderId.entries.firstOrNull { it.secret == id }
+            val provider = providerOfSecret(id)
             val result: AiResult<String> = when {
                 provider != null -> when (val r = c.providerFactory.create(provider, key).listModels()) {
                     is AiResult.Success -> {
+                        c.aiUsage.learnPrices(provider, r.value)
                         _models.value = _models.value + (provider to ModelAdvice.rank(provider, r.value))
                         if (c.currentSettings.value.modelFor(provider) == null) {
                             pickDefaultModel(provider, r.value)?.let { repo.setModel(provider, it.id) }
@@ -216,6 +221,21 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun loadModels(provider: ProviderId) = testSecret(provider.secret)
+
+    /** The AI provider a saved secret belongs to (the Cloudflare account ID belongs to Workers AI). */
+    private fun providerOfSecret(id: SecretId): ProviderId? =
+        if (id == SecretId.CLOUDFLARE_ACCOUNT_ID) ProviderId.CLOUDFLARE else ProviderId.entries.firstOrNull { it.secret == id }
+
+    // ------------------------------------------------------------ budget
+
+    /** This month's estimated AI use (resets on the 1st). */
+    val aiUsage: StateFlow<com.raju.aiassistant.data.ai.AiUsageMonth> = c.aiUsage.usage
+    fun aiCooldowns() = c.aiCooldowns.snapshot()
+    fun costClassOf(provider: ProviderId, model: String) =
+        com.raju.aiassistant.domain.ai.costClass(provider, model, c.aiUsage.priceOf(provider, model))
+    fun priceOf(provider: ProviderId, model: String) = c.aiUsage.priceOf(provider, model)
+    fun setAiFreeOnly(v: Boolean) = launch { repo.setAiFreeOnly(v) }
+    fun setAiMonthlyBudget(usd: Float) = launch { repo.setAiMonthlyBudget(usd) }
 
     // ------------------------------------------------------------ active AI
 

@@ -64,6 +64,8 @@ class SettingsRepository(private val context: Context) {
             speechPitch = this[Keys.SPEECH_PITCH] ?: d.speechPitch,
             voiceEngineAuto = this[Keys.VOICE_ENGINE_AUTO] ?: d.voiceEngineAuto,
             kokoroSpeaker = this[Keys.KOKORO_SPEAKER] ?: d.kokoroSpeaker,
+            aiFreeOnly = this[Keys.AI_FREE_ONLY] ?: d.aiFreeOnly,
+            aiMonthlyBudgetUsd = (this[Keys.AI_MONTHLY_BUDGET] ?: d.aiMonthlyBudgetUsd).coerceIn(0f, MAX_AI_BUDGET_USD),
             autoSpeakReplies = this[Keys.AUTO_SPEAK] ?: d.autoSpeakReplies,
             continuousConversation = this[Keys.CONTINUOUS] ?: d.continuousConversation,
             // Older versions stored a hands-free switch: keep a user's explicit choice.
@@ -119,6 +121,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSpeechPitch(v: Float) = edit { it[Keys.SPEECH_PITCH] = v.coerceIn(0.5f, 1.5f) }
     suspend fun setVoiceEngineAuto(v: Boolean) = edit { it[Keys.VOICE_ENGINE_AUTO] = v }
     suspend fun setKokoroSpeaker(v: Int) = edit { it[Keys.KOKORO_SPEAKER] = v }
+    suspend fun setAiFreeOnly(v: Boolean) = edit { it[Keys.AI_FREE_ONLY] = v }
+    suspend fun setAiMonthlyBudget(usd: Float) = edit { it[Keys.AI_MONTHLY_BUDGET] = usd.coerceIn(0f, MAX_AI_BUDGET_USD) }
     suspend fun setAndroidVoice(v: String?) = edit { if (v == null) it.remove(Keys.ANDROID_VOICE) else it[Keys.ANDROID_VOICE] = v }
     suspend fun setSpeechLanguage(v: String) = edit { it[Keys.SPEECH_LANGUAGE] = v }
     suspend fun setAutoSpeak(v: Boolean) = edit { it[Keys.AUTO_SPEAK] = v }
@@ -176,6 +180,8 @@ class SettingsRepository(private val context: Context) {
         val SPEECH_PITCH = floatPreferencesKey("speech_pitch")
         val VOICE_ENGINE_AUTO = booleanPreferencesKey("voice_engine_auto")
         val KOKORO_SPEAKER = intPreferencesKey("kokoro_speaker")
+        val AI_FREE_ONLY = booleanPreferencesKey("ai_free_only")
+        val AI_MONTHLY_BUDGET = floatPreferencesKey("ai_monthly_budget_usd")
         val ANDROID_VOICE = stringPreferencesKey("android_voice")
         val SPEECH_LANGUAGE = stringPreferencesKey("speech_language")
         val AUTO_SPEAK = booleanPreferencesKey("auto_speak")
@@ -216,3 +222,6 @@ internal fun decodeConnectionTest(s: String): ConnectionTest? {
     val newForm = parts.size == 4 && (kind != null || parts[2].isEmpty())
     return ConnectionTest(parts[0] == "1", if (newForm) parts[3] else parts.drop(2).joinToString("|"), time, if (newForm) kind else null)
 }
+
+/** The budget field cannot go above this (a typo like 500 is refused). */
+const val MAX_AI_BUDGET_USD = 50f

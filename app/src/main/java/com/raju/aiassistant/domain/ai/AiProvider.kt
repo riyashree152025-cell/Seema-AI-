@@ -7,9 +7,23 @@ enum class ProviderId(val displayName: String, val shortName: String, val secret
     GEMINI("Google Gemini", "Gemini", SecretId.GEMINI_API_KEY),
     GROQ("Groq", "Groq", SecretId.GROQ_API_KEY),
     CEREBRAS("Cerebras", "Cerebras", SecretId.CEREBRAS_API_KEY),
+    SAMBANOVA("SambaNova Cloud", "SambaNova", SecretId.SAMBANOVA_API_KEY),
+    NVIDIA("NVIDIA NIM (build.nvidia.com)", "NVIDIA", SecretId.NVIDIA_API_KEY),
+    OPENROUTER("OpenRouter", "OpenRouter", SecretId.OPENROUTER_API_KEY),
+    /** Also needs the Cloudflare account ID (saved separately). */
+    CLOUDFLARE("Cloudflare Workers AI", "Cloudflare", SecretId.CLOUDFLARE_API_TOKEN),
 }
 
-data class AiModel(val id: String, val displayName: String)
+/**
+ * A chat model the provider listed for this key. Prices (US$ per million tokens) are filled only
+ * when the provider publishes them in its model list (OpenRouter); null = unknown.
+ */
+data class AiModel(
+    val id: String,
+    val displayName: String,
+    val inputUsdPerMTok: Double? = null,
+    val outputUsdPerMTok: Double? = null,
+)
 
 /** Outcome of a remote call. Errors are explicit so the UI never shows fake success. */
 sealed interface AiResult<out T> {

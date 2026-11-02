@@ -1,5 +1,13 @@
 package com.raju.aiassistant.ui.settings
 
+import com.raju.aiassistant.domain.ai.BUDGET_SAFETY_SHARE
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.text.KeyboardOptions
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
 import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
 import com.raju.aiassistant.ui.home.visuals.ArcReactor
@@ -140,5 +148,58 @@ private fun BrainArc(status: ProviderStatus) {
     val style = reactorStyleFor(if (status.isError) AssistantState.Error else AssistantState.Idle)
     Box(Modifier.fillMaxWidth().clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
         ArcReactor(style, particleCount = 18, richEffects = false, time = { time.floatValue }, speechLevel = { 0f }, modifier = Modifier.size(112.dp))
+    }
+}
+
+/**
+ * Settings → AI & Brain → Budget: free-only switch, monthly limit for paid models, this month's
+ * estimated use per model and providers resting after a failure. The app never pays or buys
+ * credits; it only decides whether a request is sent.
+ */
+@Composable
+fun AiBudgetPanel(s: UserSettings, viewModel: SettingsViewModel) {
+    val usage by viewModel.aiUsage.collectAsStateWithLifecycle()
+    var capText by remember(s.aiMonthlyBudgetUsd) { mutableStateOf("%.2f".format(s.aiMonthlyBudgetUsd)) }
+    val resting = viewModel.aiCooldowns()
+
+    HudPanel(title = "AI budget (cost safety)") {
+        ToggleRow("Free-only mode: use only free / free-tier models", s.aiFreeOnly, viewModel::setAiFreeOnly)
+        Text(
+            if (s.aiFreeOnly) "Paid models are never used. If every free provider is busy, Seema says so instead of spending money."
+            else "Paid models (with a published price) may be used up to the monthly limit below; models without a price are never used.",
+            style = MaterialTheme.typography.bodyMedium, color = if (s.aiFreeOnly) SuccessGreen else WarningAmber,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = capText,
+                onValueChange = { capText = it.filter { c -> c.isDigit() || c == '.' }.take(6) },
+                label = { Text("Monthly limit (US$)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.weight(1f),
+            )
+            val newCap = capText.toFloatOrNull()
+            OutlinedButton(onClick = { newCap?.let(viewModel::setAiMonthlyBudget) }, enabled = newCap != null && newCap != s.aiMonthlyBudgetUsd) { Text("Save limit") }
+        }
+        InfoRow(
+            "This month",
+            "≈ $${"%.2f".format(usage.totalUsd)} of $${"%.2f".format(s.aiMonthlyBudgetUsd)} (estimate; only ${(BUDGET_SAFETY_SHARE * 100).toInt()}% of the limit is used, for taxes and currency)",
+            if (usage.totalUsd > 0) WarningAmber else TextPrimary,
+        )
+        Text(
+            "Seema never pays, buys credits or turns on top-ups. Free-tier providers (Gemini, Groq, Cerebras, SambaNova, NVIDIA, Cloudflare) can only charge you if billing is enabled on that account — keep billing off there, or set a spending limit in the provider's own dashboard. The numbers here are estimates, not the provider's invoice.",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
+        if (usage.models.isEmpty()) Text("No AI requests counted yet this month (${usage.month}).", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        usage.models.sortedByDescending { it.requests }.forEach { u ->
+            Text(
+                "${u.provider.shortName} · ${u.model}: ${u.requests} replies, ≈ ${u.inputTokens + u.outputTokens} tokens" +
+                    (if (u.costUsd > 0) ", ≈ $${"%.3f".format(u.costUsd)}" else ", free") + (if (u.failures > 0) " · ${u.failures} failed" else ""),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        resting.forEach { (p, v) ->
+            Text("${p.shortName} is resting ${v.first / 1000 + 1} s after: ${v.second.userMessage} (other providers answer meanwhile).", style = MaterialTheme.typography.bodySmall, color = WarningAmber)
+        }
     }
 }

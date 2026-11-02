@@ -17,6 +17,11 @@ object ModelAdvice {
         ProviderId.GROQ to listOf("llama-3.3-70b", "gpt-oss-120b", "llama-4", "qwen3", "llama-3.1-8b", "llama"),
         // The list itself comes live from the key's /models endpoint; this only orders it.
         ProviderId.CEREBRAS to listOf("llama-3.3-70b", "gpt-oss-120b", "qwen-3", "llama"),
+        // Ordering hints only; what is offered always comes from the key's own model list.
+        ProviderId.SAMBANOVA to listOf("llama-3.3-70b", "deepseek-v3", "llama-4", "llama"),
+        ProviderId.NVIDIA to listOf("llama-3.3-70b-instruct", "llama-4", "nemotron", "llama"),
+        ProviderId.OPENROUTER to listOf("llama-3.3-70b-instruct:free", "deepseek", "gemini", ":free"),
+        ProviderId.CLOUDFLARE to listOf("llama-3.3-70b-instruct", "llama-4", "llama-3.1-8b-instruct", "llama"),
     )
 
     fun isChatModel(id: String) = NOT_CHAT.none { id.contains(it, ignoreCase = true) }
@@ -47,6 +52,12 @@ object ModelAdvice {
     fun historyCharBudget(id: String): Int = if (NOT_FOR_HINDI.any { id.contains(it, ignoreCase = true) }) 6_000 else 24_000
 }
 
-/** Picks a sensible default when the user has not chosen a model yet. */
-fun pickDefaultModel(provider: ProviderId, models: List<AiModel>): AiModel? =
-    ModelAdvice.rank(provider, models).firstOrNull { ModelAdvice.warning(it.id) == null } ?: models.firstOrNull()
+/**
+ * Picks a sensible default when the user has not chosen a model yet. Free-first: a model with a
+ * price (or an unknown price) is never picked automatically while a free one exists.
+ */
+fun pickDefaultModel(provider: ProviderId, models: List<AiModel>): AiModel? {
+    val free = models.filter { costClass(provider, it.id, it.price()).let { c -> c == CostClass.FREE || c == CostClass.FREE_TIER } }
+    val pool = free.ifEmpty { models }
+    return ModelAdvice.rank(provider, pool).firstOrNull { ModelAdvice.warning(it.id) == null } ?: pool.firstOrNull()
+}

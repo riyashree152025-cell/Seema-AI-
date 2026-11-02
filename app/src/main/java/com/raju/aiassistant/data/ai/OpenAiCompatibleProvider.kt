@@ -19,18 +19,20 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Adapter for OpenAI-compatible chat APIs (Groq, Cerebras). Another such provider only needs a
- * new [ProviderId] and base URL.
+ * Adapter for OpenAI-compatible chat APIs (Groq, Cerebras, SambaNova, NVIDIA NIM, OpenRouter,
+ * Cloudflare Workers AI). Another such provider only needs a new [ProviderId] and base URL.
+ * [modelsUrl] is where the provider lists its models (Cloudflare uses its own search endpoint).
  */
 class OpenAiCompatibleProvider(
     override val id: ProviderId,
     private val http: OkHttpClient,
     private val apiKey: String,
     private val baseUrl: String,
+    private val modelsUrl: String = "$baseUrl/models",
 ) : AiProvider {
 
     override suspend fun listModels(): AiResult<List<AiModel>> = withRetry {
-        val request = Request.Builder().url("$baseUrl/models").header("Authorization", "Bearer $apiKey").get().build()
+        val request = Request.Builder().url(modelsUrl).header("Authorization", "Bearer $apiKey").get().build()
         when (val r = http.fetch(request)) {
             is AiResult.Failure -> r
             is AiResult.Success -> {
@@ -38,11 +40,7 @@ class OpenAiCompatibleProvider(
                 if (code !in 200..299) httpFailure(code, body) else {
                     val root = runCatching { JsonFormat.parseToJsonElement(body) as JsonObject }.getOrNull()
                     if (root == null) AiResult.Failure(FailureKind.UNKNOWN, "Unreadable model list")
-                    else AiResult.Success(
-                        (root["data"] as? JsonArray).orEmpty().mapNotNull { el ->
-                            ((el as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull?.let { AiModel(it, it) }
-                        }.sortedBy { it.id }
-                    )
+                    else AiResult.Success(parseModelList(root))
                 }
             }
         }
@@ -117,3 +115,29 @@ class OpenAiCompatibleProvider(
 
 const val GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 const val CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+const val SAMBANOVA_BASE_URL = "https://api.sambanova.ai/v1"
+const val NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+/** Workers AI's OpenAI-compatible endpoint is per account. */
+fun cloudflareBaseUrl(accountId: String) = "https://api.cloudflare.com/client/v4/accounts/${accountId.trim()}/ai/v1"
+
+/** Workers AI lists models with its own search API (text-generation models only). */
+fun cloudflareModelsUrl(accountId: String) =
+    "https://api.cloudflare.com/client/v4/accounts/${accountId.trim()}/ai/models/search?task=Text%20Generation&per_page=100"
+
+/**
+ * Models from an OpenAI-style list (`{"data":[{"id":…}]}`) or Cloudflare's search result
+ * (`{"result":[{"name":…}]}`). OpenRouter's `pricing` (US$ per token, as strings) becomes US$ per
+ * million tokens; anything without a published price stays null (= unknown).
+ */
+internal fun parseModelList(root: JsonObject): List<AiModel> {
+    val items = (root["data"] as? JsonArray) ?: (root["result"] as? JsonArray) ?: JsonArray(emptyList())
+    return items.mapNotNull { el ->
+        val o = el as? JsonObject ?: return@mapNotNull null
+        val id = (o["id"] as? JsonPrimitive)?.contentOrNull ?: (o["name"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+        val pricing = o["pricing"] as? JsonObject
+        fun perMTok(key: String) = (pricing?.get(key) as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { it * 1_000_000 }
+        AiModel(id, id, perMTok("prompt"), perMTok("completion"))
+    }.distinctBy { it.id }.sortedBy { it.id }
+}

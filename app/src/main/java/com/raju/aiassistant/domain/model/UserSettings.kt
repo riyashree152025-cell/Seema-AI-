@@ -99,6 +99,10 @@ data class UserSettings(
     val voiceEngineAuto: Boolean = true,
     /** Kokoro speaker (31 = hf_alpha, Hindi female). */
     val kokoroSpeaker: Int = 31,
+    /** AI brain cost control: only free / free-tier models (paid ones are never used while on). */
+    val aiFreeOnly: Boolean = true,
+    /** Upper limit for paid AI per month, in US$ (only used when [aiFreeOnly] is off). */
+    val aiMonthlyBudgetUsd: Float = 5f,
     /** Voice pitch for the Android voice: a little below 1 sounds deeper and calmer. */
     val speechPitch: Float = 0.92f,
     val androidVoice: String? = null,
