@@ -1,5 +1,6 @@
 package com.raju.aiassistant.ui.home
 
+import com.raju.aiassistant.ui.components.VoiceHudMode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import android.Manifest
@@ -376,6 +377,13 @@ fun HomeScreen(
                 onMic = onVoice,
                 onStop = viewModel::stop,
                 onSettings = onOpenSettings,
+                voiceMode = when {
+                    assistantState == AssistantState.Speaking -> VoiceHudMode.SPEAKING
+                    state.listening -> VoiceHudMode.LISTENING
+                    state.handsFree -> VoiceHudMode.LISTENING
+                    else -> VoiceHudMode.IDLE
+                },
+                speechLevel = speechLevel,
             )
         }
     }

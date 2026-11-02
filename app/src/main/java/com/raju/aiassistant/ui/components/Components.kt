@@ -24,6 +24,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.raju.aiassistant.ui.theme.GlassPanel
+import com.raju.aiassistant.ui.theme.HoloViolet
 
 /** Glass HUD panel used across screens: cut corners, corner brackets and a light tracing its border. */
 @Composable
@@ -37,9 +40,9 @@ fun HudPanel(
     Column(
         modifier
             .fillMaxWidth()
-            .hudFrame(accent, trace = trace)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .hudFrame(accent, cut = 12.dp, fillAlpha = 0.07f, trace = trace, base = GlassPanel, edgeTo = HoloViolet)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (title != null) HudTitle(title, accent)
         content()
@@ -57,13 +60,13 @@ fun HudTitle(title: String, accent: Color = MaterialTheme.colorScheme.primary) {
             drawPath(p, accent)
         }
         Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = accent)
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, letterSpacing = 0.6.sp), color = accent)
         Spacer(Modifier.width(10.dp))
         Canvas(
             Modifier
                 .weight(1f)
                 .height(1.dp),
-        ) { drawLine(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.55f), Color.Transparent)), Offset.Zero, Offset(size.width, 0f), size.height) }
+        ) { drawLine(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.6f), HoloViolet.copy(alpha = 0.25f), Color.Transparent)), Offset.Zero, Offset(size.width, 0f), size.height) }
     }
 }
 

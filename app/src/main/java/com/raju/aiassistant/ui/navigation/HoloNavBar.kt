@@ -37,9 +37,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.raju.aiassistant.ui.theme.HoloViolet
 
-/** Neon blue of the 3D Holographic Core. */
-private val HOLO_BLUE = Color(0xFF4DC8FF)
+/** Neon cyan of the app palette (the 3D core's blue family). */
+private val HOLO_BLUE = com.raju.aiassistant.ui.theme.Emerald
 
 /**
  * Bottom navigation for the 3D Holographic design: a slim floating glass capsule. Icons only,
@@ -55,8 +56,8 @@ fun HoloNavBar(current: Destination?, onSelect: (Destination) -> Unit) {
             .fillMaxWidth()
             .height(52.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xE60A1A2E), Color(0xF2040A14))))
-            .border(1.dp, Brush.horizontalGradient(listOf(HOLO_BLUE.copy(alpha = 0.1f), HOLO_BLUE.copy(alpha = 0.7f), HOLO_BLUE.copy(alpha = 0.1f))), shape)
+            .background(Brush.verticalGradient(listOf(Color(0xE6101A33), Color(0xF205070F))))
+            .border(1.dp, Brush.horizontalGradient(listOf(HoloViolet.copy(alpha = 0.25f), HOLO_BLUE.copy(alpha = 0.75f), HoloViolet.copy(alpha = 0.25f))), shape)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,

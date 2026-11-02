@@ -89,11 +89,21 @@ fun Modifier.hudFrame(
     cut: Dp = 10.dp,
     fillAlpha: Float = 0.10f,
     trace: (() -> Float)? = null,
+    /** Solid card colour under the glass (cards on plain screens); null keeps the see-through HUD tile look. */
+    base: Color? = null,
+    /** Second border colour: the edge runs from [accent] to it (premium neon edge on cards). */
+    edgeTo: Color? = null,
 ): Modifier = drawBehind {
     val c = cut.toPx()
     val outline = cutCornerPath(size, c)
-    drawPath(outline, Brush.verticalGradient(listOf(accent.copy(alpha = fillAlpha), accent.copy(alpha = fillAlpha * 0.25f), Color.Black.copy(alpha = 0.35f))))
-    drawPath(outline, accent.copy(alpha = 0.28f), style = Stroke(1.dp.toPx()))
+    if (base != null) {
+        // Soft neon halo just outside the edge, then the solid card.
+        drawPath(outline, accent.copy(alpha = 0.07f), style = Stroke(6.dp.toPx()))
+        drawPath(outline, Brush.verticalGradient(listOf(base, base.copy(alpha = 0.92f))))
+    }
+    drawPath(outline, Brush.verticalGradient(listOf(accent.copy(alpha = fillAlpha), accent.copy(alpha = fillAlpha * 0.25f), Color.Black.copy(alpha = if (base != null) 0.12f else 0.35f))))
+    if (edgeTo != null) drawPath(outline, Brush.linearGradient(listOf(accent.copy(alpha = 0.55f), edgeTo.copy(alpha = 0.35f)), Offset.Zero, Offset(size.width, size.height)), style = Stroke(1.dp.toPx()))
+    else drawPath(outline, accent.copy(alpha = 0.28f), style = Stroke(1.dp.toPx()))
     drawCornerBrackets(accent.copy(alpha = 0.9f), c, (c * 1.8f).coerceAtMost(size.minDimension / 3f), 2.dp.toPx())
     trace?.invoke()?.takeIf { it < 1f }?.let { drawTrace(it, accent, c) }
 }
