@@ -48,6 +48,15 @@ Not changed / limits:
 
 Tests: engine (offline wake → greeting → answer → listening; call pause/resume; tap-to-talk unaffected), call-mode mapping, keywords/catalog, notification text. Emulator RUN 8 in `scripts/smoke.sh`: real wake-model download + native spotter on test recordings; service + notification with the app open, after HOME and with the screen off.
 
+### Phase 1 results (commit 10a52b4)
+- CI run 41439079722: build ✅, 281 unit tests / 0 failed ✅, lint ✅, release R8 ✅, APK key scan ✅.
+- Emulator smoke run 41439079566 (API 34 and 35, x86_64), RUN 8:
+  - Wake model: real download, SHA-256 accepted by the app (state Installed), native spotter loaded (native=true).
+  - Archive recording 0.wav (6.6 s): "LIGHT UP" found (1.6 s on API 34, 2.6 s on API 35, 1 thread); "Hey Seema" false wakes on both recordings: 0. PASS on both.
+  - Screen-off service: running + notification "Seema is listening" with the app open, after HOME and with the screen off (both API levels); the recogniser kept restarting in the background (log), no crash.
+- Not tested anywhere yet: the spotter's live microphone loop (the emulator test used files), a real person saying "Hey Seema", real calls / Bluetooth, battery drain over time.
+- Observation: on emulator noise Google's recogniser reports "speech started" then NO_MATCH (now "unclear"); Seema asks to repeat at most once until real words are heard, then stays quiet.
+
 ## Next action
-1. Real-phone check of Phase 1 (wake word accuracy, screen-off with your recogniser, calls, Bluetooth).
+1. Real-phone check of Phase 1 with the debug APK of run 41439079722 (wake word accuracy, screen-off with your recogniser, calls, Bluetooth).
 2. Phase 4: primary/secondary provider + speed mode in AI & Brain.
