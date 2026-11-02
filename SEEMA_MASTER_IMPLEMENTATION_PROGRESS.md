@@ -27,8 +27,7 @@ Not verified (needs the user's keys on the phone): every new provider's real con
 
 ## Tests
 - `BudgetGuardTest` (decisions, fail-closed, free-only, limit with margin, free-first default, price parsing, guard blocking/counting/cool-down, month reset).
-- CI results: see the latest run on the branch (recorded below after it finishes).
+- CI run 41434214851 on commit 1d933c7: build ✅, 274 unit tests / 0 failed ✅, lint ✅, release R8 ✅, APK key scan ✅ (no key-like strings).
 
 ## Next action
-1. Verify CI on `claude/multi-brain-budget`.
-2. Phase 4: primary/secondary provider + speed mode in AI & Brain; Phase 1 items (foreground mic service, offline wake word) need real-device testing.
+1. Phase 4: primary/secondary provider + speed mode in AI & Brain; Phase 1 items (foreground mic service, offline wake word) need real-device testing.
