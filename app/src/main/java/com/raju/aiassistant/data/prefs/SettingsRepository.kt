@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
             speechPitch = this[Keys.SPEECH_PITCH] ?: d.speechPitch,
             voiceEngineAuto = this[Keys.VOICE_ENGINE_AUTO] ?: d.voiceEngineAuto,
             kokoroSpeaker = this[Keys.KOKORO_SPEAKER] ?: d.kokoroSpeaker,
+            screenOffListening = this[Keys.SCREEN_OFF_LISTENING] ?: d.screenOffListening,
             aiFreeOnly = this[Keys.AI_FREE_ONLY] ?: d.aiFreeOnly,
             aiMonthlyBudgetUsd = (this[Keys.AI_MONTHLY_BUDGET] ?: d.aiMonthlyBudgetUsd).coerceIn(0f, MAX_AI_BUDGET_USD),
             autoSpeakReplies = this[Keys.AUTO_SPEAK] ?: d.autoSpeakReplies,
@@ -122,6 +123,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setVoiceEngineAuto(v: Boolean) = edit { it[Keys.VOICE_ENGINE_AUTO] = v }
     suspend fun setKokoroSpeaker(v: Int) = edit { it[Keys.KOKORO_SPEAKER] = v }
     suspend fun setAiFreeOnly(v: Boolean) = edit { it[Keys.AI_FREE_ONLY] = v }
+    suspend fun setScreenOffListening(v: Boolean) = edit { it[Keys.SCREEN_OFF_LISTENING] = v }
     suspend fun setAiMonthlyBudget(usd: Float) = edit { it[Keys.AI_MONTHLY_BUDGET] = usd.coerceIn(0f, MAX_AI_BUDGET_USD) }
     suspend fun setAndroidVoice(v: String?) = edit { if (v == null) it.remove(Keys.ANDROID_VOICE) else it[Keys.ANDROID_VOICE] = v }
     suspend fun setSpeechLanguage(v: String) = edit { it[Keys.SPEECH_LANGUAGE] = v }
@@ -181,6 +183,7 @@ class SettingsRepository(private val context: Context) {
         val VOICE_ENGINE_AUTO = booleanPreferencesKey("voice_engine_auto")
         val KOKORO_SPEAKER = intPreferencesKey("kokoro_speaker")
         val AI_FREE_ONLY = booleanPreferencesKey("ai_free_only")
+        val SCREEN_OFF_LISTENING = booleanPreferencesKey("screen_off_listening")
         val AI_MONTHLY_BUDGET = floatPreferencesKey("ai_monthly_budget_usd")
         val ANDROID_VOICE = stringPreferencesKey("android_voice")
         val SPEECH_LANGUAGE = stringPreferencesKey("speech_language")

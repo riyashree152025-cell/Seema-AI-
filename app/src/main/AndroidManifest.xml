@@ -18,6 +18,9 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Android 13+: lets the app show its own "Read / Skip" notification. Asked when announcements are turned on. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Optional "keep listening when the screen is off": a microphone foreground service with a visible notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Only used if the user turns on "Direct calling"; otherwise the dialer is opened. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
@@ -104,6 +107,11 @@
 
         <!-- Incoming-call announcements. Bound by Android only after the user grants the call-screening role. -->
         <!-- Android 10+ only: the call-screening role (and binding) does not exist on older versions. -->
+        <service
+            android:name=".notifications.VoiceSessionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <service
             android:name=".notifications.RajuCallScreeningService"
             android:exported="true"

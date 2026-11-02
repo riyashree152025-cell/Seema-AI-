@@ -75,6 +75,12 @@ object NoConversationMode : ConversationMode {
 interface WakeListener {
     fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit)
     fun stop()
+
+    /**
+     * True when this listener itself recognises "Hey Seema" (offline wake word): then a call to
+     * onUtterance means her name was said, and no speech-to-text check is needed.
+     */
+    val spotsWakeWord: Boolean get() = false
 }
 
 object NoWakeListener : WakeListener {

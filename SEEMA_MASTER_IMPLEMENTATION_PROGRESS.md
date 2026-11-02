@@ -29,5 +29,25 @@ Not verified (needs the user's keys on the phone): every new provider's real con
 - `BudgetGuardTest` (decisions, fail-closed, free-only, limit with margin, free-first default, price parsing, guard blocking/counting/cool-down, month reset).
 - CI run 41434214851 on commit 1d933c7: build ✅, 274 unit tests / 0 failed ✅, lint ✅, release R8 ✅, APK key scan ✅ (no key-like strings).
 
+## Phase 1 — Live voice (this branch, Nov 2026)
+Audit: hands-free, continuous conversation, sleep + "Seema" wake (Deepgram) and barge-in already existed; the mic was released whenever the app left the screen (`ON_STOP`); no foreground service; no offline wake word; no call/headset handling.
+
+Done (reusing the existing engine; no second engine or service):
+- **Screen-off listening**: `VoiceSessionService` (foreground service, type microphone) keeps the existing hands-free session when the screen turns off. Opt-in setting "Keep listening when the screen is off"; started only while the app is on screen; ongoing notification with live state ("Microphone ON — …") and Stop; stops itself when hands-free ends or the option is turned off; not sticky. Manifest: FOREGROUND_SERVICE(_MICROPHONE).
+- **Offline wake word "Hey Seema"**: `KwsWakeListener` (sherpa-onnx keyword spotter, English GigaSpeech 3.3M int8, 17.6 MB, Apache-2.0, SHA-256 checked) behind the existing `WakeListener`; `SwitchingWakeListener` uses it in sleep mode when downloaded and "Wake only when called by name" is on, else the old detector. Only our phrases are used (the archive's default keywords such as "HEY SIRI" are not). Downloaded by the existing `VoiceModelManager` (now generic over `DownloadableModel`).
+  - Measured here on synthetic speech (Kokoro English voices): 4/6 "Hey Seema" detected, 0/6 false wakes (threshold 0.1, boost 2.0); archive test recordings: "LIGHT UP" found, 0 false "Hey Seema". Real-voice accuracy NOT verified.
+- **After the wake word** the existing flow continues: greeting, listening, answer, listening again (unit-tested).
+- **Calls / headsets**: `AudioInterruptions` — ringing: Seema's reply and mic stop (caller announcement keeps playing); answered: all her sound stops; call over: hands-free resumes if it was on. Headphones/Bluetooth disconnect (BECOMING_NOISY): she stops talking. No new permission (audio mode on Android 12+, call state below). VoIP calls are not detected.
+- **Privacy**: notification + Android's green mic dot while the service runs; Home "Mic ON"; offline wake word records/sends nothing.
+
+Not changed / limits:
+- **Barge-in** stays as before: works with a Deepgram key in hands-free (echo canceller + transcription). Without them her own voice would stop her (found on a phone earlier), so no offline barge-in was added.
+- Bluetooth headset **microphone** (SCO) routing is not added: the phone's mic is used; playback follows Android's routing.
+- Google's speech recogniser with the screen locked depends on the phone; Deepgram listening records in the app and is expected to work. Not verified on a real phone.
+- Some phone makers kill background apps despite a foreground service (battery settings).
+
+Tests: engine (offline wake → greeting → answer → listening; call pause/resume; tap-to-talk unaffected), call-mode mapping, keywords/catalog, notification text. Emulator RUN 8 in `scripts/smoke.sh`: real wake-model download + native spotter on test recordings; service + notification with the app open, after HOME and with the screen off.
+
 ## Next action
-1. Phase 4: primary/secondary provider + speed mode in AI & Brain; Phase 1 items (foreground mic service, offline wake word) need real-device testing.
+1. Real-phone check of Phase 1 (wake word accuracy, screen-off with your recogniser, calls, Bluetooth).
+2. Phase 4: primary/secondary provider + speed mode in AI & Brain.

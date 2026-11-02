@@ -454,6 +454,12 @@ class AssistantEngine(
 
     private suspend fun onWakeAudio(pcm: ByteArray) {
         if (!asleep) return
+        if (wakeListener.spotsWakeWord) {
+            // The offline detector heard "Hey Seema" itself: wake and listen.
+            trace("wake word (offline)")
+            wakeUp()
+            return
+        }
         val t = transcriber
         if (t == null || !t.isAvailable()) {
             // No speech-to-text for the recording: any voice wakes her, and she listens properly.
@@ -882,6 +888,35 @@ class AssistantEngine(
     /** "Ruko": stop speaking right now but keep the conversation (hands-free listens again next). */
     fun interrupt() {
         speaker.stop()
+    }
+
+    private var handsFreeBeforeCall = false
+
+    @Volatile private var pausedForCall = false
+
+    /**
+     * A phone call started ringing: Seema stops her own reply and releases the microphone at once.
+     * Hands-free comes back by itself after the call ([resumeAfterCall]).
+     */
+    fun pauseForCall() {
+        if (pausedForCall) return // already paused for this call
+        pausedForCall = true
+        handsFreeBeforeCall = handsFree
+        trace("phone call: pause")
+        // Her own reply stops (its job is cancelled); a caller announcement playing now is not hers and continues.
+        cancelWork()
+        suspendListening()
+        if (_state.value != AssistantState.Idle) _state.value = AssistantState.Idle
+    }
+
+    /** The call ended: hands-free continues if it was on before the call (and is not paused). */
+    fun resumeAfterCall() {
+        if (!pausedForCall) return
+        pausedForCall = false
+        val resume = handsFreeBeforeCall
+        handsFreeBeforeCall = false
+        trace("phone call ended")
+        if (resume && handsFree && !settings.value.assistantPaused) startHandsFree()
     }
 
     // ---------------------------------------------------------------- actions

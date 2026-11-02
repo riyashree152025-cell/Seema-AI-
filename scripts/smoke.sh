@@ -150,6 +150,27 @@ voice_test() { # $1 = PIPER or KOKORO, $2 = max seconds
 }
 voice_test PIPER 420
 voice_test KOKORO 900
+echo "===== RUN 8: live voice — offline wake word (native) and screen-off listening service ====="
+adb logcat -c
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --ez seema_wake_test true > /dev/null
+for _ in $(seq 1 60); do adb logcat -d -s SeemaWakeTest:I | grep -q "result=" && break; sleep 5; done
+adb logcat -d -s SeemaWakeTest:I | grep WAKE_TEST || echo "WAKE_TEST result=TIMEOUT"
+adb logcat -c
+adb shell am start -n $PKG/com.raju.aiassistant.MainActivity --ez seema_screen_off_test true > /dev/null
+sleep 8
+svc() { adb shell dumpsys activity services $PKG | grep -c "VoiceSessionService" || true; }
+note() { adb shell dumpsys notification --noredact | grep -c "Seema is listening" || true; }
+echo "SCREEN_OFF[app open] service=$(svc) notification=$(note)"
+adb shell input keyevent KEYCODE_HOME
+sleep 6
+echo "SCREEN_OFF[home pressed] service=$(svc) notification=$(note)"
+adb shell input keyevent KEYCODE_SLEEP
+sleep 10
+echo "SCREEN_OFF[screen off] service=$(svc) notification=$(note)"
+adb logcat -d | grep -E "SeemaVoice|voice service" | tail -15 || true
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell am force-stop $PKG
+
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|ANR in" | head -50 || true
 adb logcat -d > logcat.txt
 exit 0

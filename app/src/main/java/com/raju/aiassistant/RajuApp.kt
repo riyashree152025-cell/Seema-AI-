@@ -15,6 +15,8 @@ class RajuApp : Application() {
         // Morning briefing and weekly report; they check the setting themselves each time.
         runCatching { com.raju.aiassistant.notifications.BusinessScheduler.schedule(this) }
         runCatching { container.cleanSharedFiles() }
+        // Calls and headphone disconnects pause / silence Seema (no permission needed).
+        runCatching { container.audioInterruptions.start() }
     }
 
     @Suppress("DEPRECATION") // the level constants are still what Android delivers

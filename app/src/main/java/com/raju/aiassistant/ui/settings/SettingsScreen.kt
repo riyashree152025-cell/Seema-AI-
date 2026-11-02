@@ -261,10 +261,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewMo
                 viewModel.setSleepAfterSeconds(it.toInt())
             }
             ToggleRow("Wake only when called by name (\"Seema…\")", s.wakeWord, viewModel::setWakeWord)
+            OfflineWakeWordRow(s, viewModel)
+            ToggleRow("Keep listening when the screen is off (shows a notification with Stop)", s.screenOffListening, viewModel::setScreenOffListening)
+            ScreenOffStatus(s, viewModel)
             Text(
                 "After this long without you talking, Seema goes to sleep: the recogniser stops (no beeps, no data used) and a light detector on the phone waits for a voice. " +
                     "Say \"Seema\" (or \"Seema, kal ka mausam batao\") and she wakes at once; tapping the reactor wakes her too. " +
-                    "Recognising her name needs a Deepgram key; without it any voice wakes her. Opening the app always finds her awake.",
+                    "Recognising her name needs the offline wake word (above) or a Deepgram key; without either, any voice wakes her. Opening the app always finds her awake.",
                 style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
             )
 

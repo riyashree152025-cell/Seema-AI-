@@ -1,5 +1,6 @@
 package com.raju.aiassistant.ui.settings
 
+import com.raju.aiassistant.data.tts.local.installedModel
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
@@ -235,6 +236,23 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         com.raju.aiassistant.domain.ai.costClass(provider, model, c.aiUsage.priceOf(provider, model))
     fun priceOf(provider: ProviderId, model: String) = c.aiUsage.priceOf(provider, model)
     fun setAiFreeOnly(v: Boolean) = launch { repo.setAiFreeOnly(v) }
+
+    // ---------------------------------------------------------------- live voice (screen off, offline wake word)
+
+    fun setScreenOffListening(v: Boolean) = launch {
+        repo.setScreenOffListening(v)
+        if (!v) com.raju.aiassistant.notifications.VoiceSessionService.stop(c.appContext)
+    }
+    val voiceServiceRunning: StateFlow<Boolean> = com.raju.aiassistant.notifications.VoiceSessionService.running
+    val wakeModel = com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL
+    val wakeModelState: StateFlow<Map<String, com.raju.aiassistant.data.tts.local.ModelState>> = c.wakeModels.states
+    fun downloadWakeModel() = c.wakeModels.download(wakeModel)
+    fun cancelWakeModel() = c.wakeModels.cancel(wakeModel)
+    fun deleteWakeModel() {
+        c.kwsWakeListener.stop()
+        c.kwsWakeListener.release()
+        c.wakeModels.delete(wakeModel)
+    }
     fun setAiMonthlyBudget(usd: Float) = launch { repo.setAiMonthlyBudget(usd) }
 
     // ------------------------------------------------------------ active AI

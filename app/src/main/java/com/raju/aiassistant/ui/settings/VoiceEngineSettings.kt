@@ -9,6 +9,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -178,4 +181,49 @@ internal fun SpeechInputSettings(s: UserSettings, viewModel: SettingsViewModel, 
             color = if (deepgramKeySaved) TextSecondary else WarningAmber,
         )
     }
+}
+
+/** Settings → Voice: the offline "Hey Seema" detector (download, state, delete). */
+@Composable
+internal fun OfflineWakeWordRow(s: com.raju.aiassistant.domain.model.UserSettings, viewModel: SettingsViewModel) {
+    val states by viewModel.wakeModelState.collectAsStateWithLifecycle()
+    val m = viewModel.wakeModel
+    val st = states[m.id] ?: com.raju.aiassistant.data.tts.local.ModelState.NotInstalled
+    Text("Offline wake word \"Hey Seema\"", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "A small model (${m.sizeBytes / 1_000_000} MB, ${m.license}) listens on the phone for \"Hey Seema\" while she sleeps — no Deepgram key, no internet, nothing recorded or sent. " +
+            "Used when \"Wake only when called by name\" is on. Accuracy with your voice is not tested yet: if she does not wake, say it a little slower or tap the reactor.",
+        style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+    )
+    when (st) {
+        is com.raju.aiassistant.data.tts.local.ModelState.Downloading -> {
+            Text("Downloading ${st.done / 1_000_000} / ${st.total / 1_000_000} MB", color = TextSecondary)
+            androidx.compose.material3.LinearProgressIndicator(progress = { (st.done.toFloat() / st.total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(onClick = viewModel::cancelWakeModel) { Text("Cancel") }
+        }
+        com.raju.aiassistant.data.tts.local.ModelState.Verifying, com.raju.aiassistant.data.tts.local.ModelState.Installing -> Text("Checking and installing…", color = TextSecondary)
+        is com.raju.aiassistant.data.tts.local.ModelState.Installed -> {
+            Text(if (s.wakeWord) "Installed · active in sleep mode" else "Installed · turn on \"Wake only when called by name\" to use it", color = if (s.wakeWord) com.raju.aiassistant.ui.theme.SuccessGreen else com.raju.aiassistant.ui.theme.WarningAmber)
+            OutlinedButton(onClick = viewModel::deleteWakeModel) { Text("Delete", color = com.raju.aiassistant.ui.theme.ErrorRed) }
+        }
+        is com.raju.aiassistant.data.tts.local.ModelState.Failed -> {
+            Text("Failed: ${st.reason}", color = com.raju.aiassistant.ui.theme.ErrorRed)
+            Button(onClick = viewModel::downloadWakeModel) { Text("Try again") }
+        }
+        com.raju.aiassistant.data.tts.local.ModelState.NotInstalled -> Button(onClick = viewModel::downloadWakeModel) { Text("Download ${m.sizeBytes / 1_000_000} MB") }
+    }
+}
+
+/** What "keep listening when the screen is off" is doing right now, and what Android needs for it. */
+@Composable
+internal fun ScreenOffStatus(s: com.raju.aiassistant.domain.model.UserSettings, viewModel: SettingsViewModel) {
+    val running by viewModel.voiceServiceRunning.collectAsStateWithLifecycle()
+    Text(
+        when {
+            running -> "Running now: the notification \"Seema is listening\" is shown; tap its Stop to turn the microphone off."
+            s.screenOffListening -> "Starts when hands-free listening is on (Mic ON on Home). Android shows a notification and the green microphone dot while it runs."
+            else -> "Off: the microphone stops when you leave the app or the screen turns off."
+        } + " Uses more battery while on. Some phones (Xiaomi, Oppo, Vivo…) stop background apps: allow Seema AI in the battery settings if it stops by itself.",
+        style = MaterialTheme.typography.bodySmall, color = if (running) com.raju.aiassistant.ui.theme.SuccessGreen else TextSecondary,
+    )
 }

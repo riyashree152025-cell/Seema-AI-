@@ -56,6 +56,21 @@ class MainActivity : ComponentActivity() {
             val c = (application as RajuApp).container
             c.appScope.launch { runOfflineVoiceTest(c, engine) }
         }
+        // Debug builds only: `--ez seema_wake_test true` downloads the offline wake-word model for real and checks the
+        // native keyword spotter on the archive's own test recordings (logged as WAKE_TEST …).
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("seema_wake_test", false) == true) {
+            val c = (application as RajuApp).container
+            c.appScope.launch { com.raju.aiassistant.data.voice.runWakeWordSelfTest(c) }
+        }
+        // Debug builds only: `--ez seema_screen_off_test true` turns on "keep listening when the screen is off" and
+        // hands-free, so the emulator test can check that the microphone service and its notification appear.
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("seema_screen_off_test", false) == true) {
+            val c = (application as RajuApp).container
+            c.appScope.launch {
+                c.settingsRepository.setScreenOffListening(true)
+                c.engine.startHandsFree()
+            }
+        }
     }
 
     /** Long-press the app icon → "Voice" / "Chat". Dynamic, so they work for both debug and release package names. */

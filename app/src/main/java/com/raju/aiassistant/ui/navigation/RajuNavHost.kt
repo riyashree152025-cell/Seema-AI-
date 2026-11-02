@@ -85,13 +85,15 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                         }
                     }
                 }
-                Lifecycle.Event.ON_STOP -> container.engine.suspendListening()
+                // With "keep listening when the screen is off" the foreground service keeps the session; otherwise the mic is released.
+                Lifecycle.Event.ON_STOP -> if (!com.raju.aiassistant.notifications.VoiceSessionService.running.value) container.engine.suspendListening()
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
 
     // Home-screen shortcuts and text shared from other apps (see MainActivity).
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -119,6 +121,15 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
 
     // Decorative HUD motion follows the user's motion settings (and the system "Remove animations").
     val settings by container.currentSettings.collectAsStateWithLifecycle()
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    // Hands-free on + "keep listening when the screen is off": start the microphone service while the
+    // app is still on screen (Android does not allow starting it from the background). It stops itself.
+    val handsFreeOn by container.engine.handsFreeActive.collectAsStateWithLifecycle()
+    LaunchedEffect(handsFreeOn, settings.screenOffListening, settings.assistantPaused) {
+        if (handsFreeOn && settings.screenOffListening && !settings.assistantPaused && container.voiceInput.hasPermission() &&
+            !com.raju.aiassistant.notifications.VoiceSessionService.running.value
+        ) com.raju.aiassistant.notifications.VoiceSessionService.start(appContext)
+    }
     val resolver = LocalContext.current.contentResolver
     val systemAnimations = remember(resolver, settings.reducedMotion) {
         android.provider.Settings.Global.getFloat(resolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f

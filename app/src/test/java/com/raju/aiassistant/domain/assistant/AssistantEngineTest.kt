@@ -599,6 +599,67 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun offlineWakeWordWakesHerWithoutAnyTranscriberAndTheConversationContinues() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = object : WakeListener {
+            var onUtterance: ((ByteArray) -> Unit)? = null
+            override val spotsWakeWord = true
+            override fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit) { this.onUtterance = onUtterance }
+            override fun stop() { onUtterance = null }
+        }
+        // No transcriber at all: only the offline "Hey Seema" detector.
+        val e = sleepyEngine(wake, null, AiResult.Success("Kal dhoop rahegi."))
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        val startsBefore = voice.starts
+        wake.onUtterance!!(ByteArray(0)) // "Hey Seema" heard on the phone
+        settle()
+        assertEquals("हाँ जी, बोलिए?", speaker.spoken.last())
+        assertEquals(AssistantState.Listening, e.state.value)
+        assertTrue(voice.starts > startsBefore) // listening for the request
+        // The request after waking is answered and she keeps listening (no tap needed).
+        voice.onResult!!("kal ka mausam?")
+        settle()
+        assertEquals("Kal dhoop rahegi.", speaker.spoken.last())
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    @Test
+    fun aPhoneCallPausesHerAndHandsFreeComesBackAfterIt() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val e = engine()
+        e.startHandsFree()
+        runCurrent()
+        assertEquals(AssistantState.Listening, e.state.value)
+        e.pauseForCall()
+        e.pauseForCall() // ringing, then answered: still one pause
+        runCurrent()
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertTrue(!e.voiceSession.value) // microphone released for the call
+        val startsBefore = voice.starts
+        e.resumeAfterCall()
+        runCurrent()
+        assertEquals(AssistantState.Listening, e.state.value)
+        assertEquals(startsBefore + 1, voice.starts)
+        e.resumeAfterCall() // a second "call ended" does nothing
+        runCurrent()
+        assertEquals(startsBefore + 1, voice.starts)
+    }
+
+    @Test
+    fun afterACallTapToTalkStaysOff() = runTest {
+        val e = engine()
+        e.pauseForCall()
+        e.resumeAfterCall()
+        runCurrent()
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertEquals(0, voice.starts)
+    }
+
+    @Test
     fun otherTalkDoesNotWakeHer() = runTest {
         settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()

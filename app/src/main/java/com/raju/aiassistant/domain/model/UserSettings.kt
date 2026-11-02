@@ -100,6 +100,8 @@ data class UserSettings(
     /** Kokoro speaker (31 = hf_alpha, Hindi female). */
     val kokoroSpeaker: Int = 31,
     /** AI brain cost control: only free / free-tier models (paid ones are never used while on). */
+    /** Keep the hands-free session running with the screen off (foreground service + notification). Off until chosen. */
+    val screenOffListening: Boolean = false,
     val aiFreeOnly: Boolean = true,
     /** Upper limit for paid AI per month, in US$ (only used when [aiFreeOnly] is off). */
     val aiMonthlyBudgetUsd: Float = 5f,
