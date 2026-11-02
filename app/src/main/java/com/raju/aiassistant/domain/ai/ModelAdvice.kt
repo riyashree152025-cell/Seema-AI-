@@ -11,6 +11,8 @@ object ModelAdvice {
     /** Language-specialised models that are poor at Hindi (e.g. ALLaM is an Arabic–English model with a ~4K context). */
     private val NOT_FOR_HINDI = listOf("allam", "saba")
 
+    private val SIZE = Regex("(?<![0-9.])([0-9]+(?:\\.[0-9]+)?)b(?![a-z])", RegexOption.IGNORE_CASE)
+
     /** Preferred defaults, best first. Matched by substring. */
     private val PREFERRED = mapOf(
         ProviderId.GEMINI to listOf("gemini-2.5-flash", "gemini-2.0-flash", "flash"),
@@ -35,8 +37,15 @@ object ModelAdvice {
         else -> null
     }
 
+    /** Parameter count in billions from the model id ("llama-3.2-3b-instruct" → 3, "mixtral-8x7b" → 7), or null. */
+    fun sizeInBillions(id: String): Double? =
+        SIZE.findAll(id).mapNotNull { it.groupValues[1].toDoubleOrNull() }.maxOrNull()
+
+    /** Small models (under 12B) are fast but weak at Hindi and following instructions: never "recommended". */
+    fun isSmallModel(id: String): Boolean = sizeInBillions(id)?.let { it < 12 } ?: false
+
     fun isRecommended(provider: ProviderId, id: String): Boolean =
-        warning(id) == null && PREFERRED[provider].orEmpty().take(4).any { id.contains(it, ignoreCase = true) } &&
+        warning(id) == null && !isSmallModel(id) && PREFERRED[provider].orEmpty().take(4).any { id.contains(it, ignoreCase = true) } &&
             !(provider == ProviderId.GEMINI && id.contains("lite", ignoreCase = true))
 
     /** Recommended models first, unsuitable ones last, the rest alphabetical. */
