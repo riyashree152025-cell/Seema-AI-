@@ -214,7 +214,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Filled.GraphicEq, contentDescription = "Voice Control", tint = NeonCyan, modifier = Modifier.size(20.dp))
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onOpenAiBrain() }) {
                     HoloTitle("SEEMA AI", Color(style.primaryArgb))
                     Text(
                         "YOUR INTELLIGENT COMPANION",
