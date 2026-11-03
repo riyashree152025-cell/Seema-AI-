@@ -3,6 +3,13 @@ package com.raju.aiassistant.ui.home
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,11 +25,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,8 +48,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,26 +59,36 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.ui.RajuViewModelFactory
+import com.raju.aiassistant.ui.components.SciFiBackgroundBottom
+import com.raju.aiassistant.ui.components.SciFiBackgroundTop
+import com.raju.aiassistant.ui.components.SciFiCyanGlow
+import com.raju.aiassistant.ui.components.SciFiHomeNavButton
+import com.raju.aiassistant.ui.components.SciFiWaveform
 import com.raju.aiassistant.ui.home.visuals.ArcReactor
 import com.raju.aiassistant.ui.home.visuals.motionProfileFor
 import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
 import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.SuccessGreen
-import com.raju.aiassistant.ui.theme.WarningAmber
 
 /**
  * Screen 1: Home Screen
- * 1:1 match to Official Reference Image Screen 1:
- * - Top Bar: Voice Waveform Button (left), SEEMA AI Title & Subtitle (center), Online Capsule (right)
- * - Center Stage: 3D Metallic Arc Reactor (Struts, Titanium Collar, Gold Flanges, Oscillating Cyan Soundwave)
- * - Bottom Greeting Card: 'Hello Dinesh! / How can I help you today?'
+ * Exact 1:1 match to User Reference Image (Image 4):
+ * - Header: Glowing Cyan SEEMA AI + 'Your Intelligent Companion' + Settings gear on top-right
+ * - Central Core: Concentric Cybernetic Rings enclosing the living, reactive ARC REACTOR (in place of robot face)
+ * - Greeting: 'Hello Raju! / How can I help you today?'
+ * - Sound Visualizer: Symmetric Audio Waveform Bars + Center Glowing Mic Button
+ * - 6 Beveled HUD Navigation Buttons in a 2x3 Grid:
+ *     [AI Brain] [Voice Center] [Memory]
+ *     [Automation] [Settings] [More]
+ * - Bottom Armored Dock: 🟢 System Online | Ready
  */
 @Composable
 fun HomeScreen(
     onOpenVoiceControl: () -> Unit = {},
     onOpenControlPanel: () -> Unit = {},
     onOpenAiBrain: () -> Unit = {},
+    onOpenMemoryCenter: () -> Unit = {},
     onOpenChat: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     viewModel: HomeViewModel = viewModel(factory = RajuViewModelFactory),
@@ -80,114 +109,110 @@ fun HomeScreen(
     val timeProvider = rememberAnimationTime(running = profile.animate, maxFps = profile.maxFps)
     val style = reactorStyleFor(assistantState)
 
+    val isListening = assistantState == AssistantState.Listening
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF020409), Color(0xFF010205))))
+            .background(Brush.verticalGradient(listOf(SciFiBackgroundTop, Color(0xFF040A18), SciFiBackgroundBottom)))
     ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // 1. Reference Screen 1 Header
-            Row(
+            // 1. Top Bar: SEEMA AI Title, Subtitle and Top-Right Settings Gear
+            Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(top = 4.dp),
             ) {
-                // Left: Voice Wave Button
-                Box(
-                    Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x3300E5FF))
-                        .border(1.5.dp, NeonCyan.copy(alpha = 0.8f), CircleShape)
-                        .clickable { onOpenVoiceControl() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Filled.GraphicEq,
-                        contentDescription = "Voice Control",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Center: Title & Subtitle (Clickable to open AI Brain)
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { onOpenAiBrain() }
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         "SEEMA AI",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Black,
-                            letterSpacing = 2.5.sp,
-                            fontSize = 22.sp,
-                            color = Color.White
+                            letterSpacing = 2.8.sp,
+                            fontSize = 24.sp,
+                            brush = Brush.horizontalGradient(
+                                listOf(Color(0xFF38E1FF), Color(0xFF00F0FF), Color(0xFF7000FF).copy(alpha = 0.8f))
+                            )
                         )
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "YOUR INTELLIGENT COMPANION",
+                        "Your Intelligent Companion",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.5.sp,
-                            letterSpacing = 1.6.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 11.5.sp,
+                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.80f),
                         )
                     )
                 }
 
-                // Right: Online / Offline Status Capsule (Clickable to open Control Panel)
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x3300E5FF))
-                        .border(
-                            1.2.dp,
-                            if (state.online) SuccessGreen.copy(alpha = 0.9f) else WarningAmber.copy(alpha = 0.9f),
-                            RoundedCornerShape(16.dp)
-                        )
-                        .clickable { onOpenControlPanel() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(38.dp)
                 ) {
-                    Box(
-                        Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (state.online) SuccessGreen else WarningAmber)
-                    )
-                    Text(
-                        if (state.online) "Online" else "Offline",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = if (state.online) SuccessGreen else WarningAmber
-                        )
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = SciFiCyanGlow,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            // 2. Center Stage: Official 3D Metallic Arc Reactor
+            // 2. Central Core: Living Arc Reactor encased in Concentric Futuristic Housing Rings
             BoxWithConstraints(
                 Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .height(210.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                val reactorSize = minOf(maxWidth, maxHeight) * 0.95f
+                val coreSize = minOf(maxWidth, maxHeight) * 0.95f
+
+                // Outer Concentric Cybernetic Tech Ring Frame
+                Canvas(Modifier.size(coreSize)) {
+                    val cx = size.width / 2f
+                    val cy = size.height / 2f
+                    val r = size.width / 2f
+
+                    // Outer Hex/Segmented Ring
+                    drawCircle(
+                        color = Color(0x3300E5FF),
+                        radius = r - 4f,
+                        style = Stroke(width = 2f)
+                    )
+                    // Inner Concentric Cyan Track
+                    drawCircle(
+                        brush = Brush.sweepGradient(
+                            listOf(SciFiCyanGlow.copy(alpha = 0.2f), SciFiCyanGlow.copy(alpha = 0.9f), SciFiCyanGlow.copy(alpha = 0.2f))
+                        ),
+                        radius = r - 14f,
+                        style = Stroke(width = 2.5f)
+                    )
+                    // Angular Tech Ticks at 4 Cardinal Points
+                    val tickLen = 10f
+                    drawLine(SciFiCyanGlow, Offset(cx, cy - r + 4f), Offset(cx, cy - r + 4f + tickLen), strokeWidth = 3f)
+                    drawLine(SciFiCyanGlow, Offset(cx, cy + r - 4f), Offset(cx, cy + r - 4f - tickLen), strokeWidth = 3f)
+                    drawLine(SciFiCyanGlow, Offset(cx - r + 4f, cy), Offset(cx - r + 4f + tickLen, cy), strokeWidth = 3f)
+                    drawLine(SciFiCyanGlow, Offset(cx + r - 4f, cy), Offset(cx + r - 4f - tickLen, cy), strokeWidth = 3f)
+                }
+
+                // Interactive Living Arc Reactor Inside the Ring
                 Box(
                     Modifier
-                        .size(reactorSize)
+                        .size(coreSize * 0.82f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -211,49 +236,203 @@ fun HomeScreen(
                 }
             }
 
-            // 3. Reference Screen 1 Chamfered Greeting Glass Card
+            // 3. User Greeting: 'Hello Raju!' / 'How can I help you today?'
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.clickable { onOpenChat() }
+            ) {
+                Text(
+                    "Hello Raju!",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 20.sp,
+                    )
+                )
+                Text(
+                    "How can I help you today?",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = SciFiCyanGlow.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                    )
+                )
+            }
+
+            // 4. Audio Waveform Visualizer & Central Glowing Mic Button
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Left Audio Wave Bars
+                SciFiWaveform(
+                    modifier = Modifier.weight(1f),
+                    barCount = 14,
+                    color = SciFiCyanGlow,
+                    isListening = isListening
+                )
+
+                Spacer(Modifier.width(10.dp))
+
+                // Center Glowing Circular Mic Button
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(Color(0xFF0072FF), Color(0xFF003882), Color(0xFF030D22))
+                            )
+                        )
+                        .border(
+                            1.8.dp,
+                            Brush.sweepGradient(listOf(SciFiCyanGlow, Color(0xFF0055FF), SciFiCyanGlow)),
+                            CircleShape
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            if (viewModel.hasMicPermission()) {
+                                viewModel.tapReactor()
+                            } else {
+                                micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = "Microphone",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+
+                // Right Audio Wave Bars
+                SciFiWaveform(
+                    modifier = Modifier.weight(1f),
+                    barCount = 14,
+                    color = SciFiCyanGlow,
+                    isListening = isListening
+                )
+            }
+
+            // 5. 6 HUD Cut-Corner Navigation Buttons (3 columns x 2 rows or 2 columns x 3 rows)
+            // As shown in reference image: 3 columns x 2 rows
+            Column(
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SciFiHomeNavButton(
+                        title = "AI Brain",
+                        icon = Icons.Filled.Psychology,
+                        onClick = onOpenAiBrain,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SciFiHomeNavButton(
+                        title = "Voice Center",
+                        icon = Icons.Filled.Mic,
+                        onClick = onOpenVoiceControl,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SciFiHomeNavButton(
+                        title = "Memory",
+                        icon = Icons.Filled.Storage,
+                        onClick = onOpenMemoryCenter,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SciFiHomeNavButton(
+                        title = "Automation",
+                        icon = Icons.Filled.AutoAwesome,
+                        onClick = onOpenControlPanel,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SciFiHomeNavButton(
+                        title = "Settings",
+                        icon = Icons.Filled.Settings,
+                        onClick = onOpenSettings,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SciFiHomeNavButton(
+                        title = "More",
+                        icon = Icons.Filled.GridView,
+                        onClick = onOpenChat,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // 6. Armored Bottom Dock Bar: 🟢 System Online | Ready
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xD9081426), Color(0xF2040915))
-                        )
-                    )
-                    .border(
-                        1.2.dp,
-                        Brush.horizontalGradient(
-                            listOf(
-                                NeonCyan.copy(alpha = 0.25f),
-                                NeonCyan.copy(alpha = 0.90f),
-                                NeonCyan.copy(alpha = 0.25f)
-                            )
-                        ),
-                        RoundedCornerShape(18.dp),
-                    )
-                    .clickable { onOpenChat() }
-                    .padding(vertical = 12.dp, horizontal = 20.dp),
-                contentAlignment = Alignment.Center,
+                    .padding(vertical = 4.dp)
+                    .clip(CutCornerShape(8.dp))
+                    .background(Color(0xE6050E1F))
+                    .border(1.dp, Color(0x3300E5FF), CutCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (state.online) SuccessGreen else Color(0xFFFFB800))
+                    )
                     Text(
-                        "Hello Dinesh!",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        if (state.online) "System Online" else "Offline Mode",
+                        style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 18.sp,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 11.5.sp
                         )
                     )
                     Text(
-                        "How can I help you today?",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = NeonCyan.copy(alpha = 0.85f),
-                            fontSize = 13.sp,
+                        "|",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 11.sp
+                        )
+                    )
+                    val statusText = when (assistantState) {
+                        AssistantState.Idle -> "Ready"
+                        AssistantState.Listening -> "Listening..."
+                        AssistantState.Thinking -> "Thinking..."
+                        AssistantState.Speaking -> "Speaking..."
+                        AssistantState.Offline -> "Offline"
+                        else -> "Ready"
+                    }
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = when (assistantState) {
+                                AssistantState.Listening -> NeonCyan
+                                AssistantState.Thinking -> Color(0xFFA88BFF)
+                                AssistantState.Speaking -> SuccessGreen
+                                else -> SuccessGreen
+                            },
+                            fontSize = 11.5.sp
                         )
                     )
                 }

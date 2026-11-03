@@ -26,6 +26,7 @@ enum class Destination(val route: String, val label: String, val icon: ImageVect
 object SubRoutes {
     const val CONTROL_PANEL = "control_panel"
     const val AI_BRAIN = "ai_brain"
+    const val MEMORY_CENTER = "memory_center"
     const val VOICE_CONTROL = "voice_control"
     const val SEEMA_PRO = "seema_pro"
     const val TOOLS = "tools"

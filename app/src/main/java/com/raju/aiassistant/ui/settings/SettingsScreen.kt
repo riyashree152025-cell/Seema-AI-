@@ -87,6 +87,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.raju.aiassistant.BuildConfig
+import androidx.compose.material.icons.filled.Home
+import com.raju.aiassistant.ui.components.SciFiPill
+import com.raju.aiassistant.ui.components.SciFiListCard
+import com.raju.aiassistant.ui.components.SciFiCyanGlow
 import com.raju.aiassistant.domain.ai.ModelAdvice
 import com.raju.aiassistant.domain.ai.ProviderId
 import com.raju.aiassistant.domain.ai.providerStatus
@@ -128,92 +132,134 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var activeDialog by remember { mutableStateOf<String?>(null) }
+    var selectedFilter by remember { mutableStateOf("All") }
+    val filterTabs = listOf("All", "AI", "Voice", "System", "Security")
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF040714), Color(0xFF02040A))))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF040A18), Color(0xFF02040A))))
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 1. Header: < ⚙ Settings
+        // 1. Header: < Settings [Home Icon]
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = SciFiCyanGlow)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Settings",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        letterSpacing = 0.8.sp,
+                    ),
+                )
             }
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Filled.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 1.sp,
-                ),
+
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Home, contentDescription = "Home", tint = SciFiCyanGlow)
+            }
+        }
+
+        // 2. Filter Pills (All, AI, Voice, System, Security)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            filterTabs.forEach { tab ->
+                SciFiPill(
+                    label = tab,
+                    selected = selectedFilter == tab,
+                    onClick = { selectedFilter = tab }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // 3. Exact 1:1 Sci-Fi List Cards Matching User Reference Image 1
+        if (selectedFilter in listOf("All", "AI")) {
+            SciFiListCard(
+                title = "AI & Brain",
+                subtitle = "Providers, Models, API Keys",
+                icon = Icons.Filled.Psychology,
+                iconTint = SciFiCyanGlow,
+                emblemBorder = SciFiCyanGlow,
+                onClick = { activeDialog = "ai" }
             )
         }
 
-        // 2. Reference Screen 7 Split Layout (Left: 6 Group Cards, Right: 3D Metallic Gear)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Left Column (6 Category Cards)
-            Column(
-                Modifier.weight(1.30f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                SettingsCategoryCard(
-                    title = "AI Assistant Settings",
-                    icon = Icons.Filled.Psychology,
-                    onClick = { activeDialog = "ai" },
-                )
-                SettingsCategoryCard(
-                    title = "Voice & Language",
-                    icon = Icons.Filled.Mic,
-                    onClick = { activeDialog = "voice" },
-                )
-                SettingsCategoryCard(
-                    title = "Privacy & Security",
-                    icon = Icons.Filled.Lock,
-                    onClick = { activeDialog = "privacy" },
-                )
-                SettingsCategoryCard(
-                    title = "Notifications",
-                    icon = Icons.Filled.Notifications,
-                    onClick = { activeDialog = "notifications" },
-                )
-                SettingsCategoryCard(
-                    title = "Appearance",
-                    icon = Icons.Filled.Palette,
-                    onClick = { activeDialog = "appearance" },
-                )
-                SettingsCategoryCard(
-                    title = "About SEEMA AI",
-                    icon = Icons.Filled.Info,
-                    onClick = { activeDialog = "about" },
-                )
-            }
-
-            // Right Column (Animated 3D Metallic Mechanical Gear)
-            Box(
-                Modifier
-                    .weight(0.95f)
-                    .height(310.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                MetallicGearCanvas(Modifier.fillMaxSize())
-            }
+        if (selectedFilter in listOf("All", "Voice")) {
+            SciFiListCard(
+                title = "Voice & Speech",
+                subtitle = "Engine, Speed, Recognition",
+                icon = Icons.Filled.Mic,
+                iconTint = Color(0xFF40C4FF),
+                emblemBorder = Color(0xFF40C4FF),
+                onClick = { activeDialog = "voice" }
+            )
         }
+
+        if (selectedFilter in listOf("All", "System")) {
+            SciFiListCard(
+                title = "Appearance & Performance",
+                subtitle = "Theme, Animations, Performance",
+                icon = Icons.Filled.Palette,
+                iconTint = Color(0xFFFFB800),
+                emblemBorder = Color(0xFFFFB800),
+                onClick = { activeDialog = "appearance" }
+            )
+        }
+
+        if (selectedFilter in listOf("All", "Security")) {
+            SciFiListCard(
+                title = "Permissions & Status",
+                subtitle = "Permissions, System Status",
+                icon = Icons.Filled.Lock,
+                iconTint = Color(0xFF00E676),
+                emblemBorder = Color(0xFF00E676),
+                onClick = { activeDialog = "privacy" }
+            )
+        }
+
+        if (selectedFilter in listOf("All", "System")) {
+            SciFiListCard(
+                title = "Automation",
+                subtitle = "Routines, Triggers, Tasks",
+                icon = Icons.Filled.Notifications,
+                iconTint = SciFiCyanGlow,
+                emblemBorder = SciFiCyanGlow,
+                onClick = { activeDialog = "notifications" }
+            )
+        }
+
+        if (selectedFilter in listOf("All", "System")) {
+            SciFiListCard(
+                title = "System Integration",
+                subtitle = "Apps, Shortcuts, Windows",
+                icon = Icons.Filled.Settings,
+                iconTint = Color(0xFF7C4DFF),
+                emblemBorder = Color(0xFF7C4DFF),
+                onClick = { activeDialog = "about" }
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
     }
 
     // Detail Dialogs for Categories (Preserving all actual working backend settings)

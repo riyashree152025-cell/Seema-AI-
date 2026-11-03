@@ -159,6 +159,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                     onOpenControlPanel = { navController.navigate(SubRoutes.CONTROL_PANEL) },
                     onOpenVoiceControl = { navController.navigate(SubRoutes.VOICE_CONTROL) },
                     onOpenAiBrain = { navController.navigate(SubRoutes.AI_BRAIN) },
+                    onOpenMemoryCenter = { navController.navigate(SubRoutes.MEMORY_CENTER) },
                 )
             }
             composable(Destination.Chat.route) {
@@ -191,6 +192,12 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
             }
             composable(SubRoutes.AI_BRAIN) {
                 AiBrainScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSettings = { navigateTo(Destination.Settings) },
+                )
+            }
+            composable(SubRoutes.MEMORY_CENTER) {
+                com.raju.aiassistant.ui.brain.MemoryCenterScreen(
                     onBack = { navController.popBackStack() },
                     onOpenSettings = { navigateTo(Destination.Settings) },
                 )
