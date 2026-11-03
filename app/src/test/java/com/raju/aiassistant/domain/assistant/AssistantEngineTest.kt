@@ -657,11 +657,11 @@ class AssistantEngineTest {
         e.startHandsFree()
         voice.onError!!(VoiceError("unclear", unclear = true))
         settle()
-        assertTrue(speaker.spoken.last().contains("एक बार फिर"))
+        assertTrue(speaker.spoken.isEmpty()) // Does NOT shout into a quiet room
         assertEquals(AssistantState.Listening, e.state.value)
         voice.onError!!(VoiceError("unclear", unclear = true))
         settle()
-        assertEquals(1, speaker.spoken.size) // asked only once
+        assertTrue(speaker.spoken.isEmpty())
     }
 
     private class FakeBusiness : com.raju.aiassistant.domain.business.BusinessStore {

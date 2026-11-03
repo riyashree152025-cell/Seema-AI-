@@ -1,8 +1,12 @@
 package com.raju.aiassistant.domain.voice
 
-/** How speech recognition writes "Seema" (Hindi and Latin script, common mishearings). */
-private val WAKE_WORDS = listOf("seema", "sima", "shima", "seemaa", "sema", "सीमा", "सिमा", "शीमा", "सीमां", "सीमाजी", "सीमा जी")
-private val LEADING_FILLERS = Regex("^(hey|hi|hello|ok|okay|oye|arre|are|suno|हे|हाय|हेलो|अरे|सुनो|ओए)\\s+", RegexOption.IGNORE_CASE)
+/** How speech recognition writes "Seema" (Hindi, Bengali, and Latin script, common mishearings). */
+private val WAKE_WORDS = listOf(
+    "seema", "sima", "shima", "seemaa", "sema",
+    "सीमा", "सिमा", "शीमा", "सीमां", "सीमाजी", "सीमा जी",
+    "সীমা", "সিমা", "শীমা", "সীমাগো", "সীমা দি"
+)
+private val LEADING_FILLERS = Regex("^(hey|hi|hello|ok|okay|oye|arre|are|suno|हे|हाय|हेलो|अरे|सुनो|ओए|এই|ওহে|শোনো|হ্যালো|হে|আরে)\\s+", RegexOption.IGNORE_CASE)
 
 /**
  * In sleep mode Seema only reacts when called by name. Returns what was said after "Seema"

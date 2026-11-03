@@ -108,7 +108,7 @@ data class UserSettings(
     val autoSpeakReplies: Boolean = true,
     val continuousConversation: Boolean = false,
     /** How the microphone is used. Listening while the app is open by default (the user's choice). */
-    val voiceMode: VoiceMode = VoiceMode.ALWAYS,
+    val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
     /** Talking while Seema speaks stops her (voice conversations only). */
     val bargeIn: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
@@ -139,7 +139,7 @@ data class UserSettings(
     val memoryEnabled: Boolean = true,
     val safetyMode: Boolean = false,
     val assistantPaused: Boolean = false,
-    val userName: String = "Dinesh Kumar",
+    val userName: String = "Raju",
     val userEmail: String = "ruhulamin16121998@gmail.com",
     val isProUser: Boolean = true,
 ) {
