@@ -1,31 +1,46 @@
 package com.raju.aiassistant.ui.home.visuals
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.sin
 
+private class Particle(val angle: Float, val radius: Float, val speed: Float, val size: Float, val phase: Float, val colorIndex: Int)
+
+private fun makeParticles(count: Int): List<Particle> = List(count) { i ->
+    Particle(
+        angle = pseudoRandom(i * 4 + 1) * 360f,
+        radius = 0.84f + pseudoRandom(i * 4 + 2) * 0.16f,
+        speed = (8f + pseudoRandom(i * 4 + 3) * 22f) * if (i % 2 == 0) 1f else -1f,
+        size = 0.005f + pseudoRandom(i * 4 + 4) * 0.01f,
+        phase = pseudoRandom(i * 7 + 5) * 6.28f,
+        colorIndex = i % PALETTE_SIZE,
+    )
+}
+
 /**
- * SEEMA AI Official 3D Metallic Arc Reactor
- * 1:1 match to Reference Image Screen 1:
- * - 4 Diagonal X-Chassis Support Struts
- * - Outer Titanium Mechanical Bezel Ring with recessed Cyan Glow Slits
- * - Curved Dual Gold Armor Flanges on Left and Right Quadrants
- * - Glowing Purple & Electric Cyan Optical Channel
- * - Inner Segmented Metallic Chrono Bezel with Precision Gauge Markings
- * - Central Circular Aperture with Intense Electric Cyan Oscillating Soundwave
+ * Original animated, multi-colour Arc Reactor that beats like a heart.
+ *
+ * @param time seconds from [rememberAnimationTime]; read during draw only.
+ * @param speechLevel 0..1 audio level used when the style is speech-reactive (wired to TTS in Phase 4).
  */
 @Composable
 fun ArcReactor(
@@ -36,327 +51,301 @@ fun ArcReactor(
     speechLevel: () -> Float,
     modifier: Modifier = Modifier,
 ) {
+    val palette = List(PALETTE_SIZE) { i ->
+        animateColorAsState(Color(style.paletteArgb[i]), tween(600), label = "reactorColor$i").value
+    }
+    val glow by animateFloatAsState(style.glow, tween(600), label = "reactorGlow")
+    val particles = remember(particleCount) { makeParticles(particleCount) }
+
     Canvas(modifier) {
         val t = time()
         val r = size.minDimension / 2f
         val c = center
+        val primary = palette[0]
+        val accent = palette[2]
+        val ringBrush = Brush.sweepGradient(palette, center = c)
 
-        val level = speechLevel().coerceIn(0f, 1f)
-        val beat = if (style.speechReactive) level else heartbeat(t, style.bpm)
-        val energy = 0.6f + 0.4f * beat
-        val spin = t * 24f // Smooth mechanical rotation
+        val beat = if (style.speechReactive) speechLevel().coerceIn(0f, 1f) else heartbeat(t, style.bpm)
+        val flicker = if (style.flicker) 0.65f + 0.35f * pseudoRandom((t * 12f).toInt()) else 1f
+        val energy = (0.55f + 0.45f * beat) * flicker
+        val spin = t * style.rotationSpeed * 360f
 
-        // 1. Soft radial ambient glow behind reactor
+        // Ambient glow breathes with each beat
         drawCircle(
             brush = Brush.radialGradient(
-                listOf(
-                    Color(0x3300E5FF),
-                    Color(0x187C4DFF),
-                    Color(0x060044AA),
-                    Color.Transparent
+                listOf(primary.copy(alpha = (0.3f + 0.35f * beat) * glow * flicker), accent.copy(alpha = 0.1f * glow), Color.Transparent),
+                center = c, radius = r,
+            ),
+            radius = r,
+        )
+
+        // Heartbeat shock-waves: one ring per beat, expanding and fading
+        if (richEffects && !style.speechReactive && style.bpm > 0f) {
+            val phase = beatPhase(t, style.bpm)
+            drawCircle(ringBrush, radius = r * (0.45f + 0.55f * phase), center = c, alpha = (1f - phase) * 0.45f * glow, style = Stroke(r * 0.012f))
+        }
+        if (style.ripples) drawRipples(t, c, r, ringBrush)
+
+        // Orbiting multi-colour particles
+        particles.forEach { p ->
+            val a = Math.toRadians((p.angle + p.speed * t).toDouble())
+            val pr = r * p.radius
+            val twinkle = 0.4f + 0.6f * ((sin(t * 2f + p.phase) + 1f) / 2f)
+            drawCircle(
+                color = palette[p.colorIndex].copy(alpha = 0.75f * twinkle * flicker),
+                radius = r * p.size,
+                center = Offset(c.x + pr * cos(a).toFloat(), c.y + pr * sin(a).toFloat()),
+            )
+        }
+
+        if (richEffects) {
+            // Radar sweep: a soft wedge of light circling the reactor.
+            rotate(t * 70f, c) {
+                drawCircle(
+                    brush = Brush.sweepGradient(
+                        0f to Color.Transparent, 0.82f to Color.Transparent, 0.97f to primary.copy(alpha = 0.22f * glow), 1f to Color.Transparent,
+                        center = c,
+                    ),
+                    radius = r * 0.98f,
+                    center = c,
+                )
+            }
+            // Outer HUD ring: thin dashes plus four brackets turning the other way.
+            rotate(-t * 9f, c) {
+                drawDashedRing(c, r * 0.995f, r * 0.006f, segments = 90, gapDegrees = 2.2f, brush = ringBrush, alpha = 0.45f * flicker)
+            }
+            rotate(t * 14f, c) {
+                repeat(4) { i -> drawArcAround(c, r * 0.965f, i * 90f + 20f, 28f, accent.copy(alpha = 0.75f * flicker), r * 0.014f) }
+            }
+            drawComets(t, c, r, palette, flicker)
+        }
+
+        drawGoldNotches(c, r, flicker)
+
+        // Everything below beats: the whole reactor swells slightly on each pulse
+        scale(1f + 0.06f * beat, pivot = c) {
+            if (richEffects) {
+                rotate(-spin * 0.7f, c) {
+                    drawDashedRing(c, r * 0.9f, r * 0.012f, segments = 36, gapDegrees = 4f, brush = ringBrush, alpha = 0.7f * flicker)
+                }
+            }
+            rotate(spin, c) {
+                drawSegmentedRing(c, r * 0.78f, r * 0.065f, segments = 12, gapDegrees = 7f, brush = ringBrush, alpha = 0.95f * flicker)
+            }
+            rotate(-spin * 1.6f, c) {
+                drawTicks(c, r * 0.68f, r * 0.035f, count = 72, color = accent.copy(alpha = 0.65f * flicker))
+            }
+
+            if (style.spinner) {
+                rotate(t * 300f, c) {
+                    drawArcAround(c, r * 0.86f, 0f, 70f, palette[1], r * 0.022f)
+                    drawArcAround(c, r * 0.86f, 180f, 70f, palette[3], r * 0.022f)
+                }
+            }
+            if (style.sweep) {
+                drawArcAround(c, r * 0.94f, -90f, 360f * ((t * 0.35f) % 1f), primary, r * 0.025f)
+            }
+
+            // Coil housing
+            rotate(spin * 0.35f, c) {
+                drawSegmentedRing(c, r * 0.52f, r * 0.15f, segments = 10, gapDegrees = 9f, brush = ringBrush, alpha = 0.35f + 0.5f * energy)
+            }
+            drawCircle(ringBrush, radius = r * 0.4f, center = c, alpha = 0.85f * flicker, style = Stroke(width = r * 0.018f))
+
+            if (richEffects) drawEnergyArcs(t, c, r, palette, energy, beat)
+
+            // Palladium triangle turning inside the core ring, like the classic reactor.
+            rotate(-spin * 0.5f, c) { drawTriangle(c, r * 0.36f, ringBrush, r * 0.022f, 0.75f * flicker) }
+            rotate(spin * 0.8f + 60f, c) { drawTriangle(c, r * 0.30f, ringBrush, r * 0.010f, 0.45f * flicker) }
+
+            // Heart core
+            val coreR = r * (0.25f + 0.07f * beat)
+            if (richEffects) {
+                // Light rays bursting from the core on each beat.
+                repeat(16) { i ->
+                    val a = Math.toRadians((i * 22.5f + spin * 0.2f).toDouble())
+                    val len = r * (0.30f + 0.12f * beat * pseudoRandom(i + 3))
+                    drawLine(
+                        color = primary.copy(alpha = (0.10f + 0.25f * beat) * flicker),
+                        start = Offset(c.x + coreR * 0.6f * cos(a).toFloat(), c.y + coreR * 0.6f * sin(a).toFloat()),
+                        end = Offset(c.x + len * cos(a).toFloat(), c.y + len * sin(a).toFloat()),
+                        strokeWidth = r * 0.006f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = 0.95f * energy), primary.copy(alpha = 0.9f * energy), accent.copy(alpha = 0.4f * energy), Color.Transparent),
+                    center = c, radius = coreR * 1.6f,
                 ),
+                radius = coreR * 1.6f,
                 center = c,
-                radius = r * 1.15f
-            ),
-            radius = r * 1.15f,
-            center = c
-        )
-
-        // 2. Four Diagonal Corner Support Struts (X-Pattern)
-        drawCornerStruts(c, r, spin * 0.05f)
-
-        // 3. Whole reactor micro-pulse on audio/energy
-        scale(1f + 0.035f * beat, pivot = c) {
-            // 4. Outer Titanium Mechanical Collar
-            drawOuterCollar(c, r)
-
-            // 5. Dual Curved Gold Armor Flanges on Left & Right
-            drawGoldFlanges(c, r)
-
-            // 6. Segmented Outer Cog Ring with Cyan Slits (Counter-rotating)
-            rotate(-spin * 0.4f, c) {
-                drawOuterCogs(c, r)
-            }
-
-            // 7. Glowing Violet & Cyan Optical Channel
-            drawOpticalChannel(c, r, t)
-
-            // 8. Inner Stepped Cog & Chrono Gauge Markings
-            rotate(spin * 0.7f, c) {
-                drawInnerBezel(c, r)
-            }
-
-            // 9. Central Aperture (Void + Halo + Soundwave)
-            drawCentralCore(c, r, t, energy, level)
+            )
+            drawCircle(Color.White.copy(alpha = 0.9f * energy), radius = coreR * 0.42f, center = c)
+            drawCenterSoundwave(c, coreR, t, energy, primary)
         }
     }
 }
 
-private fun DrawScope.drawCornerStruts(c: Offset, r: Float, wobble: Float) {
-    val angles = floatArrayOf(45f, 135f, 225f, 315f)
-    for (deg in angles) {
-        val rad = Math.toRadians((deg + wobble).toDouble())
-        val cosA = cos(rad).toFloat()
-        val sinA = sin(rad).toFloat()
-
-        val p1 = Offset(c.x + r * 0.78f * cosA, c.y + r * 0.78f * sinA)
-        val p2 = Offset(c.x + r * 1.25f * cosA, c.y + r * 1.25f * sinA)
-
-        // Heavy dark chassis channel
-        drawLine(
-            color = Color(0xFF0F1B2B),
-            start = p1,
-            end = p2,
-            strokeWidth = r * 0.075f,
-            cap = StrokeCap.Round
-        )
-        // Metallic rail highlight
-        drawLine(
-            brush = Brush.linearGradient(
-                listOf(Color(0xFF37474F), Color(0xFF78909C), Color(0xFF263238))
-            ),
-            start = p1,
-            end = p2,
-            strokeWidth = r * 0.045f,
-            cap = StrokeCap.Round
-        )
-        // Electric cyan inner energy slit
-        drawLine(
-            color = Color(0xFF00E5FF).copy(alpha = 0.85f),
-            start = p1,
-            end = p2,
-            strokeWidth = r * 0.012f,
-            cap = StrokeCap.Round
-        )
+private fun DrawScope.drawRipples(t: Float, c: Offset, r: Float, brush: Brush) {
+    repeat(3) { i ->
+        val progress = ((t * 0.6f) + i / 3f) % 1f
+        drawCircle(brush, radius = r * (0.4f + 0.6f * progress), center = c, alpha = (1f - progress) * 0.5f, style = Stroke(width = r * 0.012f))
     }
 }
 
-private fun DrawScope.drawOuterCollar(c: Offset, r: Float) {
-    // Outer brushed metal ring
-    drawCircle(
-        brush = Brush.sweepGradient(
-            listOf(
-                Color(0xFF37474F), Color(0xFF78909C), Color(0xFF263238),
-                Color(0xFF607D8B), Color(0xFF263238), Color(0xFF78909C), Color(0xFF37474F)
-            ),
-            center = c
-        ),
-        radius = r * 0.96f,
-        center = c,
-        style = Stroke(width = r * 0.045f)
-    )
-
-    // Deep recessed shadow ring
-    drawCircle(
-        color = Color(0xFF080E17),
-        radius = r * 0.93f,
-        center = c,
-        style = Stroke(width = r * 0.016f)
-    )
-}
-
-private fun DrawScope.drawGoldFlanges(c: Offset, r: Float) {
-    val goldDark = Color(0xFF996515)
-    val goldMid = Color(0xFFFFB300)
-    val goldLight = Color(0xFFFFE082)
-
-    val goldBrush = Brush.sweepGradient(
-        listOf(goldDark, goldMid, goldLight, goldMid, goldDark),
-        center = c
-    )
-
-    val flangeRadius = r * 0.895f
-    val flangeThickness = r * 0.045f
-
-    // Left curved armor plate (115 deg to 245 deg)
-    drawArc(
-        brush = goldBrush,
-        startAngle = 115f,
-        sweepAngle = 130f,
-        useCenter = false,
-        topLeft = Offset(c.x - flangeRadius, c.y - flangeRadius),
-        size = Size(flangeRadius * 2, flangeRadius * 2),
-        style = Stroke(width = flangeThickness, cap = StrokeCap.Round)
-    )
-
-    // Right curved armor plate (295 deg to 65 deg = sweep 130 deg)
-    drawArc(
-        brush = goldBrush,
-        startAngle = 295f,
-        sweepAngle = 130f,
-        useCenter = false,
-        topLeft = Offset(c.x - flangeRadius, c.y - flangeRadius),
-        size = Size(flangeRadius * 2, flangeRadius * 2),
-        style = Stroke(width = flangeThickness, cap = StrokeCap.Round)
-    )
-
-    // Golden cap studs / rivets at ends
-    val rivetAngles = floatArrayOf(115f, 245f, 295f, 65f)
-    for (deg in rivetAngles) {
-        val rad = Math.toRadians(deg.toDouble())
-        val rx = c.x + flangeRadius * cos(rad).toFloat()
-        val ry = c.y + flangeRadius * sin(rad).toFloat()
-        drawCircle(
-            color = Color(0xFFFFD700),
-            radius = r * 0.022f,
-            center = Offset(rx, ry)
-        )
-        drawCircle(
-            color = Color(0xFF5D4037),
-            radius = r * 0.011f,
-            center = Offset(rx, ry)
-        )
-    }
-}
-
-private fun DrawScope.drawOuterCogs(c: Offset, r: Float) {
-    val cogR = r * 0.81f
-    val segments = 16
-    val sweepPerSeg = 360f / segments
-    val gap = 6f
-    val arcLen = sweepPerSeg - gap
-
-    for (i in 0 until segments) {
-        val startA = i * sweepPerSeg + gap / 2f
+private fun DrawScope.drawSegmentedRing(c: Offset, radius: Float, thickness: Float, segments: Int, gapDegrees: Float, brush: Brush, alpha: Float) {
+    val sweep = 360f / segments - gapDegrees
+    repeat(segments) { i ->
         drawArc(
-            color = Color(0xFF1E2C3D),
-            startAngle = startA,
-            sweepAngle = arcLen,
+            brush = brush,
+            startAngle = i * 360f / segments,
+            sweepAngle = sweep,
             useCenter = false,
-            topLeft = Offset(c.x - cogR, c.y - cogR),
-            size = Size(cogR * 2, cogR * 2),
-            style = Stroke(width = r * 0.048f)
+            topLeft = Offset(c.x - radius, c.y - radius),
+            size = Size(radius * 2, radius * 2),
+            alpha = alpha.coerceIn(0f, 1f),
+            style = Stroke(width = thickness, cap = StrokeCap.Butt),
         )
+    }
+}
 
-        // Radial glowing cyan slit between segments
-        val slitAngle = Math.toRadians((i * sweepPerSeg).toDouble())
-        val s1 = Offset(c.x + (cogR - r * 0.028f) * cos(slitAngle).toFloat(), c.y + (cogR - r * 0.028f) * sin(slitAngle).toFloat())
-        val s2 = Offset(c.x + (cogR + r * 0.028f) * cos(slitAngle).toFloat(), c.y + (cogR + r * 0.028f) * sin(slitAngle).toFloat())
+private fun DrawScope.drawTicks(c: Offset, radius: Float, length: Float, count: Int, color: Color) {
+    repeat(count) { i ->
+        val a = 2.0 * PI * i / count
+        val scale = if (i % 6 == 0) 1.7f else 1f
+        val inner = radius - length * scale
         drawLine(
-            color = Color(0xFF00E5FF),
-            start = s1,
-            end = s2,
-            strokeWidth = r * 0.012f,
+            color = color,
+            start = Offset(c.x + inner * cos(a).toFloat(), c.y + inner * sin(a).toFloat()),
+            end = Offset(c.x + radius * cos(a).toFloat(), c.y + radius * sin(a).toFloat()),
+            strokeWidth = length * 0.25f,
+        )
+    }
+}
+
+private fun DrawScope.drawArcAround(c: Offset, radius: Float, startAngle: Float, sweep: Float, color: Color, width: Float) {
+    drawArc(
+        color = color,
+        startAngle = startAngle,
+        sweepAngle = sweep,
+        useCenter = false,
+        topLeft = Offset(c.x - radius, c.y - radius),
+        size = Size(radius * 2, radius * 2),
+        style = Stroke(width = width, cap = StrokeCap.Round),
+    )
+}
+
+/** Three bright comets with fading tails orbiting just inside the rim. */
+private fun DrawScope.drawComets(t: Float, c: Offset, r: Float, palette: List<Color>, flicker: Float) {
+    repeat(3) { i ->
+        val dir = if (i == 1) -1f else 1f
+        val head = i * 120f + dir * t * (38f + i * 9f)
+        val radius = r * (0.93f - i * 0.025f)
+        repeat(10) { k ->
+            val a = Math.toRadians((head - dir * k * 2.6f).toDouble())
+            val fade = 1f - k / 10f
+            drawCircle(
+                color = (if (k == 0) Color.White else palette[(i + 1) % palette.size]).copy(alpha = 0.85f * fade * flicker),
+                radius = r * 0.012f * (0.35f + 0.65f * fade),
+                center = Offset(c.x + radius * cos(a).toFloat(), c.y + radius * sin(a).toFloat()),
+            )
+        }
+    }
+}
+
+/** Crackling energy arcs between the core ring and the coil, re-drawn a few times a second. */
+private fun DrawScope.drawEnergyArcs(t: Float, c: Offset, r: Float, palette: List<Color>, energy: Float, beat: Float) {
+    val frame = (t * 12f).toInt()
+    val bolts = 4 + (beat * 3f).toInt()
+    repeat(bolts) { b ->
+        val seed = frame * 97 + b * 13
+        if (pseudoRandom(seed) < 0.25f) return@repeat // not every bolt fires every frame
+        val base = pseudoRandom(seed + 1) * 360f
+        val path = Path()
+        val steps = 6
+        for (k in 0..steps) {
+            val f = k / steps.toFloat()
+            val rr = r * (0.42f + 0.2f * f)
+            val jitter = (pseudoRandom(seed + 10 + k) - 0.5f) * 14f
+            val a = Math.toRadians((base + jitter).toDouble())
+            val x = c.x + rr * cos(a).toFloat()
+            val y = c.y + rr * sin(a).toFloat()
+            if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        val color = palette[b % palette.size]
+        drawPath(path, color.copy(alpha = 0.25f * energy), style = Stroke(width = r * 0.018f, cap = StrokeCap.Round))
+        drawPath(path, Color.White.copy(alpha = 0.7f * energy), style = Stroke(width = r * 0.005f, cap = StrokeCap.Round))
+    }
+}
+
+private fun DrawScope.drawTriangle(c: Offset, radius: Float, brush: Brush, width: Float, alpha: Float) {
+    val path = Path()
+    repeat(3) { i ->
+        val a = Math.toRadians((i * 120.0) - 90.0)
+        val x = c.x + radius * cos(a).toFloat()
+        val y = c.y + radius * sin(a).toFloat()
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    path.close()
+    drawPath(path, brush, alpha = alpha.coerceIn(0f, 1f), style = Stroke(width = width, cap = StrokeCap.Round))
+}
+
+/** Many thin segments drawn as ONE dashed circle (a single draw call instead of one per segment). */
+private fun DrawScope.drawDashedRing(c: Offset, radius: Float, thickness: Float, segments: Int, gapDegrees: Float, brush: Brush, alpha: Float) {
+    val circumference = (2.0 * PI * radius).toFloat()
+    val gap = circumference * gapDegrees / 360f
+    val dash = circumference / segments - gap
+    drawCircle(
+        brush = brush,
+        radius = radius,
+        center = c,
+        alpha = alpha.coerceIn(0f, 1f),
+        style = Stroke(width = thickness, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, gap))),
+    )
+}
+
+private fun DrawScope.drawGoldNotches(c: Offset, r: Float, flicker: Float) {
+    val gold = Color(0xFFFFB800)
+    val goldLight = Color(0xFFFFD54F)
+    val angles = floatArrayOf(25f, 65f, 115f, 155f, 205f, 245f, 295f, 335f)
+    for (deg in angles) {
+        val rad = Math.toRadians(deg.toDouble())
+        val startR = r * 0.92f
+        val endR = r * 1.01f
+        val startX = c.x + startR * cos(rad).toFloat()
+        val startY = c.y + startR * sin(rad).toFloat()
+        val endX = c.x + endR * cos(rad).toFloat()
+        val endY = c.y + endR * sin(rad).toFloat()
+        drawLine(
+            brush = Brush.linearGradient(listOf(gold, goldLight, gold)),
+            start = Offset(startX, startY),
+            end = Offset(endX, endY),
+            strokeWidth = r * 0.038f,
+            cap = StrokeCap.Round,
+            alpha = 0.92f * flicker
+        )
+    }
+}
+
+private fun DrawScope.drawCenterSoundwave(c: Offset, coreR: Float, t: Float, energy: Float, color: Color) {
+    val barCount = 11
+    val totalWidth = coreR * 1.3f
+    val barWidth = totalWidth / (barCount * 1.5f)
+    val startX = c.x - totalWidth / 2f
+    for (i in 0 until barCount) {
+        val x = startX + i * (barWidth * 1.5f) + barWidth / 2f
+        val dist = kotlin.math.abs(i - (barCount - 1) / 2f) / ((barCount - 1) / 2f)
+        val envelope = 1f - dist * 0.5f
+        val wave = kotlin.math.abs(sin(t * 7f + i * 0.65f))
+        val barHeight = (coreR * 0.85f) * (0.25f + 0.75f * wave) * envelope * energy
+        drawLine(
+            color = color.copy(alpha = 0.95f),
+            start = Offset(x, c.y - barHeight / 2f),
+            end = Offset(x, c.y + barHeight / 2f),
+            strokeWidth = barWidth * 0.85f,
             cap = StrokeCap.Round
         )
     }
-}
-
-private fun DrawScope.drawOpticalChannel(c: Offset, r: Float, t: Float) {
-    // Deep neon violet conduit
-    drawCircle(
-        color = Color(0xFF7C4DFF).copy(alpha = 0.85f),
-        radius = r * 0.69f,
-        center = c,
-        style = Stroke(width = r * 0.022f)
-    )
-
-    // Vibrant Electric Blue Halo Ring
-    drawCircle(
-        brush = Brush.sweepGradient(
-            listOf(Color(0xFF00E5FF), Color(0xFF0077FF), Color(0xFF00E5FF)),
-            center = c
-        ),
-        radius = r * 0.62f,
-        center = c,
-        style = Stroke(width = r * 0.020f)
-    )
-}
-
-private fun DrawScope.drawInnerBezel(c: Offset, r: Float) {
-    val bezelR = r * 0.53f
-    drawCircle(
-        color = Color(0xFF162333),
-        radius = bezelR,
-        center = c,
-        style = Stroke(width = r * 0.026f)
-    )
-
-    // 48 Precision gauge tick marks
-    val count = 48
-    for (i in 0 until count) {
-        val a = Math.toRadians((i * (360.0 / count)))
-        val isMajor = i % 4 == 0
-        val tlen = if (isMajor) r * 0.024f else r * 0.012f
-        val color = if (isMajor) Color(0xFF00E5FF) else Color(0xFF00E5FF).copy(alpha = 0.45f)
-        val width = if (isMajor) r * 0.007f else r * 0.004f
-
-        val x1 = c.x + (bezelR - tlen) * cos(a).toFloat()
-        val y1 = c.y + (bezelR - tlen) * sin(a).toFloat()
-        val x2 = c.x + (bezelR + tlen) * cos(a).toFloat()
-        val y2 = c.y + (bezelR + tlen) * sin(a).toFloat()
-
-        drawLine(color = color, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = width, cap = StrokeCap.Round)
-    }
-}
-
-private fun DrawScope.drawCentralCore(c: Offset, r: Float, t: Float, energy: Float, level: Float) {
-    val coreR = r * 0.42f
-
-    // 1. Core Void (Pure Deep Dark Indigo Blue)
-    drawCircle(
-        color = Color(0xFF020714),
-        radius = coreR,
-        center = c
-    )
-
-    // 2. Glowing Concentric Halo Rims
-    drawCircle(
-        color = Color(0xFF00E5FF).copy(alpha = 0.95f),
-        radius = coreR,
-        center = c,
-        style = Stroke(width = r * 0.018f)
-    )
-    drawCircle(
-        color = Color(0xFF0055FF).copy(alpha = 0.55f),
-        radius = coreR * 0.88f,
-        center = c,
-        style = Stroke(width = r * 0.010f)
-    )
-
-    // 3. Electric Cyan Oscillating Soundwave Visualizer
-    val wavePath = Path()
-    val glowPath = Path()
-    val waveHalfWidth = coreR * 0.82f
-    val amplitude = coreR * (0.35f + 0.40f * level) * energy
-    val speed = t * 6.5f
-
-    var isFirst = true
-    val step = 4
-    val startX = (c.x - waveHalfWidth).toInt()
-    val endX = (c.x + waveHalfWidth).toInt()
-
-    for (x in startX..endX step step) {
-        val normX = (x - c.x) / waveHalfWidth // -1.0 to 1.0
-        val env = exp(-normX * normX * 3.2f) // Gaussian bell curve keeps ends clamped to center
-
-        // Harmonically rich waveform with multiple frequencies
-        val wave = sin(normX * 14f - speed) * 0.65f +
-                sin(normX * 26f + speed * 1.4f) * 0.35f
-
-        val y = c.y + wave * amplitude * env
-
-        if (isFirst) {
-            wavePath.moveTo(x.toFloat(), y)
-            glowPath.moveTo(x.toFloat(), y)
-            isFirst = false
-        } else {
-            wavePath.lineTo(x.toFloat(), y)
-            glowPath.lineTo(x.toFloat(), y)
-        }
-    }
-
-    // Outer soft glow layer
-    drawPath(
-        glowPath,
-        color = Color(0xFF00E5FF).copy(alpha = 0.45f * energy),
-        style = Stroke(width = r * 0.024f, cap = StrokeCap.Round)
-    )
-
-    // Inner bright white-cyan crisp core
-    drawPath(
-        wavePath,
-        color = Color.White.copy(alpha = 0.95f),
-        style = Stroke(width = r * 0.009f, cap = StrokeCap.Round)
-    )
 }

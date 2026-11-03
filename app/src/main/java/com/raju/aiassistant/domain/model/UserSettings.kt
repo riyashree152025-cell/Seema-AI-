@@ -19,6 +19,7 @@ enum class TtsEngine(val label: String, val hint: String) {
 
 /** How Seema talks. Changes only the tone; honesty and safety rules stay the same. */
 enum class Personality(val label: String, val hint: String) {
+    COMPANION("Humsafar / Girlfriend", "♥ caring, loving, deeply personal, attentive & thoughtful"),
     MASTI("Masti / Fun", "★ witty, playful, a little filmy — never boring"),
     DOST("Dost / Friendly", "warm and caring, light humour"),
     PRO("Professional", "short, clear and to the point"),
@@ -107,7 +108,7 @@ data class UserSettings(
     val autoSpeakReplies: Boolean = true,
     val continuousConversation: Boolean = false,
     /** How the microphone is used. Listening while the app is open by default (the user's choice). */
-    val voiceMode: VoiceMode = VoiceMode.ALWAYS,
+    val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
     /** Talking while Seema speaks stops her (voice conversations only). */
     val bargeIn: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
@@ -122,7 +123,7 @@ data class UserSettings(
     val thermalProtection: Boolean = true,
     /** Which AI core the Home screen shows. */
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
-    val personality: Personality = Personality.MASTI,
+    val personality: Personality = Personality.COMPANION,
     val announceNotifications: Boolean = false,
     val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),
     /** Say only who wrote, and read the message only after the user taps Read. */
@@ -138,7 +139,7 @@ data class UserSettings(
     val memoryEnabled: Boolean = true,
     val safetyMode: Boolean = false,
     val assistantPaused: Boolean = false,
-    val userName: String = "Dinesh Kumar",
+    val userName: String = "Raju",
     val userEmail: String = "ruhulamin16121998@gmail.com",
     val isProUser: Boolean = true,
 ) {

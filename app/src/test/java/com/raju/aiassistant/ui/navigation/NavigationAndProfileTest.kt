@@ -44,7 +44,7 @@ class NavigationAndProfileTest {
     @Test
     fun userSettingsDefaultsMatchProfileReference() {
         val settings = UserSettings()
-        assertEquals("Dinesh Kumar", settings.userName)
+        assertEquals("Raju", settings.userName)
         assertEquals("ruhulamin16121998@gmail.com", settings.userEmail)
         assertTrue(settings.isProUser)
     }

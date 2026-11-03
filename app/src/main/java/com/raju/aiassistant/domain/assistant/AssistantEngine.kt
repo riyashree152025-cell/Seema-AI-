@@ -351,11 +351,12 @@ class AssistantEngine(
                     heldJob?.cancel()
                     submit(held, fromVoice = true)
                 } else if (err.unclear && _voiceSession.value && unclearInARow == 0) {
-                    // Better to ask again than to act on a misheard word.
+                    // Silent visual hint instead of unprompted speech loop in a quiet room
                     unclearInARow++
-                    job = scope.launch {
-                        say(phrase(lang(), "माफ़ कीजिए, ठीक से सुनाई नहीं दिया — एक बार फिर बोलिए?", "দুঃখিত, ঠিক শুনতে পাইনি — আরেকবার বলবেন?"), allowBargeIn = false)
-                        if (_voiceSession.value) listen()
+                    _hint.value = phrase(lang(), "साफ़ सुनाई नहीं दिया", "স্পষ্ট শোনা যায়নি")
+                    if (keepGoing) relisten(500) else {
+                        _voiceSession.value = false
+                        _state.value = AssistantState.Idle
                     }
                 } else if (keepGoing && (err.noSpeech || err.unclear)) {
                     // Silence is normal in hands-free mode: listen again, or doze off after a quiet while.
