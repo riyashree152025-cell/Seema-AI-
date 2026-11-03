@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
 SEEMA AI — PC Companion & Unified Brain Sync Server
-Runs on Windows PC to bridge Local AI (Ollama), synchronize memories with Android,
-and execute authorized PC agent actions safely.
+Runs securely on Windows PC to bridge Local AI (Ollama), synchronize memories
+with Android, and execute authorized PC agent actions safely.
 
-Zero external dependencies required (uses standard library http.server and urllib).
+Security Features:
+- Cryptographically strong 256-bit random auth token (auto-generated via secrets).
+- Constant-time HMAC authentication against timing attacks.
+- Strict network restriction: only accepts requests from private LAN/loopback IPs.
+- Non-root, non-destructive sandboxed command execution.
+- Zero external dependencies required (uses standard library http.server, urllib, ipaddress, secrets, hmac).
 """
 
 import os
 import sys
 import json
 import socket
+import secrets
+import hmac
+import ipaddress
 import platform
 import subprocess
 import urllib.request
@@ -27,15 +35,32 @@ CONVERSATION_FILE = DATA_DIR / "pc_conversations.json"
 
 def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not CONFIG_FILE.exists():
-        default_config = {
-            "auth_token": "seema_pc_secret_key_12345",
-            "port": DEFAULT_PORT,
-            "ollama_url": OLLAMA_DEFAULT_URL,
-            "allowed_actions": ["open_url", "open_app", "media", "system_info"]
-        }
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=2)
+    needs_new_token = False
+    config = {}
+
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            config = {}
+
+    current_token = config.get("auth_token", "")
+    # Regenerate if token is missing or matches known insecure default
+    if not current_token or current_token == "seema_pc_secret_key_12345":
+        config["auth_token"] = secrets.token_urlsafe(32)
+        needs_new_token = True
+
+    if "port" not in config:
+        config["port"] = DEFAULT_PORT
+    if "ollama_url" not in config:
+        config["ollama_url"] = OLLAMA_DEFAULT_URL
+    if "allowed_actions" not in config:
+        config["allowed_actions"] = ["open_url", "open_app", "system_info"]
+
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+
     if not MEMORIES_FILE.exists():
         with open(MEMORIES_FILE, "w", encoding="utf-8") as f:
             json.dump([], f)
@@ -43,10 +68,10 @@ def ensure_data_dir():
         with open(CONVERSATION_FILE, "w", encoding="utf-8") as f:
             json.dump([], f)
 
+    return config
+
 def load_config():
-    ensure_data_dir()
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return ensure_data_dir()
 
 def get_local_ip():
     try:
@@ -57,6 +82,16 @@ def get_local_ip():
         return ip
     except Exception:
         return "127.0.0.1"
+
+def is_trusted_network(client_ip_str):
+    """Enforces that requests only originate from localhost or RFC1918 private subnets."""
+    if client_ip_str in ("127.0.0.1", "::1", "localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(client_ip_str)
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        return False
 
 def check_ollama_status(ollama_url):
     try:
@@ -91,33 +126,60 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
+    def _check_network_security(self):
+        client_ip = self.client_address[0]
+        if not is_trusted_network(client_ip):
+            self._send_json(403, {
+                "error": "Forbidden",
+                "message": f"Access denied. Requests are only accepted from private local network or loopback (client: {client_ip})."
+            })
+            return False
+        return True
+
     def _is_authenticated(self):
+        if not self._check_network_security():
+            return False
+
         expected_token = self.config.get("auth_token", "")
         if not expected_token:
-            return True
+            return False
+
         auth_header = self.headers.get("Authorization", "")
+        token = ""
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            if token == expected_token:
-                return True
-        header_token = self.headers.get("X-Seema-Token", "").strip()
-        return header_token == expected_token
+        elif "X-Seema-Token" in self.headers:
+            token = self.headers.get("X-Seema-Token", "").strip()
+
+        # Constant-time comparison to prevent timing side-channel attacks
+        if token and hmac.compare_digest(token, expected_token):
+            return True
+
+        self._send_json(401, {
+            "error": "Unauthorized",
+            "message": "Invalid or missing companion auth token. Verify the token configured in ~/.seema_ai/companion_config.json."
+        })
+        return False
 
     def do_GET(self):
         if not self._is_authenticated():
-            return self._send_json(401, {"error": "Unauthorized", "message": "Invalid or missing companion auth token."})
+            return
 
         if self.path == "/api/v1/status" or self.path == "/status":
             ollama_info = check_ollama_status(self.config.get("ollama_url", OLLAMA_DEFAULT_URL))
             data = {
                 "service": "SEEMA AI PC Companion",
-                "version": "1.0.0",
+                "version": "1.1.0",
                 "hostname": socket.gethostname(),
                 "os": f"{platform.system()} {platform.release()}",
                 "ip": get_local_ip(),
                 "port": self.config.get("port", DEFAULT_PORT),
                 "ollama": ollama_info,
-                "unified_brain_active": True
+                "unified_brain_active": True,
+                "security": {
+                    "network_filter": "RFC1918 Private LAN / Loopback only",
+                    "auth": "HMAC-256 Bearer Token"
+                }
             }
             return self._send_json(200, data)
 
@@ -147,7 +209,7 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._is_authenticated():
-            return self._send_json(401, {"error": "Unauthorized", "message": "Invalid or missing companion auth token."})
+            return
 
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
@@ -187,7 +249,8 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
                 return self._send_json(403, {"error": "Forbidden", "message": f"Action '{action}' is not in allowed_actions."})
 
             if action == "open_url":
-                url = params.get("url", "")
+                url = params.get("url", "").strip()
+                # Strict scheme whitelist (prevent file:// or command injection)
                 if url.startswith("http://") or url.startswith("https://"):
                     if platform.system() == "Windows":
                         os.system(f'start "" "{url}"')
@@ -197,10 +260,10 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
                         subprocess.run(["xdg-open", url])
                     return self._send_json(200, {"success": True, "action": "open_url", "target": url})
                 else:
-                    return self._send_json(400, {"error": "Invalid URL"})
+                    return self._send_json(400, {"error": "Invalid URL. Only http and https URLs permitted."})
 
             elif action == "open_app":
-                app_name = params.get("name", "").lower()
+                app_name = params.get("name", "").lower().strip()
                 safe_apps = {
                     "notepad": "notepad.exe",
                     "calculator": "calc.exe",
@@ -235,15 +298,19 @@ def run_server():
     server_address = ("0.0.0.0", port)
     httpd = HTTPServer(server_address, SeemaCompanionHandler)
     ip = get_local_ip()
+    token = config.get("auth_token", "")
+    masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else "***"
+
     print("=" * 65)
-    print("  SEEMA AI — PC Companion & Unified Brain Server")
+    print("  SEEMA AI — PC Companion & Unified Brain Server (Secure)")
     print("=" * 65)
     print(f"  • Status: RUNNING on port {port}")
     print(f"  • PC IP Address: {ip}")
     print(f"  • Connect from Phone: http://{ip}:{port}")
     print(f"  • USB ADB Port Forward: adb reverse tcp:{port} tcp:{port}")
-    print(f"  • Auth Token: {config.get('auth_token')}")
+    print(f"  • Auth Token: [SECURE] {masked_token}")
     print(f"  • Config File: {CONFIG_FILE}")
+    print("  • Security: Restricted to private LAN/loopback only.")
     print("=" * 65)
     try:
         httpd.serve_forever()

@@ -1,6 +1,6 @@
 # SEEMA AI — Windows PC Companion & Unified Brain Guide
 
-The **SEEMA AI PC Companion** provides the bridge between your Android phone and Windows PC:
+The **SEEMA AI PC Companion** provides a secure bridge between your Android phone and Windows PC:
 1. **Local AI Bridge (Ollama):** Access models running locally on PC from your mobile device.
 2. **Unified Brain Memory Sync:** Keep memories and conversation context synchronized between PC and Mobile.
 3. **Authorized PC Actions:** Run safe PC commands (open URLs, launch apps) from Seema on your phone.
@@ -22,7 +22,24 @@ By default, the server runs on port **11435**.
 
 ---
 
-## 2. Connecting from Mobile Phone
+## 2. Security & Authentication
+
+On first startup, the server automatically generates a cryptographically strong 256-bit random auth token and saves it in:
+`%USERPROFILE%\.seema_ai\companion_config.json`
+
+- **The raw token is NEVER printed in console logs or committed to git.**
+- **Network Restriction:** The server strictly verifies client IP addresses and rejects any connection that does not originate from RFC1918 private subnets (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) or loopback (`127.0.0.1`).
+- **Timing Defense:** Uses constant-time HMAC comparison for token validation.
+
+To find your token to enter into SEEMA AI settings on your phone:
+Open `%USERPROFILE%\.seema_ai\companion_config.json` in Notepad or run:
+```powershell
+(Get-Content "$env:USERPROFILE\.seema_ai\companion_config.json" | ConvertFrom-Json).auth_token
+```
+
+---
+
+## 3. Connecting from Mobile Phone
 
 ### Option A: Via Wi-Fi (Same Network)
 1. Find your PC's IP address (displayed on the companion console, e.g. `192.168.31.55`).
@@ -30,7 +47,7 @@ By default, the server runs on port **11435**.
    - Set URL: `http://192.168.31.55:11434`
 3. In **PC Sync & Companion**:
    - Set Endpoint: `http://192.168.31.55:11435`
-   - Set Token: `seema_pc_secret_key_12345` (or whatever is configured in `~/.seema_ai/companion_config.json`)
+   - Set Token: Your private token from `companion_config.json`
 
 ### Option B: Via USB Cable (ADB Port Forwarding)
 Run in PowerShell with phone connected via USB:
@@ -42,7 +59,7 @@ Then on phone use `http://127.0.0.1:11434` for Ollama and `http://127.0.0.1:1143
 
 ---
 
-## 3. Windows Firewall Configuration
+## 4. Windows Firewall Configuration
 
 If connecting over Wi-Fi, ensure Windows Defender Firewall allows incoming connections on port 11435 (and 11434 for Ollama):
 ```powershell
@@ -50,7 +67,7 @@ New-NetFirewallRule -DisplayName "SEEMA AI PC Companion" -Direction Inbound -Loc
 New-NetFirewallRule -DisplayName "Ollama Local AI" -Direction Inbound -LocalPort 11434 -Protocol TCP -Action Allow
 ```
 
-## 4. Ollama LAN Configuration
+## 5. Ollama LAN Configuration
 By default, Ollama only listens on `127.0.0.1`. To allow other devices on your local Wi-Fi to reach Ollama directly:
 Set system environment variable:
 `OLLAMA_HOST=0.0.0.0:11434`
