@@ -138,6 +138,9 @@ data class UserSettings(
     val memoryEnabled: Boolean = true,
     val safetyMode: Boolean = false,
     val assistantPaused: Boolean = false,
+    val userName: String = "Dinesh Kumar",
+    val userEmail: String = "ruhulamin16121998@gmail.com",
+    val isProUser: Boolean = true,
 ) {
     fun modelFor(provider: ProviderId): String? = models[provider]
 

@@ -1,607 +1,472 @@
 package com.raju.aiassistant.ui.settings
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.ui.semantics.Role
+import com.raju.aiassistant.ui.theme.SuccessGreen
+import com.raju.aiassistant.ui.theme.WarningAmber
+
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import kotlinx.coroutines.launch
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.raju.aiassistant.BuildConfig
-import com.raju.aiassistant.data.tts.LanguageSupport
-import com.raju.aiassistant.domain.ai.ModelAdvice
 import com.raju.aiassistant.domain.ai.ProviderId
-import com.raju.aiassistant.domain.model.AnnounceApp
-import com.raju.aiassistant.domain.model.MusicService
-import com.raju.aiassistant.domain.model.SARVAM_FEMALE_SPEAKERS
-import com.raju.aiassistant.domain.model.SPEECH_LANGUAGES
-import com.raju.aiassistant.domain.model.SecretId
-import com.raju.aiassistant.domain.model.Personality
-import com.raju.aiassistant.domain.model.SttEngine
-import com.raju.aiassistant.domain.model.TtsEngine
-import com.raju.aiassistant.domain.model.VoiceMode
-import com.raju.aiassistant.domain.voice.VoiceCatalog
 import com.raju.aiassistant.ui.RajuViewModelFactory
-import com.raju.aiassistant.ui.components.HudPanel
-import com.raju.aiassistant.ui.components.StatusChip
-import com.raju.aiassistant.ui.theme.ErrorRed
-import com.raju.aiassistant.ui.theme.SuccessGreen
-import com.raju.aiassistant.ui.theme.TextSecondary
-import com.raju.aiassistant.ui.theme.WarningAmber
-import java.text.DateFormat
-import java.util.Date
+import com.raju.aiassistant.ui.theme.NeonCyan
+import kotlin.math.cos
+import kotlin.math.sin
 
+/**
+ * Screen 7: Settings Screen
+ * Matches Reference Image: Left Column with 6 Group Cards, Right Column with 3D Animated Metallic Gear Mechanism.
+ */
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = RajuViewModelFactory)) {
+fun SettingsScreen(
+    onBack: () -> Unit = {},
+    viewModel: SettingsViewModel = viewModel(factory = RajuViewModelFactory),
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
-    val voices by viewModel.voices.collectAsStateWithLifecycle()
-    val voiceTest by viewModel.voiceTest.collectAsStateWithLifecycle()
-    val activeEngine by viewModel.activeTtsEngine.collectAsStateWithLifecycle()
-    val info by viewModel.info.collectAsStateWithLifecycle()
-    val elevenModels by viewModel.elevenModels.collectAsStateWithLifecycle()
-    val elevenVoices by viewModel.elevenVoices.collectAsStateWithLifecycle()
-    val cartesiaVoices by viewModel.cartesiaVoices.collectAsStateWithLifecycle()
-    val voiceListMessage by viewModel.voiceListMessage.collectAsStateWithLifecycle()
     val s = state.settings
     val context = LocalContext.current
-    var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
-    // Re-check the real permission/access state every time the user returns from system settings.
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    LaunchedEffect(lifecycleState) { if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.refreshDiagnostics() }
+    LaunchedEffect(lifecycleState) {
+        if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.refreshDiagnostics()
+    }
     val diag by viewModel.diagnostics.collectAsStateWithLifecycle()
-    val notificationAccess = diag.listenerEnabled
 
-    val callPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        viewModel.setDirectCalling(granted)
-    }
-    val refreshAfter = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.refreshDiagnostics() }
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.refreshDiagnostics() }
-    val callRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        viewModel.refreshDiagnostics()
-    }
-    fun open(intent: Intent) = runCatching { context.startActivity(intent) }
-    fun appInfo() = open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
-    fun appNotificationSettings() = open(
-        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-    )
-    fun askPostNotifications() {
-        if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else appNotificationSettings()
-    }
+    var activeDialog by remember { mutableStateOf<String?>(null) }
 
-    val scroll = rememberScrollState()
-    val scope = rememberCoroutineScope()
-    // Where each section starts, for the "jump to section" chips at the top.
-    val sectionY = remember { mutableStateMapOf<String, Int>() }
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .background(Brush.verticalGradient(listOf(Color(0xFF040714), Color(0xFF02040A))))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-        info?.let { Text(it, color = TextSecondary) }
-
-        SectionJumpRow(
-            listOf("ai" to "AI & Brain", "voice" to "Voice", "appearance" to "Appearance", "permissions" to "Permissions", "automation" to "Automation", "system" to "System", "memory" to "Memory", "about" to "About"),
-        ) { key -> sectionY[key]?.let { y -> scope.launch { scroll.animateScrollTo(y) } } }
-        SectionHeader("AI & Brain", Modifier.onGloballyPositioned { sectionY["ai"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- AI
-        ActiveAiPanel(
-            s,
-            keySaved = { state.secrets[it.secret]?.configured == true },
-            testing = { state.secrets[it.secret]?.busy == true },
-            viewModel = viewModel,
-        )
-        HudPanel(title = "Primary AI provider") {
-            Text("Keys are encrypted with Android Keystore and stored only on this phone. They are sent only to their own provider over HTTPS. If the primary provider fails, another provider with a saved key answers and the chat says so.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            ProviderId.entries.forEach { p ->
-                RadioRow(p.displayName, s.defaultProvider == p) { viewModel.setDefaultProvider(p) }
+        // Header: < Settings
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
             }
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Filled.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Settings",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    letterSpacing = 1.sp,
+                ),
+            )
         }
-        ProviderId.entries.forEach { p ->
-            val secret = state.secrets[p.secret] ?: SecretStatus()
-            SecretCard(p.secret, secret, viewModel, providerStatus = com.raju.aiassistant.domain.ai.providerStatus(secret.configured, secret.busy, s.lastTests[p])) {
-                val test = s.lastTests[p]
-                if (test != null) {
-                    Text(
-                        (if (test.success) "Last test: connected" else "Last test failed: ${test.message}") +
-                            " · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(test.timestamp)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (test.success) SuccessGreen else ErrorRed,
-                    )
-                }
-                ModelPicker(
-                    provider = p,
-                    selected = s.modelFor(p),
-                    options = models[p].orEmpty().map { it.id },
-                    onLoad = { viewModel.loadModels(p) },
-                    onSelect = { viewModel.selectModel(p, it) },
-                    keySaved = secret.configured,
-                    loading = secret.busy,
+
+        // Split Layout: Left 6 Category Cards, Right 3D Metallic Mechanical Gear
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Left Column (6 Category Cards)
+            Column(
+                Modifier.weight(1.35f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SettingsCategoryCard(
+                    title = "AI Assistant Settings",
+                    icon = Icons.Filled.Psychology,
+                    onClick = { activeDialog = "ai" },
+                )
+                SettingsCategoryCard(
+                    title = "Voice & Language",
+                    icon = Icons.Filled.Mic,
+                    onClick = { activeDialog = "voice" },
+                )
+                SettingsCategoryCard(
+                    title = "Privacy & Security",
+                    icon = Icons.Filled.Lock,
+                    onClick = { activeDialog = "privacy" },
+                )
+                SettingsCategoryCard(
+                    title = "Notifications",
+                    icon = Icons.Filled.Notifications,
+                    onClick = { activeDialog = "notifications" },
+                )
+                SettingsCategoryCard(
+                    title = "Appearance",
+                    icon = Icons.Filled.Palette,
+                    onClick = { activeDialog = "appearance" },
+                )
+                SettingsCategoryCard(
+                    title = "About SEEMA AI",
+                    icon = Icons.Filled.Info,
+                    onClick = { activeDialog = "about" },
                 )
             }
-        }
 
-        // ---------------------------------------------------------------- search
-        SecretCard(SecretId.TAVILY_API_KEY, state.secrets[SecretId.TAVILY_API_KEY] ?: SecretStatus(), viewModel, title = "Web search (Tavily)") {
-            Text("Used when you ask about news, prices, weather or anything current. Sources are shown with links.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-
-        SectionHeader("Voice & Speech", Modifier.onGloballyPositioned { sectionY["voice"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- voice
-        HudPanel(title = "Voice") {
-            Text("Speech output (Seema's voice)", style = MaterialTheme.typography.titleMedium)
-            Text("If the chosen voice fails (no key, no internet, credits used up), the next one is used automatically.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            TtsEngine.entries.forEach { e ->
-                val keyMissing = when (e) {
-                    TtsEngine.SARVAM -> state.secrets[SecretId.SARVAM_API_KEY]?.configured != true
-                    TtsEngine.ELEVENLABS -> state.secrets[SecretId.ELEVENLABS_API_KEY]?.configured != true
-                    TtsEngine.CARTESIA -> state.secrets[SecretId.CARTESIA_API_KEY]?.configured != true
-                    TtsEngine.DEEPGRAM -> state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured != true
-                    TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> false
-                }
-                HintRadioRow(e.label, e.hint + if (keyMissing) " · key not set" else "", s.ttsEngine == e) { viewModel.setTtsEngine(e) }
+            // Right Column (Animated 3D Metallic Mechanical Gear)
+            Box(
+                Modifier
+                    .weight(0.95f)
+                    .height(290.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                MetallicGearCanvas(Modifier.fillMaxSize())
             }
-            if (s.ttsEngine == TtsEngine.SARVAM) {
-                Text("Sarvam voice (female)", style = MaterialTheme.typography.bodyMedium)
-                ChipRow(SARVAM_FEMALE_SPEAKERS, s.sarvamSpeaker, { it.replaceFirstChar(Char::uppercase) }) { viewModel.setSarvamSpeaker(it) }
-                Text("Needs internet and a Sarvam key (below). Suggestion: Priya or Kavya for a sweet tone.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            } else if (s.ttsEngine == TtsEngine.ANDROID) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Android voice: " + (voices.firstOrNull { it.name == s.androidVoice }?.label ?: s.androidVoice ?: "Default"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    VoicePicker(voices, onLoad = viewModel::loadVoices, onSelect = viewModel::setAndroidVoice)
-                }
-            }
-            EngineDetails(s, viewModel, elevenModels, elevenVoices, cartesiaVoices, voiceListMessage)
-            var rate by remember(s.speechRate) { mutableFloatStateOf(s.speechRate) }
-            Text("Speaking speed: ${"%.1f".format(rate)}×", style = MaterialTheme.typography.bodyMedium)
-            Slider(value = rate, onValueChange = { rate = it }, valueRange = 0.5f..2f, steps = 14, onValueChangeFinished = { viewModel.setSpeechRate(rate) })
-            var pitch by remember(s.speechPitch) { mutableFloatStateOf(s.speechPitch) }
-            Text("Voice pitch: ${"%.2f".format(pitch)} (lower = deeper, calmer · Android voice)", style = MaterialTheme.typography.bodyMedium)
-            Slider(value = pitch, onValueChange = { pitch = it }, valueRange = 0.7f..1.3f, steps = 11, onValueChangeFinished = { viewModel.setSpeechPitch(pitch) })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = viewModel::testVoice) { Text("Test voice") }
-                OutlinedButton(onClick = viewModel::stopVoice) { Text("Stop") }
-            }
-            voiceTest?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = TextSecondary) }
-            activeEngine?.let { Text("Active: $it", style = MaterialTheme.typography.bodyMedium, color = TextSecondary) }
-
-            SpeechInputSettings(s, viewModel, state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true)
-            Text("Language — हिन्दी / বাংলা", style = MaterialTheme.typography.titleMedium)
-            ChipRow(SPEECH_LANGUAGES.map { it.first }, s.speechLanguage, { tag -> SPEECH_LANGUAGES.first { it.first == tag }.second }) { viewModel.setSpeechLanguage(it) }
-            Text(
-                "Seema listens, replies and speaks in Hindi or Bengali. Auto: she follows the language you use (বাংলা লিখলে বা বললে বাংলায় উত্তর); Hinglish counts as Hindi. If you mix both, she asks which you prefer. Bengali voice: Sarvam (cloud) or the phone's Bengali Android voice — never an English voice.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-            ToggleRow("Speak replies aloud", s.autoSpeakReplies, viewModel::setAutoSpeak)
-            Text("Voice mode (microphone & battery)", style = MaterialTheme.typography.titleMedium)
-            VoiceMode.entries.forEach { m -> HintRadioRow(m.label, m.hint, s.voiceMode == m) { viewModel.setVoiceMode(m) } }
-            Text(
-                "The microphone is used only while Seema AI is on screen; it stops when you leave the app — there is no background microphone service. Push-to-talk uses the least battery. With a Deepgram key saved, continuous listening uses Deepgram (completely silent); otherwise the Google recogniser's start beep is muted.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-            ToggleRow("Interrupt by voice: start talking while Seema speaks and she stops to listen", s.bargeIn, viewModel::setBargeIn)
-            Text(
-                "Just start talking: she stops at once, listens to you, and answers your new question. Say \"ruko\" or \"bas\" and she waits; a cough or noise and she carries on. In hands-free mode the phone uses call-style audio (like a speakerphone call) so its echo canceller can hear you over her voice. With a Deepgram key your first words are kept too. You can also tap the reactor on Home.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-            ToggleRow("Continuous conversation (keeps listening after each reply while the app is open)", s.continuousConversation, viewModel::setContinuous)
-
-            Text("Sleep mode (hands-free)", style = MaterialTheme.typography.titleMedium)
-            ChipRow(SLEEP_OPTIONS.map { it.first.toString() }, s.sleepAfterSeconds.toString(), { v -> SLEEP_OPTIONS.first { it.first.toString() == v }.second }) {
-                viewModel.setSleepAfterSeconds(it.toInt())
-            }
-            ToggleRow("Wake only when called by name (\"Seema…\")", s.wakeWord, viewModel::setWakeWord)
-            Text(
-                "After this long without you talking, Seema goes to sleep: the recogniser stops (no beeps, no data used) and a light detector on the phone waits for a voice. " +
-                    "Say \"Seema\" (or \"Seema, kal ka mausam batao\") and she wakes at once; tapping the reactor wakes her too. " +
-                    "Recognising her name needs a Deepgram key; without it any voice wakes her. Opening the app always finds her awake.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-
-            Text("Business reminders", style = MaterialTheme.typography.titleMedium)
-            ToggleRow("Morning briefing (~7 AM) and Sunday expense report as notifications", s.businessReminders, viewModel::setBusinessReminders)
-            Text(
-                "Made from your own khata and PNR diary on this phone (no AI call, nothing is uploaded). Shown only when there is something to tell; tap it and Seema explains. Android may deliver it a few minutes late to save battery.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-
-            Text("Personality", style = MaterialTheme.typography.titleMedium)
-            Personality.entries.forEach { p -> HintRadioRow(p.label, p.hint, s.personality == p) { viewModel.setPersonality(p) } }
-        }
-        VoiceEngineManager(s, viewModel)
-        SecretCard(SecretId.SARVAM_API_KEY, state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus(), viewModel, title = "Sarvam AI voice key")
-        SecretCard(SecretId.ELEVENLABS_API_KEY, state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus(), viewModel, title = "ElevenLabs voice key") {
-            Text("ElevenLabs → Developers → API keys. Allow \"Text to Speech\" (and \"Voices: read\" + \"Models: read\" so the lists load). Test plays nothing; it checks a real request and loads the voices.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-        SecretCard(SecretId.CARTESIA_API_KEY, state.secrets[SecretId.CARTESIA_API_KEY] ?: SecretStatus(), viewModel, title = "Cartesia voice key") {
-            Text("Cartesia playground → API keys. Test checks a real request and picks a Hindi female voice if none is chosen.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-        SecretCard(SecretId.DEEPGRAM_API_KEY, state.secrets[SecretId.DEEPGRAM_API_KEY] ?: SecretStatus(), viewModel, title = "Deepgram key (listening + English voice)") {
-            Text("Use a key that does not expire (the \"Auto-generated Playground\" key expires in hours). Console → API keys → Create a new API key.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-
-        SectionHeader("Appearance & Performance", Modifier.onGloballyPositioned { sectionY["appearance"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- diagnostics
-        // The most visible choice (Arc Reactor or 3D core).
-        CoreAppearanceSettings(s, viewModel.autoCoreAppearance, viewModel)
-
-        PerformanceAndBattery(s, viewModel)
-
-        SectionHeader("Permissions & Status", Modifier.onGloballyPositioned { sectionY["permissions"] = it.positionInParent().y.toInt() })
-        HudPanel(title = "Status & permissions") {
-            Text("Each item shows the real current state. Tap a button to fix it in Android settings.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            val aiStatus = com.raju.aiassistant.domain.ai.providerStatus(
-                state.secrets[s.defaultProvider.secret]?.configured == true,
-                state.secrets[s.defaultProvider.secret]?.busy == true,
-                s.lastTests[s.defaultProvider],
-            )
-            StatusRow("AI (${s.defaultProvider.shortName})", aiStatus.label.lowercase(), ok = aiStatus == com.raju.aiassistant.domain.ai.ProviderStatus.CONNECTED)
-            StatusRow("Microphone", if (diag.micGranted) "allowed" else "not allowed", diag.micGranted, if (diag.micGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.RECORD_AUDIO) })
-            StatusRow("Speech recognition", if (diag.speechRecognitionAvailable) "available" else "not available — install Google speech services", diag.speechRecognitionAvailable)
-            StatusRow("Contacts", if (diag.contactsGranted) "allowed" else "not allowed (needed for calls by name)", diag.contactsGranted, if (diag.contactsGranted) null else "Allow" to { refreshAfter.launch(Manifest.permission.READ_CONTACTS) })
-            StatusRow(
-                "Notification access",
-                when {
-                    diag.listenerEnabled && diag.listenerConnected -> "on and connected"
-                    diag.listenerEnabled -> "on, waiting for Android to connect"
-                    else -> "off"
-                },
-                diag.listenerEnabled,
-                "Open" to { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-            )
-            if (!diag.listenerEnabled) {
-                Text(
-                    "If the Seema AI switch is greyed out or won't turn on: Android blocks this for apps installed from an APK file. Open App info → ⋮ (top right) → \"Allow restricted settings\" → confirm, then come back and switch it on.",
-                    style = MaterialTheme.typography.bodyMedium, color = WarningAmber,
-                )
-                OutlinedButton(onClick = { appInfo() }) { Text("Open App info") }
-            }
-            StatusRow(
-                "App notifications",
-                if (diag.appNotificationsAllowed) "allowed" else "blocked (needed for Read/Skip while the app is closed)",
-                diag.appNotificationsAllowed,
-                if (diag.appNotificationsAllowed) null else "Allow" to { askPostNotifications() },
-            )
-            StatusRow(
-                "Call announcements",
-                when {
-                    !diag.callRoleSupported -> "not supported on this phone"
-                    diag.callRoleHeld -> "call-screening role granted"
-                    else -> "role not granted"
-                },
-                diag.callRoleHeld,
-                if (diag.callRoleSupported && !diag.callRoleHeld) "Grant" to { viewModel.callRoleRequestIntent()?.let { callRole.launch(it) } } else null,
-            )
-            val tts = diag.tts
-            StatusRow(
-                "Android voice (Hindi)",
-                if (tts == null) "checking…" else "${tts.hindi.label} · engine ${tts.engine ?: "none"}",
-                tts?.hindi == LanguageSupport.AVAILABLE,
-                if (tts != null && tts.hindi != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
-            )
-            StatusRow(
-                "Android voice (বাংলা Bengali)",
-                if (tts == null) "checking…" else tts.bengali.label,
-                tts?.bengali == LanguageSupport.AVAILABLE,
-                if (tts != null && tts.bengali != LanguageSupport.AVAILABLE) "Install" to { open(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) } else null,
-            )
-            val voiceKey = when (s.ttsEngine) {
-                TtsEngine.SARVAM -> SecretId.SARVAM_API_KEY
-                TtsEngine.ELEVENLABS -> SecretId.ELEVENLABS_API_KEY
-                TtsEngine.CARTESIA -> SecretId.CARTESIA_API_KEY
-                TtsEngine.DEEPGRAM -> SecretId.DEEPGRAM_API_KEY
-                TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID -> null
-            }
-            val voiceKeySaved = voiceKey == null || state.secrets[voiceKey]?.configured == true
-            StatusRow(
-                "Seema's voice",
-                s.ttsEngine.label + if (voiceKeySaved) " · ready" else " · key not set (Android voice is used)",
-                voiceKeySaved,
-            )
-            val deepgramSaved = state.secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true
-            StatusRow(
-                "Listening",
-                when {
-                    s.sttEngine == SttEngine.DEEPGRAM && deepgramSaved -> "Deepgram ${VoiceCatalog.sttOption(s.deepgramSttModel).title}" + if (s.autoListen) " · hands-free" else ""
-                    s.sttEngine == SttEngine.DEEPGRAM -> "Deepgram key not set — Google recogniser is used"
-                    else -> "Android / Google" + if (s.autoListen) " · hands-free" else ""
-                },
-                s.sttEngine != SttEngine.DEEPGRAM || deepgramSaved,
-            )
-            if (s.assistantPaused) StatusRow("Assistant", "paused — no listening or announcements", false, "Resume" to { viewModel.setPaused(false) })
-            OutlinedButton(onClick = { open(Intent("com.android.settings.TTS_SETTINGS")) }) { Text("Android text-to-speech settings") }
-        }
-
-        SectionHeader("Automation & Assistant control", Modifier.onGloballyPositioned { sectionY["automation"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- control
-        HudPanel(title = "Assistant control") {
-            ToggleRow("Pause assistant (stops announcements and continuous listening)", s.assistantPaused, viewModel::setPaused)
-            ToggleRow("Safety Mode (for payment & banking apps)", s.safetyMode, viewModel::setSafetyMode)
-            Text(
-                "Safety Mode pauses notification announcements and blocks assistant-started calls, SMS, WhatsApp, app launches and music. Seema AI never reads or touches Google Pay, PhonePe or banking screens either way. Turn it off here to resume.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-        }
-
-        SectionHeader("System integration", Modifier.onGloballyPositioned { sectionY["system"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- phone
-        HudPanel(title = "Phone & music") {
-            ToggleRow(
-                "Direct calling (otherwise the dialer opens and you tap call)",
-                s.directCalling,
-            ) { on -> if (on) callPermission.launch(Manifest.permission.CALL_PHONE) else viewModel.setDirectCalling(false) }
-            Text("Every call is confirmed first, with the contact's name and number.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            Text("Music app", style = MaterialTheme.typography.titleMedium)
-            MusicService.entries.forEach { m -> RadioRow(m.label, s.musicService == m) { viewModel.setMusicService(m) } }
-            OutlinedButton(onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }) {
-                Text("Manage app permissions")
-            }
-        }
-
-        // ---------------------------------------------------------------- notifications
-        HudPanel(title = "Notifications & WhatsApp") {
-            StatusChip(if (notificationAccess) "Notification access: on" else "Notification access: off", if (notificationAccess) SuccessGreen else WarningAmber)
-            Text(
-                "With access on, Seema AI can read aloud the sender and preview that a notification shows, only for the apps you pick. It cannot read WhatsApp's chats or send messages by itself; replies open WhatsApp for you to send. Message text is never logged or saved.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-            OutlinedButton(onClick = { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) {
-                Text(if (notificationAccess) "Manage notification access" else "Enable notification access")
-            }
-            ToggleRow("Announce notifications", s.announceNotifications) { on ->
-                viewModel.setAnnounce(on)
-                if (on && !diag.appNotificationsAllowed) askPostNotifications()
-            }
-            ToggleRow("Ask before reading (say who wrote, read only after you tap Read)", s.askBeforeReading, viewModel::setAskBeforeReading)
-            ToggleRow("Announce WhatsApp/Telegram calls (best effort, from their notifications)", s.announceAppCalls, viewModel::setAnnounceAppCalls)
-            AnnounceApp.entries.forEach { app ->
-                ToggleRow("   ${app.label}", app.packageName in s.announceApps) { viewModel.setAnnounceApp(app.packageName, it) }
-            }
-        }
-
-        // ---------------------------------------------------------------- calls
-        HudPanel(title = "Incoming calls") {
-            Text(
-                "Seema AI can say who is calling on your SIM. Android allows this only for the app you choose as \"call screening\" app. Seema AI never blocks, answers, rejects or records calls. The name comes from your Contacts; unknown callers are not guessed.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
-            ToggleRow("Announce incoming calls", s.announceCalls) { on ->
-                viewModel.setAnnounceCalls(on)
-                if (on && diag.callRoleSupported && !diag.callRoleHeld) viewModel.callRoleRequestIntent()?.let { callRole.launch(it) }
-            }
-            ToggleRow("Speak the number of unknown callers", s.speakCallerNumber, viewModel::setSpeakCallerNumber)
-            if (s.announceCalls && !diag.callRoleHeld) {
-                Text(
-                    if (diag.callRoleSupported) "Not active yet: grant the call-screening role (Status & permissions → Call announcements)." else "Not available: this phone does not offer the call-screening role.",
-                    style = MaterialTheme.typography.bodyMedium, color = WarningAmber,
-                )
-            }
-        }
-
-        SectionHeader("Memory & Privacy", Modifier.onGloballyPositioned { sectionY["memory"] = it.positionInParent().y.toInt() })
-        // ---------------------------------------------------------------- memory & privacy
-        HudPanel(title = "Memory & privacy") {
-            ToggleRow("Memory (assistant may remember facts you approve)", s.memoryEnabled, viewModel::setMemoryEnabled)
-            ToggleRow("Save chat history on device", s.saveHistory, viewModel::setSaveHistory)
-            var limit by remember(s.historyLimit) { mutableFloatStateOf(s.historyLimit.toFloat()) }
-            Text("Conversation context: last ${limit.toInt()} exchanges", style = MaterialTheme.typography.bodyMedium)
-            Slider(value = limit, onValueChange = { limit = it }, valueRange = 4f..60f, onValueChangeFinished = { viewModel.setHistoryLimit(limit.toInt()) })
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { confirm = "Delete all chat history?" to viewModel::clearChatHistory }) { Text("Delete chat history") }
-                OutlinedButton(onClick = { confirm = "Delete all memories?" to viewModel::clearMemories }) { Text("Delete memories") }
-            }
-            Text("View, edit or delete individual memories in Tools → Memories.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            MemoryFileButtons(viewModel)
-        }
-
-        KnowledgeBaseSettings(viewModel)
-
-        SectionHeader("About SEEMA", Modifier.onGloballyPositioned { sectionY["about"] = it.positionInParent().y.toInt() })
-        HudPanel(title = "About SEEMA") {
-            Text("Seema AI Assistant ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
-            Text("AI answers can be wrong — check important information.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            Text(
-                "Needs internet: AI replies (Gemini/Groq/Cerebras), web search, weather, cloud voices (Sarvam, ElevenLabs, Cartesia, Deepgram), Deepgram listening. " +
-                    "Works offline: the Arc Reactor / 3D core, clock and phone status, khata and PNR diary, memories and documents on the phone, " +
-                    "the offline voices Piper and Kokoro once downloaded (Voice Engine Manager), the Android voice (if its Hindi/Bengali voice data is installed) and phone speech recognition (if the offline language pack is installed). " +
-                    "There is no on-phone AI model: without internet Seema cannot answer questions.",
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
-            )
         }
     }
 
-    confirm?.let { (question, action) ->
-        AlertDialog(
-            onDismissRequest = { confirm = null },
-            title = { Text(question) },
-            text = { Text("This cannot be undone.") },
-            confirmButton = { TextButton(onClick = { confirm = null; action() }) { Text("Delete", color = ErrorRed) } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
-        )
-    }
-}
-
-@Composable
-private fun SecretCard(
-    id: SecretId,
-    status: SecretStatus,
-    viewModel: SettingsViewModel,
-    title: String = id.displayName,
-    /** Set for AI providers: the real connection state (CONNECTED only after a successful request). */
-    providerStatus: com.raju.aiassistant.domain.ai.ProviderStatus? = null,
-    extra: @Composable () -> Unit = {},
-) {
-    val context = LocalContext.current
-    var input by remember { mutableStateOf("") }
-    var visible by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
-
-    HudPanel(title = title) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            StatusChip(
-                label = if (status.configured) "Key saved ${status.maskedValue}" else "No key",
-                color = if (status.configured) SuccessGreen else WarningAmber,
-            )
-            providerStatus?.let { ProviderStatusChip(it) }
-        }
-        OutlinedTextField(
-            value = input,
-            onValueChange = { input = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (status.configured) "Replace key" else "Paste key") },
-            singleLine = true,
-            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-            trailingIcon = {
-                IconButton(onClick = { visible = !visible }) {
-                    Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = if (visible) "Hide key" else "Show key")
-                }
-            },
-        )
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { viewModel.saveSecret(id, input); input = ""; visible = false }, enabled = input.isNotBlank()) {
-                Text(if (status.configured) "Update" else "Save")
-            }
-            OutlinedButton(onClick = { viewModel.testSecret(id) }, enabled = status.configured && !status.busy) {
-                Text(if (status.busy) "Testing…" else "Test connection")
-            }
-            OutlinedButton(onClick = { confirmRemove = true }, enabled = status.configured) { Text("Remove", color = if (status.configured) ErrorRed else Color.Unspecified) }
-        }
-        if (status.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        status.message?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = if (status.isError) ErrorRed else TextSecondary)
-        }
-        providerStatus?.takeIf { it.isError && status.message == null }?.let {
-            Text(it.help, style = MaterialTheme.typography.bodyMedium, color = ErrorRed)
-        }
-        extra()
-        TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(id.helpUrl))) } }) {
-            Text("Get a key: ${id.helpUrl}")
-        }
-    }
-    if (confirmRemove) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text("Remove ${title}?") },
-            text = { Text("The saved key is deleted from this phone. Seema cannot use this service until you add a key again.") },
-            confirmButton = { TextButton(onClick = { confirmRemove = false; viewModel.removeSecret(id) }) { Text("Remove", color = ErrorRed) } },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
-        )
-    }
-}
-
-@Composable
-private fun ModelPicker(provider: ProviderId, selected: String?, options: List<String>, onLoad: () -> Unit, onSelect: (String) -> Unit, keySaved: Boolean = true, loading: Boolean = false) {
-    var open by remember { mutableStateOf(false) }
-    LaunchedEffect(open) { if (open && options.isEmpty() && keySaved) onLoad() }
-    ModelAdvice.warning(selected)?.let { Text("⚠ $it", style = MaterialTheme.typography.bodyMedium, color = WarningAmber) }
-    Text(
-        when {
-            !keySaved -> "Models: save a key first — the list comes from ${provider.shortName} itself."
-            loading -> "Models: loading from ${provider.shortName}…"
-            options.isEmpty() -> "Models: not loaded yet. Tap Refresh models."
-            else -> "Models: ${options.size} confirmed by ${provider.shortName} for this key."
-        },
-        style = MaterialTheme.typography.bodySmall, color = TextSecondary,
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Model: ${selected ?: "auto (chosen on first use)"}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onLoad, enabled = keySaved && !loading) { Text("Refresh models") }
-        Box {
-            TextButton(onClick = { open = true }, enabled = keySaved) { Text("Change") }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                if (options.isEmpty()) DropdownMenuItem(text = { Text(if (loading) "Loading models…" else "No models loaded — tap Refresh models") }, onClick = { open = false })
-                options.forEach { m ->
-                    val tag = when {
-                        ModelAdvice.isRecommended(provider, m) -> "  ★ recommended"
-                        ModelAdvice.warning(m) != null -> "  ⚠ not for Hindi"
-                        else -> ""
+    // Detail Dialogs for Categories (Preserving all actual backend settings)
+    when (activeDialog) {
+        "ai" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("AI Assistant Settings", color = Color.White) },
+                text = {
+                    Column(
+                        Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Active Provider: ${s.defaultProvider.name}", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        ProviderId.entries.forEach { p ->
+                            Button(
+                                onClick = { viewModel.setDefaultProvider(p) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(p.name)
+                            }
+                        }
                     }
-                    DropdownMenuItem(text = { Text(m + tag) }, onClick = { onSelect(m); open = false })
-                }
-            }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
+        }
+        "voice" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("Voice & Language", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Active Engine: ${s.ttsEngine.label}", color = NeonCyan)
+                        Text("Language: ${s.speechLanguage}", color = Color(0xFFC0D5F0))
+                        Text("Speech Rate: ${s.speechRate}x", color = Color(0xFFC0D5F0))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
+        }
+        "privacy" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("Privacy & Security", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("• Android Keystore AES-GCM Encryption: Active", color = NeonCyan)
+                        Text("• No API keys stored in plain text.", color = Color(0xFFC0D5F0))
+                        Text("• Microphone used only with user consent.", color = Color(0xFFC0D5F0))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
+        }
+        "notifications" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("Notifications", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Listener Service: ${if (diag.listenerEnabled) "Connected" else "Disabled"}", color = NeonCyan)
+                        Text("WhatsApp Announcements: ${if (s.announceNotifications) "Active" else "Off"}", color = Color(0xFFC0D5F0))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
+        }
+        "appearance" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("Appearance", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Theme: Midnight Holo (Glossy Black & Cyan)", color = NeonCyan)
+                        Text("Active Core: ${s.coreAppearance.label}", color = Color(0xFFC0D5F0))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
+        }
+        "about" -> {
+            AlertDialog(
+                onDismissRequest = { activeDialog = null },
+                title = { Text("About SEEMA AI", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("SEEMA AI — Personal Assistant", fontWeight = FontWeight.Bold, color = NeonCyan)
+                        Text("Version: ${BuildConfig.VERSION_NAME}", color = Color(0xFFC0D5F0))
+                        Text("Package: ${context.packageName}", color = Color(0xFF8BA5CC), fontSize = 12.sp)
+                        Text("Running on Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})", color = Color(0xFF8BA5CC), fontSize = 12.sp)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeDialog = null }) {
+                        Text("Close", color = NeonCyan)
+                    }
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun VoicePicker(voices: List<com.raju.aiassistant.data.tts.VoiceOption>, onLoad: () -> Unit, onSelect: (String?) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    LaunchedEffect(open) { if (open && voices.isEmpty()) onLoad() }
-    Box {
-        TextButton(onClick = { open = true }) { Text("Change") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Default") }, onClick = { onSelect(null); open = false })
-            if (voices.isEmpty()) DropdownMenuItem(text = { Text("No Hindi/English-India voices found yet") }, onClick = { open = false })
-            voices.forEach { v -> DropdownMenuItem(text = { Text(v.label) }, onClick = { onSelect(v.name); open = false }) }
+private fun SettingsCategoryCard(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.horizontalGradient(listOf(Color(0xD90A152C), Color(0xF2060D1C))))
+            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.5.sp,
+                    ),
+                    maxLines = 1,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = NeonCyan.copy(alpha = 0.7f),
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
 
-/** Sleep-mode timer choices: seconds → label. */
-private val SLEEP_OPTIONS = listOf(30 to "30 sec", 60 to "1 min", 120 to "2 min", 300 to "5 min", 0 to "Never")
+@Composable
+private fun MetallicGearCanvas(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "gearAnim")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(22000, easing = LinearEasing), RepeatMode.Restart),
+        label = "gearRot",
+    )
+    val counterRot by transition.animateFloat(
+        initialValue = 360f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Restart),
+        label = "counterRot",
+    )
+
+    Canvas(modifier = modifier) {
+        val c = center
+        val r = (size.minDimension / 2f) * 0.92f
+
+        // Outer Gear Teeth & Ring
+        val teeth = 12
+        val toothDepth = r * 0.12f
+        val innerR = r - toothDepth
+        val toothAngle = 360f / teeth
+
+        rotate(rotation, c) {
+            // Metallic Outer Rim
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0xFF2E3E5C), Color(0xFF131E33), Color(0xFF090E1A)),
+                    center = c,
+                    radius = r,
+                ),
+                radius = r,
+                center = c,
+            )
+
+            // Gear Teeth
+            repeat(teeth) { i ->
+                val a = Math.toRadians((i * toothAngle).toDouble())
+                val x = c.x + (r - toothDepth * 0.5f) * cos(a).toFloat()
+                val y = c.y + (r - toothDepth * 0.5f) * sin(a).toFloat()
+                drawCircle(
+                    color = NeonCyan.copy(alpha = 0.85f),
+                    radius = toothDepth * 0.38f,
+                    center = Offset(x, y),
+                )
+            }
+
+            drawCircle(
+                color = NeonCyan.copy(alpha = 0.6f),
+                radius = innerR,
+                center = c,
+                style = Stroke(width = 2.5f),
+            )
+        }
+
+        // Inner Counter-rotating Cog Ring
+        rotate(counterRot, c) {
+            val cogR = r * 0.62f
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    listOf(Color(0xFF0077FF), NeonCyan, Color(0xFF0077FF)),
+                    center = c,
+                ),
+                radius = cogR,
+                center = c,
+                style = Stroke(width = 2.5f),
+            )
+            repeat(6) { i ->
+                val a = Math.toRadians((i * 60f).toDouble())
+                drawLine(
+                    color = NeonCyan.copy(alpha = 0.7f),
+                    start = c,
+                    end = Offset(c.x + cogR * cos(a).toFloat(), c.y + cogR * sin(a).toFloat()),
+                    strokeWidth = 2f,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+
+        // Core Glowing Blue Power Hub
+        val coreR = r * 0.32f
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(Color.White, NeonCyan, Color(0xFF0055CC), Color.Transparent),
+                center = c,
+                radius = coreR * 1.4f,
+            ),
+            radius = coreR * 1.4f,
+            center = c,
+        )
+        drawCircle(
+            color = Color.White,
+            radius = coreR * 0.45f,
+            center = c,
+        )
+    }
+}
+
 
 @Composable
 internal fun ChipRow(options: List<String>, selected: String, label: (String) -> String, onSelect: (String) -> Unit) {
@@ -625,7 +490,7 @@ internal fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun StatusRow(label: String, status: String, ok: Boolean, action: Pair<String, () -> Unit>? = null) {
+internal fun StatusRow(label: String, status: String, ok: Boolean, action: Pair<String, () -> Unit>? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)

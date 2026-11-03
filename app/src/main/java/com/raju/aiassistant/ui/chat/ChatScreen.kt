@@ -1,47 +1,52 @@
 package com.raju.aiassistant.ui.chat
 
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import com.raju.aiassistant.ui.components.VoiceHudOrb
-import com.raju.aiassistant.ui.components.VoiceHudMode
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CutCornerShape
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,40 +54,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.raju.aiassistant.domain.assistant.isSafeWebUrl
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.ChatMessage
 import com.raju.aiassistant.domain.model.ChatRole
 import com.raju.aiassistant.ui.RajuViewModelFactory
-import com.raju.aiassistant.ui.theme.ReactorBlue
+import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.TextSecondary
 import com.raju.aiassistant.ui.theme.WarningAmber
 
+/**
+ * Screen 2: Chat Screen
+ * Matches Reference Image: Header `< Chat ⋮`, Avatar messages, Input bar with circular mic & send button.
+ */
 @Composable
 fun ChatScreen(
-    onOpenSettings: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onBack: () -> Unit = {},
     viewModel: ChatViewModel = viewModel(factory = RajuViewModelFactory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val busy = state.state.isBusy
+    var showMenu by remember { mutableStateOf(false) }
 
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) viewModel.startVoice()
@@ -95,189 +105,311 @@ fun ChatScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF040714), Color(0xFF02040A))))
             .imePadding()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         var searching by rememberSaveable { mutableStateOf(false) }
         var query by rememberSaveable { mutableStateOf("") }
         var results by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
-        LaunchedEffect(query, searching) { results = if (searching) viewModel.search(query) else emptyList() }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Chat · ${state.providerName}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f), maxLines = 1)
-            IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
-                Icon(if (searching) Icons.Filled.Close else Icons.Filled.Search, contentDescription = if (searching) "Close search" else "Search chats")
-            }
-            IconButton(onClick = { viewModel.setSpeakReplies(!state.speakReplies) }) {
-                Icon(
-                    if (state.speakReplies) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                    contentDescription = if (state.speakReplies) "Mute replies" else "Speak replies",
-                )
-            }
-            IconButton(onClick = viewModel::newConversation) { Icon(Icons.Filled.AddComment, contentDescription = "New conversation") }
-            TextButton(onClick = onOpenSettings) { Text("Settings") }
+        LaunchedEffect(query, searching) {
+            results = if (searching) viewModel.search(query) else emptyList()
         }
+
+        // Header: < Chat ⋮
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
+            }
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Chat",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    letterSpacing = 1.sp,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+
+            // 3-Dot Overflow Menu
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = NeonCyan)
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(if (searching) "Close search" else "Search chats") },
+                        onClick = {
+                            showMenu = false
+                            searching = !searching
+                            if (!searching) query = ""
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (state.speakReplies) "Mute replies" else "Speak replies") },
+                        onClick = {
+                            showMenu = false
+                            viewModel.setSpeakReplies(!state.speakReplies)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("New conversation") },
+                        onClick = {
+                            showMenu = false
+                            viewModel.newConversation()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("AI Settings") },
+                        onClick = {
+                            showMenu = false
+                            onOpenSettings()
+                        },
+                    )
+                }
+            }
+        }
+
         if (searching) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search saved chats… / খুঁজুন…") },
+                placeholder = { Text("Search saved messages...") },
                 singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonCyan,
+                    unfocusedBorderColor = Color(0x3300E5FF),
+                ),
             )
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (query.isNotBlank() && results.isEmpty()) item { Text("No matches.", color = TextSecondary) }
-                items(results, key = { it.id }) { m ->
-                    Column {
-                        Text(
-                            java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(m.createdAt)) +
-                                " · " + if (m.role == ChatRole.USER) "You" else "Seema",
-                            style = MaterialTheme.typography.labelSmall, color = TextSecondary,
-                        )
-                        MessageBubble(m, onRepeat = null)
-                    }
-                }
-            }
-        }
-        if (!searching) {
-        state.model?.let { m ->
-            Text("Model: $m", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-        state.modelWarning?.let { w ->
-            Text("⚠ $w", style = MaterialTheme.typography.bodyMedium, color = WarningAmber)
-        }
-        if (!state.historyEnabled) {
-            Text("History is off — this chat is not saved.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
 
+        // Messages Area
+        val displayMessages = if (searching && query.isNotBlank()) results else state.messages
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (state.messages.isEmpty()) {
+            if (displayMessages.isEmpty()) {
                 item {
-                    Text(
-                        "Namaste! Kuch bhi poochhiye — हिन्दी, Hinglish ya বাংলা mein.\nTry: \"Mom ko call karo\", \"5 minute ka timer\", \"Kal 5 baje meeting add karo\", \"India Gate ka rasta\"",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextSecondary,
-                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (searching) "No messages found" else "Hello! How can I help you today?",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF8BA5CC)),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
-            items(state.messages, key = { it.id }) { MessageBubble(it, onRepeat = viewModel::repeat) }
-            if (state.canRetry) {
-                item {
-                    OutlinedButton(onClick = viewModel::retry) { Text("Retry") }
-                }
+
+            items(displayMessages, key = { it.id }) { msg ->
+                ReferenceMessageRow(message = msg, onRepeat = viewModel::repeat)
             }
-            if (state.state == AssistantState.Thinking || state.state == AssistantState.Executing) {
+
+            if (busy) {
                 item {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text(if (state.state == AssistantState.Thinking) "Thinking…" else "Working on it…", color = TextSecondary)
+                    Row(
+                        Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = NeonCyan)
+                        Text(
+                            if (state.state == AssistantState.Thinking) "Thinking..." else "Working on it...",
+                            color = Color(0xFF8BA5CC),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Bottom Input Row: Mic Circle + Glass Input Field + Send Button
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Left: Glowing circular mic button
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x3300E5FF))
+                    .border(1.5.dp, NeonCyan, CircleShape)
+                    .clickable {
+                        if (busy) {
+                            viewModel.stop()
+                        } else {
+                            if (viewModel.hasMicPermission()) viewModel.startVoice() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (busy) Icons.Filled.Stop else Icons.Filled.GraphicEq,
+                    contentDescription = "Voice Input",
+                    tint = if (busy) WarningAmber else NeonCyan,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            // Center: Glass Input Field
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Type a message…") },
-                maxLines = 4,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+                placeholder = { Text("Type or Speak...", color = Color(0xFF7088AA), fontSize = 14.sp) },
+                maxLines = 3,
+                shape = RoundedCornerShape(26.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonCyan,
+                    unfocusedBorderColor = Color(0x3300E5FF),
+                    focusedContainerColor = Color(0xDD081226),
+                    unfocusedContainerColor = Color(0xCC050B18),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                ),
             )
-            if (busy) {
-                FilledTonalIconButton(onClick = viewModel::stop) { Icon(Icons.Filled.Stop, contentDescription = "Stop") }
-            } else {
-                FilledTonalIconButton(onClick = {
-                    if (viewModel.hasMicPermission()) viewModel.startVoice() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                }) {
-                    // Futuristic voice HUD instead of a plain microphone icon (same action and label).
-                    VoiceHudOrb(
-                        when (state.state) {
-                            AssistantState.Listening -> VoiceHudMode.LISTENING
-                            AssistantState.Speaking -> VoiceHudMode.SPEAKING
-                            else -> VoiceHudMode.IDLE
-                        },
-                        MaterialTheme.colorScheme.primary,
-                        Modifier.size(34.dp).semantics { contentDescription = "Speak" },
-                    )
-                }
-            }
-            FilledIconButton(
-                onClick = { viewModel.send(input); input = "" },
-                // Disabled while a reply is being prepared, so one tap = one request.
-                enabled = input.isNotBlank() && !busy,
+
+            // Right: Glowing Send Button
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (input.isNotBlank()) NeonCyan else Color(0x3300E5FF))
+                    .border(1.5.dp, NeonCyan, CircleShape)
+                    .clickable {
+                        val text = input.trim()
+                        if (text.isNotEmpty() && !busy) {
+                            viewModel.send(text)
+                            input = ""
+                        }
+                    },
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (input.isNotBlank()) Color.Black else NeonCyan,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
-        }
     }
-}
-
-private val URL_REGEX = Regex("""https?://[^\s\]]+""")
-
-/** Turns safe http(s) URLs into tappable links. */
-private fun linkify(text: String): AnnotatedString = buildAnnotatedString {
-    var last = 0
-    for (m in URL_REGEX.findAll(text)) {
-        append(text.substring(last, m.range.first))
-        var url = m.value.trimEnd('.', ',', ';', ':', '!', '?', '\u0964')
-        while (url.endsWith(")") && url.count { it == ')' } > url.count { it == '(' }) url = url.dropLast(1)
-        if (isSafeWebUrl(url)) {
-            withLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = ReactorBlue, textDecoration = TextDecoration.Underline)))) { append(url) }
-            append(m.value.substring(url.length))
-        } else {
-            append(m.value)
-        }
-        last = m.range.last + 1
-    }
-    append(text.substring(last))
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage, onRepeat: ((String) -> Unit)?) {
-    if (message.role == ChatRole.SYSTEM) {
-        Text(
-            message.text,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            textAlign = TextAlign.Center,
-        )
-        return
-    }
+private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Unit)? = null) {
     val isUser = message.role == ChatRole.USER
-    Box(Modifier.fillMaxWidth(), contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart) {
-        // Holographic message tags: user = cyan, Seema = emerald, each with cut corners on its own side.
-        val accent = if (isUser) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    val clipboard = LocalClipboardManager.current
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top,
+    ) {
+        // Assistant Avatar on Left
+        if (!isUser) {
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x3300E5FF))
+                    .border(1.dp, NeonCyan, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+
+        // Message Bubble
         Surface(
-            shape = if (isUser) CutCornerShape(topStart = 12.dp, bottomEnd = 2.dp, topEnd = 2.dp, bottomStart = 2.dp)
-            else CutCornerShape(topEnd = 12.dp, bottomStart = 2.dp, topStart = 2.dp, bottomEnd = 2.dp),
-            color = accent.copy(alpha = if (isUser) 0.14f else 0.08f),
-            border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
-            modifier = Modifier.widthIn(max = 320.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = if (isUser) Color(0xFF0077FF) else Color(0xDD0B162C),
+            border = if (isUser) null else BorderStroke(1.dp, Color(0x3300E5FF)),
+            modifier = Modifier.widthIn(max = 280.dp),
         ) {
-            Column {
-                // Long-press to select part of it; Copy takes the whole message.
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 SelectionContainer {
-                    Text(linkify(message.text), Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = if (isUser) 12.dp else 0.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        message.text,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    )
                 }
+
+                // Copy / Repeat row for assistant messages
                 if (!isUser) {
-                    message.via?.let { via ->
-                        Text("via $via", Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    val clipboard = LocalClipboardManager.current
-                    Row(Modifier.padding(horizontal = 4.dp)) {
-                        TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) { Text("Copy", style = MaterialTheme.typography.labelMedium) }
-                        if (onRepeat != null) TextButton(onClick = { onRepeat(message.text) }) { Text("🔊 Repeat", style = MaterialTheme.typography.labelMedium) }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Text(
+                            "Copy",
+                            color = NeonCyan,
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .clickable { clipboard.setText(AnnotatedString(message.text)) }
+                                .padding(4.dp),
+                        )
+                        if (onRepeat != null) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Repeat",
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                modifier = Modifier
+                                    .clickable { onRepeat(message.text) }
+                                    .padding(4.dp),
+                            )
+                        }
                     }
                 }
+            }
+        }
+
+        // User Avatar on Right
+        if (isUser) {
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x3300E5FF))
+                    .border(1.dp, NeonCyan, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
             }
         }
     }

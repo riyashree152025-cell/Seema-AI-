@@ -120,6 +120,8 @@ fun ArcReactor(
             drawComets(t, c, r, palette, flicker)
         }
 
+        drawGoldNotches(c, r, flicker)
+
         // Everything below beats: the whole reactor swells slightly on each pulse
         scale(1f + 0.06f * beat, pivot = c) {
             if (richEffects) {
@@ -181,6 +183,7 @@ fun ArcReactor(
                 center = c,
             )
             drawCircle(Color.White.copy(alpha = 0.9f * energy), radius = coreR * 0.42f, center = c)
+            drawCenterSoundwave(c, coreR, t, energy, primary)
         }
     }
 }
@@ -301,4 +304,48 @@ private fun DrawScope.drawDashedRing(c: Offset, radius: Float, thickness: Float,
         alpha = alpha.coerceIn(0f, 1f),
         style = Stroke(width = thickness, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, gap))),
     )
+}
+
+private fun DrawScope.drawGoldNotches(c: Offset, r: Float, flicker: Float) {
+    val gold = Color(0xFFFFB800)
+    val goldLight = Color(0xFFFFD54F)
+    val angles = floatArrayOf(25f, 65f, 115f, 155f, 205f, 245f, 295f, 335f)
+    for (deg in angles) {
+        val rad = Math.toRadians(deg.toDouble())
+        val startR = r * 0.92f
+        val endR = r * 1.01f
+        val startX = c.x + startR * cos(rad).toFloat()
+        val startY = c.y + startR * sin(rad).toFloat()
+        val endX = c.x + endR * cos(rad).toFloat()
+        val endY = c.y + endR * sin(rad).toFloat()
+        drawLine(
+            brush = Brush.linearGradient(listOf(gold, goldLight, gold)),
+            start = Offset(startX, startY),
+            end = Offset(endX, endY),
+            strokeWidth = r * 0.038f,
+            cap = StrokeCap.Round,
+            alpha = 0.92f * flicker
+        )
+    }
+}
+
+private fun DrawScope.drawCenterSoundwave(c: Offset, coreR: Float, t: Float, energy: Float, color: Color) {
+    val barCount = 11
+    val totalWidth = coreR * 1.3f
+    val barWidth = totalWidth / (barCount * 1.5f)
+    val startX = c.x - totalWidth / 2f
+    for (i in 0 until barCount) {
+        val x = startX + i * (barWidth * 1.5f) + barWidth / 2f
+        val dist = kotlin.math.abs(i - (barCount - 1) / 2f) / ((barCount - 1) / 2f)
+        val envelope = 1f - dist * 0.5f
+        val wave = kotlin.math.abs(sin(t * 7f + i * 0.65f))
+        val barHeight = (coreR * 0.85f) * (0.25f + 0.75f * wave) * envelope * energy
+        drawLine(
+            color = color.copy(alpha = 0.95f),
+            start = Offset(x, c.y - barHeight / 2f),
+            end = Offset(x, c.y + barHeight / 2f),
+            strokeWidth = barWidth * 0.85f,
+            cap = StrokeCap.Round
+        )
+    }
 }

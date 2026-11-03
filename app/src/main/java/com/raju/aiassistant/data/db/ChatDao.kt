@@ -34,6 +34,9 @@ interface ChatDao {
     /** Search in all saved chats (newest first). */
     @Query("SELECT * FROM messages WHERE text LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
     suspend fun searchMessages(query: String, limit: Int): List<MessageEntity>
+
+    @Query("SELECT COUNT(*) FROM messages")
+    fun messageCount(): Flow<Int>
 }
 
 @Dao
@@ -64,6 +67,9 @@ interface ActionLogDao {
 
     @Query("SELECT * FROM action_log ORDER BY createdAt DESC, id DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<ActionLogEntity>>
+
+    @Query("SELECT COUNT(*) FROM action_log")
+    fun actionCount(): Flow<Int>
 
     /** Keeps the log small. */
     @Query("DELETE FROM action_log WHERE id NOT IN (SELECT id FROM action_log ORDER BY id DESC LIMIT :keep)")

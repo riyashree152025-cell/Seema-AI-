@@ -1,6 +1,16 @@
 package com.raju.aiassistant.ui.home
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+
 import com.raju.aiassistant.ui.components.VoiceHudMode
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.GraphicEq
+import com.raju.aiassistant.ui.theme.NeonCyan
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import android.Manifest
@@ -93,6 +103,9 @@ import com.raju.aiassistant.ui.home.visuals.holoCoreStyleFor
 fun HomeScreen(
     onOpenChat: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenControlPanel: () -> Unit = {},
+    onOpenVoiceControl: () -> Unit = {},
+    onOpenAiBrain: () -> Unit = {},
     viewModel: HomeViewModel = viewModel(factory = RajuViewModelFactory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -189,7 +202,39 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(if (modern && compact) 4.dp else 8.dp),
         ) {
-            HoloTitle("SEEMA AI", Color(style.primaryArgb))
+            // Reference Screen 1 Header
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(Color(0x3300E5FF)).border(1.dp, NeonCyan.copy(alpha = 0.7f), CircleShape).clickable { onOpenVoiceControl() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.GraphicEq, contentDescription = "Voice Control", tint = NeonCyan, modifier = Modifier.size(20.dp))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    HoloTitle("SEEMA AI", Color(style.primaryArgb))
+                    Text(
+                        "YOUR INTELLIGENT COMPANION",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            letterSpacing = 1.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.8f),
+                        ),
+                    )
+                }
+                Row(
+                    Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x3300E5FF)).border(1.dp, if (state.online) SuccessGreen.copy(alpha = 0.8f) else WarningAmber.copy(alpha = 0.8f), RoundedCornerShape(14.dp)).clickable { onOpenControlPanel() }.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (state.online) SuccessGreen else WarningAmber))
+                    Text(if (state.online) "Online" else "Offline", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = if (state.online) SuccessGreen else WarningAmber))
+                }
+            }
 
             if (state.paused) {
                 // Paused is easy to forget: show it clearly, with a one-tap way back.
@@ -366,25 +411,44 @@ fun HomeScreen(
                     QuickControlsRow(Color(style.paletteArgb[1]), fill = false)
                 }
             }
-            // The holographic control dock on both designs (Arc Reactor and 3D core).
-            HoloDock(
-                accent = Color(style.primaryArgb),
-                micActive = state.handsFree || state.listening,
-                micLabel = voiceLabel,
-                stopEnabled = busy || state.handsFree || state.previewState != null,
-                time = timeProvider,
-                onChat = onOpenChat,
-                onMic = onVoice,
-                onStop = viewModel::stop,
-                onSettings = onOpenSettings,
-                voiceMode = when {
-                    assistantState == AssistantState.Speaking -> VoiceHudMode.SPEAKING
-                    state.listening -> VoiceHudMode.LISTENING
-                    state.handsFree -> VoiceHudMode.LISTENING
-                    else -> VoiceHudMode.IDLE
-                },
-                speechLevel = speechLevel,
-            )
+            // Reference Screen 1 Greeting Glass Card
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xD9081226), Color(0xF2040814))))
+                    .border(
+                        1.dp,
+                        Brush.horizontalGradient(
+                            listOf(NeonCyan.copy(alpha = 0.3f), NeonCyan.copy(alpha = 0.85f), NeonCyan.copy(alpha = 0.3f)),
+                        ),
+                        RoundedCornerShape(18.dp),
+                    )
+                    .clickable { onOpenChat() }
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        "Hello ${state.userName}!",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            letterSpacing = 0.5.sp,
+                        ),
+                    )
+                    Text(
+                        "How can I help you today?",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFFB0C5E8),
+                        ),
+                    )
+                }
+            }
         }
     }
 }

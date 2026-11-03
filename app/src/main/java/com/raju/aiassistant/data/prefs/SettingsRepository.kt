@@ -89,6 +89,9 @@ class SettingsRepository(private val context: Context) {
             memoryEnabled = this[Keys.MEMORY] ?: d.memoryEnabled,
             safetyMode = this[Keys.SAFETY] ?: d.safetyMode,
             assistantPaused = this[Keys.PAUSED] ?: d.assistantPaused,
+            userName = this[Keys.USER_NAME] ?: d.userName,
+            userEmail = this[Keys.USER_EMAIL] ?: d.userEmail,
+            isProUser = this[Keys.IS_PRO_USER] ?: d.isProUser,
         )
     }
 
@@ -147,6 +150,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setMemoryEnabled(v: Boolean) = edit { it[Keys.MEMORY] = v }
     suspend fun setSafetyMode(v: Boolean) = edit { it[Keys.SAFETY] = v }
     suspend fun setAssistantPaused(v: Boolean) = edit { it[Keys.PAUSED] = v }
+    suspend fun saveProfile(name: String, email: String) = edit {
+        it[Keys.USER_NAME] = name
+        it[Keys.USER_EMAIL] = email
+    }
+    suspend fun setProUser(v: Boolean) = edit { it[Keys.IS_PRO_USER] = v }
 
     private fun modelKey(p: ProviderId) = stringPreferencesKey("model_${p.name.lowercase()}")
     private fun testKey(p: ProviderId) = stringPreferencesKey("last_test_${p.name.lowercase()}")
@@ -201,6 +209,9 @@ class SettingsRepository(private val context: Context) {
         val MEMORY = booleanPreferencesKey("memory_enabled")
         val SAFETY = booleanPreferencesKey("safety_mode")
         val PAUSED = booleanPreferencesKey("assistant_paused")
+        val USER_NAME = stringPreferencesKey("user_name")
+        val USER_EMAIL = stringPreferencesKey("user_email")
+        val IS_PRO_USER = booleanPreferencesKey("is_pro_user")
     }
 }
 

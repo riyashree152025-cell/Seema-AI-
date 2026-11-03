@@ -39,6 +39,12 @@ import com.raju.aiassistant.ui.chat.ChatScreen
 import com.raju.aiassistant.ui.home.HomeScreen
 import com.raju.aiassistant.ui.settings.SettingsScreen
 import com.raju.aiassistant.ui.tools.ToolsScreen
+import com.raju.aiassistant.ui.control.ControlPanelScreen
+import com.raju.aiassistant.ui.brain.AiBrainScreen
+import com.raju.aiassistant.ui.voice.VoiceControlScreen
+import com.raju.aiassistant.ui.apps.AppsScreen
+import com.raju.aiassistant.ui.profile.ProfileScreen
+import com.raju.aiassistant.ui.pro.SeemaProScreen
 import com.raju.aiassistant.ui.components.HudEffects
 import com.raju.aiassistant.ui.components.LocalHudEffects
 import androidx.compose.animation.core.tween
@@ -150,11 +156,61 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                 HomeScreen(
                     onOpenChat = { navigateTo(Destination.Chat) },
                     onOpenSettings = { navigateTo(Destination.Settings) },
+                    onOpenControlPanel = { navController.navigate(SubRoutes.CONTROL_PANEL) },
+                    onOpenVoiceControl = { navController.navigate(SubRoutes.VOICE_CONTROL) },
+                    onOpenAiBrain = { navController.navigate(SubRoutes.AI_BRAIN) },
                 )
             }
-            composable(Destination.Chat.route) { ChatScreen(onOpenSettings = { navigateTo(Destination.Settings) }) }
-            composable(Destination.Tools.route) { ToolsScreen(onOpenChat = { navigateTo(Destination.Chat) }) }
-            composable(Destination.Settings.route) { SettingsScreen() }
+            composable(Destination.Chat.route) {
+                ChatScreen(
+                    onOpenSettings = { navigateTo(Destination.Settings) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Destination.Apps.route) {
+                AppsScreen(
+                    onOpenTools = { navController.navigate(SubRoutes.TOOLS) },
+                )
+            }
+            composable(Destination.Settings.route) {
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Destination.Profile.route) {
+                ProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenPro = { navController.navigate(SubRoutes.SEEMA_PRO) },
+                )
+            }
+            composable(SubRoutes.CONTROL_PANEL) {
+                ControlPanelScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenApps = { navigateTo(Destination.Apps) },
+                )
+            }
+            composable(SubRoutes.AI_BRAIN) {
+                AiBrainScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSettings = { navigateTo(Destination.Settings) },
+                )
+            }
+            composable(SubRoutes.VOICE_CONTROL) {
+                VoiceControlScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenVoiceSettings = { navigateTo(Destination.Settings) },
+                )
+            }
+            composable(SubRoutes.SEEMA_PRO) {
+                SeemaProScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(SubRoutes.TOOLS) {
+                ToolsScreen(
+                    onOpenChat = { navigateTo(Destination.Chat) },
+                )
+            }
         }
     }
     }

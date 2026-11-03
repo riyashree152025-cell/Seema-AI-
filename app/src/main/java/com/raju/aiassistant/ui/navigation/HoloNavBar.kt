@@ -37,14 +37,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.HoloViolet
 
-/** Neon cyan of the app palette (the 3D core's blue family). */
-private val HOLO_BLUE = com.raju.aiassistant.ui.theme.Emerald
-
 /**
- * Bottom navigation for the 3D Holographic design: a slim floating glass capsule. Icons only,
- * except the open page, which lights up as a glowing pill with its name.
+ * 5-tab Bottom Navigation for SEEMA AI: Home, Chat, Apps, Settings, Profile.
+ * Matches the reference image styling: floating glass pill with cyan glow.
  */
 @Composable
 fun HoloNavBar(current: Destination?, onSelect: (Destination) -> Unit) {
@@ -52,35 +50,73 @@ fun HoloNavBar(current: Destination?, onSelect: (Destination) -> Unit) {
     Row(
         Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
             .fillMaxWidth()
-            .height(52.dp)
+            .height(54.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xE6101A33), Color(0xF205070F))))
-            .border(1.dp, Brush.horizontalGradient(listOf(HoloViolet.copy(alpha = 0.25f), HOLO_BLUE.copy(alpha = 0.75f), HoloViolet.copy(alpha = 0.25f))), shape)
-            .padding(horizontal = 6.dp),
+            .background(Brush.verticalGradient(listOf(Color(0xE6081024), Color(0xF2030611))))
+            .border(
+                1.dp,
+                Brush.horizontalGradient(
+                    listOf(
+                        HoloViolet.copy(alpha = 0.25f),
+                        NeonCyan.copy(alpha = 0.75f),
+                        HoloViolet.copy(alpha = 0.25f),
+                    ),
+                ),
+                shape,
+            )
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         Destination.entries.forEach { dest ->
             val selected = dest == current
-            val tint by animateColorAsState(if (selected) Color.White else HOLO_BLUE.copy(alpha = 0.65f), tween(250), label = "navTint")
-            val pill by animateColorAsState(if (selected) HOLO_BLUE.copy(alpha = 0.28f) else Color.Transparent, tween(250), label = "navPill")
+            val tint by animateColorAsState(
+                if (selected) Color.White else NeonCyan.copy(alpha = 0.65f),
+                tween(200),
+                label = "navTint",
+            )
+            val pill by animateColorAsState(
+                if (selected) NeonCyan.copy(alpha = 0.25f) else Color.Transparent,
+                tween(200),
+                label = "navPill",
+            )
             Row(
                 Modifier
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(pill)
-                    .then(if (selected) Modifier.border(1.dp, HOLO_BLUE.copy(alpha = 0.8f), RoundedCornerShape(18.dp)) else Modifier)
+                    .then(
+                        if (selected) {
+                            Modifier.border(1.dp, NeonCyan.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                        } else {
+                            Modifier
+                        },
+                    )
                     .clickable(role = Role.Tab, onClickLabel = dest.label) { onSelect(dest) }
-                    .semantics { contentDescription = dest.label; this.selected = selected }
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    .semantics {
+                        contentDescription = dest.label
+                        this.selected = selected
+                    }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(dest.icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-                AnimatedVisibility(selected, enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
+                Icon(dest.icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+                AnimatedVisibility(
+                    selected,
+                    enter = fadeIn() + expandHorizontally(),
+                    exit = fadeOut() + shrinkHorizontally(),
+                ) {
                     Row {
-                        Spacer(Modifier.width(6.dp))
-                        Text(dest.label, color = tint, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            dest.label,
+                            color = tint,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                            ),
+                        )
                     }
                 }
             }

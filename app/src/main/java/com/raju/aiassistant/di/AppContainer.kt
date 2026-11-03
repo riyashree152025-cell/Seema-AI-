@@ -65,6 +65,8 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val database by lazy { RajuDatabase.create(appContext) }
+    val chatDao by lazy { database.chatDao() }
+    val actionLogDao by lazy { database.actionLogDao() }
     val http by lazy { defaultHttpClient() }
 
     val secureKeyStore by lazy { SecureKeyStore(appContext) }
