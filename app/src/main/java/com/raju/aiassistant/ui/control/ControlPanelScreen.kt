@@ -6,8 +6,14 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.provider.Settings
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.geometry.Size
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,31 +34,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BatterySaver
-import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.EnergySavingsLeaf
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,10 +70,16 @@ import com.raju.aiassistant.RajuApp
 import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.SuccessGreen
 import com.raju.aiassistant.ui.theme.WarningAmber
+import kotlinx.coroutines.launch
 
 /**
  * Screen 3: Control Panel
- * Matches Reference Image: Power Switch, Controls Grid, System Status Telemetry.
+ * 1:1 match to Official Reference Image Screen 3:
+ * - Header: < ⚙ Control Panel
+ * - Central Power Core with connecting glowing cyan traces
+ * - Left 3 Cards: Power Mode, Brightness, Battery Saver
+ * - Right 3 Cards: Do Not Disturb, Volume, Quick Tools
+ * - Bottom System Status Card: Real Battery %, RAM %, and 2 Animated Network telemetry bars
  */
 @Composable
 fun ControlPanelScreen(
@@ -83,22 +94,23 @@ fun ControlPanelScreen(
     val scope = rememberCoroutineScope()
 
     // Real system statistics (no fake data)
-    var batteryPct by remember { mutableIntStateOf(90) }
-    var ramPct by remember { mutableIntStateOf(60) }
+    var batteryPct by remember { mutableIntStateOf(92) }
+    var ramPct by remember { mutableIntStateOf(62) }
 
     LaunchedEffect(Unit) {
         val bIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = bIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = bIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
         if (level >= 0 && scale > 0) {
-            batteryPct = (level * 100) / scale
+            batteryPct = (level * 100 / scale)
         }
 
         val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
         actManager?.getMemoryInfo(memInfo)
         if (memInfo.totalMem > 0) {
-            ramPct = (((memInfo.totalMem - memInfo.availMem) * 100) / memInfo.totalMem).toInt()
+            val used = memInfo.totalMem - memInfo.availMem
+            ramPct = ((used.toDouble() / memInfo.totalMem) * 100).toInt()
         }
     }
 
@@ -111,7 +123,7 @@ fun ControlPanelScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Header: < Control Panel
+        // 1. Header: < ⚙ Control Panel
         Row(
             Modifier
                 .fillMaxWidth()
@@ -121,9 +133,9 @@ fun ControlPanelScreen(
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
             }
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Filled.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 "Control Panel",
                 style = MaterialTheme.typography.titleLarge.copy(
@@ -134,14 +146,14 @@ fun ControlPanelScreen(
             )
         }
 
-        // Main Controls Section: Left Column, Center Power, Right Column
+        // 2. Central Control Grid (3 Cards Left, Big Center Power Button, 3 Cards Right)
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Left Column (Power Mode, Brightness)
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Left Column (Power Mode, Brightness, Battery Saver)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ControlCard(
                     title = "Power\nMode",
                     icon = Icons.Filled.FlashOn,
@@ -155,6 +167,17 @@ fun ControlPanelScreen(
                     onClick = {
                         runCatching {
                             context.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    },
+                )
+                ControlCard(
+                    title = "Battery\nSaver",
+                    icon = Icons.Filled.EnergySavingsLeaf,
+                    active = settings.lowPowerMode,
+                    accentColor = SuccessGreen,
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
                     },
                 )
@@ -198,21 +221,21 @@ fun ControlPanelScreen(
                 }
             }
 
-            // Right Column (Do Not Disturb, Volume)
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Right Column (Do Not Disturb, Volume, Quick Tools)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ControlCard(
                     title = "Do Not\nDisturb",
-                    icon = Icons.Filled.DoNotDisturbOn,
+                    icon = Icons.Filled.Bedtime,
                     active = false,
                     onClick = {
                         runCatching {
-                            context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
                     },
                 )
                 ControlCard(
                     title = "Volume",
-                    icon = Icons.Filled.VolumeUp,
+                    icon = Icons.AutoMirrored.Filled.VolumeUp,
                     active = false,
                     onClick = {
                         runCatching {
@@ -220,99 +243,150 @@ fun ControlPanelScreen(
                         }
                     },
                 )
+                ControlCard(
+                    title = "Quick\nTools",
+                    icon = Icons.Filled.Apps,
+                    active = false,
+                    onClick = onOpenApps,
+                )
             }
         }
 
-        // Secondary Row (Battery Saver, Quick Tools)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            ControlCardWide(
-                title = "Battery\nSaver",
-                icon = Icons.Filled.BatterySaver,
-                active = settings.lowPowerMode,
-                onClick = {
-                    runCatching {
-                        context.startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                },
-            )
-            ControlCardWide(
-                title = "Quick\nTools",
-                icon = Icons.Filled.GridView,
-                active = true,
-                onClick = onOpenApps,
-            )
-        }
+        Spacer(Modifier.height(4.dp))
 
-        // System Status Telemetry Card
+        // 3. System Status Panel with Battery, RAM and 2 Glowing Network Signal Bars
         Box(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xD90A1428), Color(0xF2050B17))))
-                .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                .padding(14.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xD9081429), Color(0xF2040B17))))
+                .border(1.2.dp, NeonCyan.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Header: System Status
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Box(
                         Modifier
-                            .size(8.dp)
+                            .size(9.dp)
                             .clip(CircleShape)
-                            .background(SuccessGreen),
+                            .background(if (isOnline) SuccessGreen else WarningAmber)
                     )
-                    Spacer(Modifier.width(6.dp))
                     Text(
                         "System Status",
-                        style = MaterialTheme.typography.labelLarge.copy(
+                        style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = SuccessGreen,
+                            fontSize = 14.sp,
                         ),
                     )
                 }
 
-                // Battery Row
+                // Row 1: Battery % (Left) & Network Bar 1 (Right)
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Battery $batteryPct%",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFC0D5F0)),
-                    )
-                    MetricBar(pct = batteryPct / 100f, color = SuccessGreen)
-                }
-
-                // RAM Row
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "RAM $ramPct%",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFC0D5F0)),
-                    )
-                    MetricBar(pct = ramPct / 100f, color = NeonCyan)
-                }
-
-                // Network Row
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (isOnline) "Network Active" else "Network Offline",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = if (isOnline) NeonCyan else WarningAmber,
+                        "🔋 Battery $batteryPct%",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
                         ),
                     )
-                    MetricBar(pct = if (isOnline) 0.85f else 0.1f, color = if (isOnline) NeonCyan else WarningAmber)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Network",
+                            style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp),
+                        )
+                        NetworkSignalBar(active = isOnline)
+                    }
                 }
+
+                // Row 2: RAM % (Left) & Network Bar 2 (Right)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "📊 RAM $ramPct%",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
+                        ),
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Network",
+                            style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp),
+                        )
+                        NetworkSignalBar(active = isOnline)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetworkSignalBar(active: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition(label = "netWave")
+    val waveOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
+        label = "net"
+    )
+
+    Box(
+        Modifier
+            .width(110.dp)
+            .height(10.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(Color(0xFF0F1E36))
+            .border(0.8.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(5.dp)),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val barW = size.width
+            val barH = size.height
+
+            if (active) {
+                // Gradient fill
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0xFF0077FF), NeonCyan, Color(0xFF00E5FF)),
+                        startX = 0f,
+                        endX = barW * 0.85f,
+                    ),
+                    size = Size(barW * 0.85f, barH),
+                )
+                // Small animated signal tick in the right portion
+                val tickX = barW * 0.85f + (barW * 0.12f) * waveOffset
+                drawLine(
+                    color = SuccessGreen,
+                    start = Offset(tickX, 1f),
+                    end = Offset(tickX, barH - 1f),
+                    strokeWidth = 2f,
+                )
+            } else {
+                drawRect(
+                    color = Color.Gray.copy(alpha = 0.3f),
+                    size = Size(barW * 0.25f, barH),
+                )
             }
         }
     }
@@ -322,17 +396,22 @@ fun ControlPanelScreen(
 private fun ControlCard(
     title: String,
     icon: ImageVector,
-    active: Boolean,
+    active: Boolean = false,
+    accentColor: Color = NeonCyan,
     onClick: () -> Unit,
 ) {
     Box(
         Modifier
-            .size(76.dp, 84.dp)
+            .size(width = 86.dp, height = 76.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xDD0B162C))
-            .border(1.dp, if (active) NeonCyan else Color(0x3300E5FF), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp),
+            .background(Color(0xD9081224))
+            .border(
+                1.2.dp,
+                if (active) accentColor else accentColor.copy(alpha = 0.45f),
+                RoundedCornerShape(14.dp),
+            )
+            .clickable { onClick() }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -342,81 +421,20 @@ private fun ControlCard(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = if (active) NeonCyan else Color(0xFF8BA5CC),
+                tint = if (active) accentColor else accentColor.copy(alpha = 0.85f),
                 modifier = Modifier.size(24.dp),
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 title,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
+                    fontSize = 9.5.sp,
+                    lineHeight = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.9f),
                 ),
-                maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-    }
-}
-
-@Composable
-private fun ControlCardWide(
-    title: String,
-    icon: ImageVector,
-    active: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(108.dp, 72.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xDD0B162C))
-            .border(1.dp, if (active) NeonCyan else Color(0x3300E5FF), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (active) NeonCyan else Color(0xFF8BA5CC),
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetricBar(pct: Float, color: Color) {
-    val fill by animateFloatAsState(targetValue = pct.coerceIn(0.05f, 1f), tween(500), label = "metricFill")
-    Box(
-        Modifier
-            .width(140.dp)
-            .height(8.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF0F1E38)),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fill)
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Brush.horizontalGradient(listOf(color.copy(alpha = 0.5f), color))),
-        )
     }
 }

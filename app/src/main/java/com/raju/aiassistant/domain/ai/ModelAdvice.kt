@@ -2,7 +2,7 @@ package com.raju.aiassistant.domain.ai
 
 /**
  * Guidance about provider models for a Hindi/Hinglish/English assistant. Model lists come live from
- * the provider; this only ranks and annotates them (checked against provider model cards, Oct 2026).
+ * the provider; this only ranks and annotates them (checked against provider model cards).
  */
 object ModelAdvice {
     /** Models that are not general chat models (speech, safety classifiers, embeddings, agents). */
@@ -15,8 +15,10 @@ object ModelAdvice {
     private val PREFERRED = mapOf(
         ProviderId.GEMINI to listOf("gemini-2.5-flash", "gemini-2.0-flash", "flash"),
         ProviderId.GROQ to listOf("llama-3.3-70b", "gpt-oss-120b", "llama-4", "qwen3", "llama-3.1-8b", "llama"),
-        // The list itself comes live from the key's /models endpoint; this only orders it.
         ProviderId.CEREBRAS to listOf("llama-3.3-70b", "gpt-oss-120b", "qwen-3", "llama"),
+        ProviderId.OPENROUTER to listOf("deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct", "google/gemini-2.0-flash-001", "qwen"),
+        ProviderId.DEEPSEEK to listOf("deepseek-chat", "deepseek-reasoner"),
+        ProviderId.OLLAMA to listOf("llama3.2", "qwen2.5", "mistral", "gemma2", "llama3"),
     )
 
     fun isChatModel(id: String) = NOT_CHAT.none { id.contains(it, ignoreCase = true) }

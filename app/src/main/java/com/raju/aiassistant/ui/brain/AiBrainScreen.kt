@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,9 +32,10 @@ import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,10 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -62,17 +66,21 @@ import kotlin.math.sin
 
 /**
  * Screen 4: AI Brain
- * Matches Reference Image: 3D Holographic Chamber, Brain Status Readouts, 4 Capabilities Chips.
+ * 1:1 match to Official Reference Image Screen 4:
+ * - Top Split Layout:
+ *   - Left: Cylindrical Holographic Containment Chamber with glowing 3D anatomical brain
+ *   - Right: Sleek Status Card (Brain Status Active, Learning Mode On, Memory Usage 68% with progress bar, Knowledge Base Updated Today)
+ * - Bottom Section:
+ *   - Brain Capabilities Header + 4 Glowing Tiles (Fast Thinking, Deep Analysis, Smart Decision, Continuous Learning)
  */
 @Composable
 fun AiBrainScreen(
     onBack: () -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
-    val assistantState by container.engine.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -81,9 +89,9 @@ fun AiBrainScreen(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Header: < AI Brain
+        // 1. Header: < AI Brain
         Row(
             Modifier
                 .fillMaxWidth()
@@ -93,9 +101,9 @@ fun AiBrainScreen(
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
             }
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Filled.Psychology, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.Psychology, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 "AI Brain",
                 style = MaterialTheme.typography.titleLarge.copy(
@@ -106,131 +114,269 @@ fun AiBrainScreen(
             )
         }
 
-        // Top Section: Cylindrical Holo Chamber with 3D Holographic Brain Display
-        Box(
+        // 2. Reference Screen 4 Split Upper Layout (Left Chamber + Right Status Card)
+        Row(
             Modifier
                 .fillMaxWidth()
-                .height(210.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xD9081429), Color(0xF2040B17))))
-                .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(18.dp)),
-            contentAlignment = Alignment.Center,
+                .height(230.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            HoloBrainCanvas(Modifier.fillMaxSize())
-        }
-
-        // Brain Status Readout Panel
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xDD09152B))
-                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(16.dp))
-                .padding(14.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatusRow(
-                    label = "Brain Status",
-                    value = "Active",
-                    badgeColor = SuccessGreen,
-                )
-                StatusRow(
-                    label = "Learning Mode",
-                    value = if (settings.memoryEnabled) "On" else "Off",
-                    badgeColor = if (settings.memoryEnabled) NeonCyan else Color.Gray,
-                )
-                StatusRow(
-                    label = "Memory Usage",
-                    value = "68%",
-                    badgeColor = Color(0xFF88AAFF),
-                )
-                StatusRow(
-                    label = "Knowledge Base",
-                    value = "Updated Today",
-                    badgeColor = SuccessGreen,
-                )
-            }
-        }
-
-        // Brain Capabilities Section
-        Column(
-            Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                "Brain Capabilities",
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 0.5.sp,
-                ),
-            )
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                CapabilityChip(
-                    title = "Fast\nThinking",
-                    icon = Icons.Filled.Lightbulb,
-                    accentColor = GoldAccent,
-                    onClick = onOpenSettings,
-                )
-                CapabilityChip(
-                    title = "Deep\nAnalysis",
-                    icon = Icons.Filled.AutoAwesome,
-                    accentColor = NeonCyan,
-                    onClick = onOpenSettings,
-                )
-                CapabilityChip(
-                    title = "Smart\nDecision",
-                    icon = Icons.Filled.Shield,
-                    accentColor = Color(0xFF0077FF),
-                    onClick = onOpenSettings,
-                )
-                CapabilityChip(
-                    title = "Continuous\nLearning",
-                    icon = Icons.Filled.AllInclusive,
-                    accentColor = NeonCyan,
-                    onClick = onOpenSettings,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusRow(label: String, value: String, badgeColor: Color) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFC0D5F0)),
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Left: Cylindrical Holographic Glass Chamber
             Box(
                 Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(badgeColor),
+                    .weight(1.05f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xD9081429), Color(0xF2040B17))))
+                    .border(1.2.dp, NeonCyan.copy(alpha = 0.55f), RoundedCornerShape(18.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                HoloBrainChamberCanvas(Modifier.fillMaxSize())
+            }
+
+            // Right: Brain Status Readout Panel
+            Box(
+                Modifier
+                    .weight(0.95f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xD9081429), Color(0xF2040B17))))
+                    .border(1.2.dp, NeonCyan.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    // Row 1: Brain Status
+                    Column {
+                        Text("Brain Status", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp))
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(SuccessGreen))
+                            Text("Active", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = SuccessGreen, fontSize = 13.sp))
+                        }
+                    }
+
+                    // Row 2: Learning Mode
+                    Column {
+                        Text("Learning Mode", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp))
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (settings.memoryEnabled) "On" else "Off",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (settings.memoryEnabled) SuccessGreen else Color.Gray,
+                                fontSize = 13.sp,
+                            )
+                        )
+                    }
+
+                    // Row 3: Memory Usage
+                    Column {
+                        Text("Memory Usage", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp))
+                        Spacer(Modifier.height(2.dp))
+                        Text("68%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp))
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { 0.68f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = NeonCyan,
+                            trackColor = Color(0x3300E5FF),
+                        )
+                    }
+
+                    // Row 4: Knowledge Base
+                    Column {
+                        Text("Knowledge Base", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp))
+                        Spacer(Modifier.height(2.dp))
+                        Text("Updated Today", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = SuccessGreen, fontSize = 12.sp))
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // 3. Lower Section: Brain Capabilities Header & 4 Glowing Chips
+        Text(
+            "Brain Capabilities",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                fontSize = 15.sp,
+                letterSpacing = 0.5.sp,
+            ),
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            BrainCapabilityCard(
+                title = "Fast\nThinking",
+                icon = Icons.Filled.Lightbulb,
+                accentColor = GoldAccent,
+                onClick = onOpenSettings,
             )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = badgeColor,
-                ),
+            BrainCapabilityCard(
+                title = "Deep\nAnalysis",
+                icon = Icons.Filled.AutoAwesome,
+                accentColor = NeonCyan,
+                onClick = onOpenSettings,
+            )
+            BrainCapabilityCard(
+                title = "Smart\nDecision",
+                icon = Icons.Filled.Security,
+                accentColor = Color(0xFF0077FF),
+                onClick = onOpenSettings,
+            )
+            BrainCapabilityCard(
+                title = "Continuous\nLearning",
+                icon = Icons.Filled.AllInclusive,
+                accentColor = NeonCyan,
+                onClick = onOpenSettings,
             )
         }
     }
 }
 
 @Composable
-private fun CapabilityChip(
+private fun HoloBrainChamberCanvas(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "holoBrain")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.75f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    val floatY by infiniteTransition.animateFloat(
+        initialValue = -6f,
+        targetValue = 6f,
+        animationSpec = infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Reverse),
+        label = "float"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f + floatY
+
+        val topY = h * 0.12f
+        val botY = h * 0.88f
+        val chamberW = w * 0.80f
+
+        // 1. Vertical blue containment light beams
+        val beams = 14
+        for (i in 0..beams) {
+            val bx = cx - chamberW / 2f + (chamberW / beams) * i
+            drawLine(
+                color = NeonCyan.copy(alpha = 0.12f * pulse),
+                start = Offset(bx, topY + 10f),
+                end = Offset(bx, botY - 10f),
+                strokeWidth = 1.5f
+            )
+        }
+
+        // 2. Base Pedestal: Tiered Concentric Metallic & Golden Rings
+        drawOval(
+            color = Color(0xFF0F1B2B),
+            topLeft = Offset(cx - chamberW * 0.52f, botY - 16f),
+            size = Size(chamberW * 1.04f, 32f),
+            style = Stroke(width = 4f)
+        )
+        drawOval(
+            brush = Brush.horizontalGradient(listOf(GoldAccent, Color(0xFFFFD54F), GoldAccent)),
+            topLeft = Offset(cx - chamberW * 0.46f, botY - 12f),
+            size = Size(chamberW * 0.92f, 24f),
+            style = Stroke(width = 3.5f)
+        )
+        drawOval(
+            color = NeonCyan.copy(alpha = 0.9f * pulse),
+            topLeft = Offset(cx - chamberW * 0.38f, botY - 8f),
+            size = Size(chamberW * 0.76f, 16f),
+            style = Stroke(width = 2.5f)
+        )
+
+        // 3. Top Metallic Ring with Cyan Emitter Notches
+        drawOval(
+            color = Color(0xFF1E2F45),
+            topLeft = Offset(cx - chamberW * 0.48f, topY - 12f),
+            size = Size(chamberW * 0.96f, 24f),
+            style = Stroke(width = 4f)
+        )
+        drawOval(
+            color = NeonCyan.copy(alpha = 0.9f),
+            topLeft = Offset(cx - chamberW * 0.42f, topY - 8f),
+            size = Size(chamberW * 0.84f, 16f),
+            style = Stroke(width = 2.5f)
+        )
+
+        // 4. Central Glowing Anatomical 3D Brain
+        val brX = cx
+        val brY = cy - 2f
+        val scale = (chamberW * 0.35f) / 75f
+
+        // Ambient radial glow behind the brain
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(NeonCyan.copy(alpha = 0.35f * pulse), Color(0x180055FF), Color.Transparent),
+                center = Offset(brX, brY),
+                radius = 65f * scale * pulse
+            ),
+            radius = 65f * scale * pulse,
+            center = Offset(brX, brY)
+        )
+
+        // Anatomical Sulci & Gyri Curves
+        val lobes = listOf(
+            listOf(Offset(-55f, -15f), Offset(-40f, -40f), Offset(-10f, -48f), Offset(20f, -45f), Offset(45f, -30f), Offset(60f, -10f)),
+            listOf(Offset(60f, -10f), Offset(65f, 12f), Offset(50f, 30f), Offset(25f, 38f), Offset(8f, 32f)),
+            listOf(Offset(-55f, -15f), Offset(-60f, 8f), Offset(-40f, 24f), Offset(-15f, 24f), Offset(0f, 16f)),
+            listOf(Offset(-25f, -30f), Offset(-12f, -16f), Offset(6f, -30f), Offset(24f, -16f), Offset(42f, -22f)),
+            listOf(Offset(-36f, -12f), Offset(-18f, 0f), Offset(8f, -8f), Offset(28f, 4f), Offset(42f, -2f)),
+            listOf(Offset(-22f, 8f), Offset(0f, 4f), Offset(22f, 18f)),
+            listOf(Offset(18f, 32f), Offset(32f, 42f), Offset(50f, 36f), Offset(54f, 22f)),
+            listOf(Offset(-4f, 22f), Offset(-4f, 48f), Offset(4f, 48f), Offset(4f, 22f))
+        )
+
+        for (lobe in lobes) {
+            val path = Path()
+            lobe.forEachIndexed { idx, pt ->
+                val px = brX + pt.x * scale
+                val py = brY + pt.y * scale
+                if (idx == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            // Glow layer
+            drawPath(path, color = NeonCyan.copy(alpha = 0.55f * pulse), style = Stroke(width = 4.5f * scale, cap = StrokeCap.Round))
+            // Crisp core
+            drawPath(path, color = Color.White.copy(alpha = 0.95f), style = Stroke(width = 1.8f * scale, cap = StrokeCap.Round))
+        }
+
+        // Glowing Synaptic Nodes
+        val synapses = listOf(
+            Offset(-32f, -36f), Offset(10f, -40f), Offset(36f, -26f),
+            Offset(-45f, -8f), Offset(-16f, -12f), Offset(14f, -4f),
+            Offset(46f, 8f), Offset(-30f, 14f), Offset(6f, 10f), Offset(36f, 30f)
+        )
+        for (syn in synapses) {
+            val sx = brX + syn.x * scale
+            val sy = brY + syn.y * scale
+            drawCircle(color = GoldAccent.copy(alpha = 0.95f * pulse), radius = 3.2f * scale, center = Offset(sx, sy))
+            drawCircle(color = Color(0xFFFFD54F).copy(alpha = 0.5f), radius = 6.0f * scale, center = Offset(sx, sy), style = Stroke(width = 1.2f))
+        }
+    }
+}
+
+@Composable
+private fun BrainCapabilityCard(
     title: String,
     icon: ImageVector,
     accentColor: Color,
@@ -238,127 +384,35 @@ private fun CapabilityChip(
 ) {
     Box(
         Modifier
-            .size(74.dp, 82.dp)
+            .size(76.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xDD0B162C))
-            .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(6.dp),
+            .background(Color(0xD9081224))
+            .border(1.2.dp, accentColor.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(
-                Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.2f))
-                    .border(1.dp, accentColor.copy(alpha = 0.8f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-            }
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(24.dp),
+            )
             Spacer(Modifier.height(4.dp))
             Text(
                 title,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.sp,
                     lineHeight = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.9f),
                 ),
-                maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-        }
-    }
-}
-
-/**
- * Animated 3D Cylindrical Chamber with floating holographic neural nodes and brain silhouette.
- */
-@Composable
-private fun HoloBrainCanvas(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "brainAnim")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Restart),
-        label = "brainRot",
-    )
-    val pulse by transition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Reverse),
-        label = "brainPulse",
-    )
-
-    Canvas(modifier = modifier) {
-        val c = center
-        val w = size.width
-        val h = size.height
-
-        // Upper & Lower Chamber Containment Rings
-        val chamberR = (w * 0.32f).coerceAtMost(h * 0.45f)
-        drawOval(
-            color = NeonCyan.copy(alpha = 0.65f),
-            topLeft = Offset(c.x - chamberR, 14f),
-            size = androidx.compose.ui.geometry.Size(chamberR * 2, 22f),
-            style = Stroke(width = 2.5f),
-        )
-        drawOval(
-            color = NeonCyan.copy(alpha = 0.65f),
-            topLeft = Offset(c.x - chamberR, h - 36f),
-            size = androidx.compose.ui.geometry.Size(chamberR * 2, 22f),
-            style = Stroke(width = 2.5f),
-        )
-
-        // Light beam gradient inside cylinder
-        drawRect(
-            brush = Brush.verticalGradient(
-                listOf(NeonCyan.copy(alpha = 0.15f), NeonCyan.copy(alpha = 0.05f), NeonCyan.copy(alpha = 0.18f)),
-            ),
-            topLeft = Offset(c.x - chamberR, 25f),
-            size = androidx.compose.ui.geometry.Size(chamberR * 2, h - 50f),
-        )
-
-        // Central floating brain neural sphere
-        val brainR = chamberR * 0.55f * pulse
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(NeonCyan.copy(alpha = 0.45f), Color(0xFF0077FF).copy(alpha = 0.2f), Color.Transparent),
-                center = c,
-                radius = brainR * 1.5f,
-            ),
-            radius = brainR * 1.5f,
-            center = c,
-        )
-
-        // Brain Hemisphere Arcs & Nodes
-        val nodeCount = 18
-        for (i in 0 until nodeCount) {
-            val a = Math.toRadians((i * (360f / nodeCount) + rotation).toDouble())
-            val nr = brainR * (0.6f + 0.38f * sin(i * 1.7))
-            val nx = c.x + (nr * cos(a) * 0.9f).toFloat()
-            val ny = c.y + (nr * sin(a) * 0.7f).toFloat()
-
-            drawCircle(
-                color = Color.White.copy(alpha = 0.9f),
-                radius = 3.5f,
-                center = Offset(nx, ny),
-            )
-
-            // Neural synaptic lines connecting to center and neighbor
-            if (i % 2 == 0) {
-                drawLine(
-                    color = NeonCyan.copy(alpha = 0.6f),
-                    start = c,
-                    end = Offset(nx, ny),
-                    strokeWidth = 1.2f,
-                    cap = StrokeCap.Round,
-                )
-            }
         }
     }
 }

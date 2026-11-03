@@ -19,8 +19,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Adapter for OpenAI-compatible chat APIs (Groq, Cerebras). Another such provider only needs a
- * new [ProviderId] and base URL.
+ * Adapter for OpenAI-compatible chat APIs (Groq, Cerebras, OpenRouter, DeepSeek, Ollama).
+ * Another such provider only needs a new [ProviderId] and base URL.
  */
 class OpenAiCompatibleProvider(
     override val id: ProviderId,
@@ -29,8 +29,15 @@ class OpenAiCompatibleProvider(
     private val baseUrl: String,
 ) : AiProvider {
 
+    private val authHeaderValue: String
+        get() = if (apiKey.isNotBlank() && apiKey != "ollama") "Bearer $apiKey" else "Bearer ollama"
+
     override suspend fun listModels(): AiResult<List<AiModel>> = withRetry {
-        val request = Request.Builder().url("$baseUrl/models").header("Authorization", "Bearer $apiKey").get().build()
+        val request = Request.Builder()
+            .url("$baseUrl/models")
+            .header("Authorization", authHeaderValue)
+            .get()
+            .build()
         when (val r = http.fetch(request)) {
             is AiResult.Failure -> r
             is AiResult.Success -> {
@@ -66,9 +73,9 @@ class OpenAiCompatibleProvider(
         }
     }
 
-    private fun request(body: kotlinx.serialization.json.JsonObject) = Request.Builder()
+    private fun request(body: JsonObject) = Request.Builder()
         .url("$baseUrl/chat/completions")
-        .header("Authorization", "Bearer $apiKey")
+        .header("Authorization", authHeaderValue)
         .post(body.toRequestBody())
         .build()
 
@@ -117,3 +124,6 @@ class OpenAiCompatibleProvider(
 
 const val GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 const val CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+const val DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+const val OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434/v1"
