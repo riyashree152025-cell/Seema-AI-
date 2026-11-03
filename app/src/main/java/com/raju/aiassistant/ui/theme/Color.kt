@@ -26,3 +26,13 @@ val PanelNavyHigh = GlassPanelHigh
 val ReactorCyan = Emerald
 val ReactorBlue = HoloCyan
 val ReactorCore = EmeraldBright
+
+// Reference 3x3 Colors
+val NeonCyan = Color(0xFF00E5FF)
+val ElectricBlue = Color(0xFF00A3FF)
+val DeepSpaceNavy = Color(0xFF030712)
+val GoldAccent = Color(0xFFFFB800)
+val GoldGlow = Color(0xFFFFA000)
+val GoldLight = Color(0xFFFFE082)
+val MetallicGunmetal = Color(0xFF1E293B)
+val MetallicBorder = Color(0xFF334155)

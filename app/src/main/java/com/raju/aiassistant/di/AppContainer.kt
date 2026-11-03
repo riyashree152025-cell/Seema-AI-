@@ -65,6 +65,8 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val database by lazy { RajuDatabase.create(appContext) }
+    val chatDao by lazy { database.chatDao() }
+    val actionLogDao by lazy { database.actionLogDao() }
     val http by lazy { defaultHttpClient() }
 
     val secureKeyStore by lazy { SecureKeyStore(appContext) }
@@ -134,6 +136,7 @@ class AppContainer(context: Context) {
     }
 
     val providerFactory by lazy { AiProviderFactory(http) }
+    val pcSyncClient by lazy { com.raju.aiassistant.data.sync.PcSyncClient(http, secureKeyStore) }
     val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }
@@ -270,7 +273,7 @@ class AppContainer(context: Context) {
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,
             // Auto fallback: the other AI providers whose keys are saved, tried when the chosen one fails.
-            fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it.secret in secureKeyStore.configured.value } },
+            fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it == com.raju.aiassistant.domain.ai.ProviderId.OLLAMA || it.secret in secureKeyStore.configured.value } },
             nowDescription = { SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a (yyyy-MM-dd'T'HH:mm, z)", Locale.ENGLISH).format(Date()) },
         ).also { e -> appScope.launch { e.load() } }
     }

@@ -71,7 +71,7 @@ class AndroidTts(private val context: Context) {
     suspend fun voices(): List<VoiceOption> {
         val engine = engine() ?: return emptyList()
         return runCatching { engine.voices.orEmpty() }.getOrDefault(emptySet())
-            .filter { it.locale.language in setOf("hi", "bn", "en") && (it.locale.country == "IN" || it.locale.language != "en") }
+            .filter { it.locale.language in setOf("hi", "bn", "en") && (it.locale.country in setOf("IN", "GB", "US") || it.locale.language != "en") }
             .filterNot { it.isNetworkConnectionRequired && it.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) == true }
             .sortedWith(compareBy<Voice> { it.locale.language != "hi" }.thenBy { it.name })
             .map { VoiceOption(it.name, "${it.locale.displayName} — ${it.name}" + if (it.isNetworkConnectionRequired) " (online)" else "") }

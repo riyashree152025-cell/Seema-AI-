@@ -7,6 +7,9 @@ enum class ProviderId(val displayName: String, val shortName: String, val secret
     GEMINI("Google Gemini", "Gemini", SecretId.GEMINI_API_KEY),
     GROQ("Groq", "Groq", SecretId.GROQ_API_KEY),
     CEREBRAS("Cerebras", "Cerebras", SecretId.CEREBRAS_API_KEY),
+    OPENROUTER("OpenRouter", "OpenRouter", SecretId.OPENROUTER_API_KEY),
+    DEEPSEEK("DeepSeek", "DeepSeek", SecretId.DEEPSEEK_API_KEY),
+    OLLAMA("Ollama (PC Local)", "Ollama", SecretId.OLLAMA_ENDPOINT),
 }
 
 data class AiModel(val id: String, val displayName: String)
