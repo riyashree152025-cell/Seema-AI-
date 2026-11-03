@@ -136,6 +136,7 @@ class AppContainer(context: Context) {
     }
 
     val providerFactory by lazy { AiProviderFactory(http) }
+    val pcSyncClient by lazy { com.raju.aiassistant.data.sync.PcSyncClient(http, secureKeyStore) }
     val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }

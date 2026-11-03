@@ -355,7 +355,7 @@ fun SettingsScreen(
                             id = SecretId.OLLAMA_ENDPOINT,
                             status = ollamaSecret,
                             viewModel = viewModel,
-                            title = "Ollama Host (PC Local AI)",
+                            title = "Ollama Host (e.g. 192.168.31.55:11434)",
                             providerStatus = providerStatus(ollamaSecret.configured, ollamaSecret.busy, s.lastTests[ProviderId.OLLAMA]),
                         ) {
                             ModelPicker(
@@ -368,6 +368,22 @@ fun SettingsScreen(
                                 loading = ollamaSecret.busy,
                             )
                         }
+
+                        // PC Companion & Memory Sync
+                        val pcSyncSecret = state.secrets[SecretId.PC_SYNC_ENDPOINT] ?: SecretStatus()
+                        val pcTokenSecret = state.secrets[SecretId.PC_SYNC_TOKEN] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.PC_SYNC_ENDPOINT,
+                            status = pcSyncSecret,
+                            viewModel = viewModel,
+                            title = "PC Companion Host (e.g. 192.168.31.55:11435)",
+                        )
+                        SecretCard(
+                            id = SecretId.PC_SYNC_TOKEN,
+                            status = pcTokenSecret,
+                            viewModel = viewModel,
+                            title = "PC Companion Auth Token",
+                        )
 
                         // Web Search (Tavily)
                         SecretCard(

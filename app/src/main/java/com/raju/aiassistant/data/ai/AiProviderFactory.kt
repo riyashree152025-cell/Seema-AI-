@@ -12,12 +12,20 @@ class AiProviderFactory(private val http: OkHttpClient) {
         ProviderId.OPENROUTER -> OpenAiCompatibleProvider(ProviderId.OPENROUTER, http, apiKey, OPENROUTER_BASE_URL)
         ProviderId.DEEPSEEK -> OpenAiCompatibleProvider(ProviderId.DEEPSEEK, http, apiKey, DEEPSEEK_BASE_URL)
         ProviderId.OLLAMA -> {
-            val url = if (apiKey.startsWith("http://") || apiKey.startsWith("https://")) {
-                apiKey.trimEnd('/') + (if (apiKey.contains("/v1")) "" else "/v1")
-            } else {
-                OLLAMA_DEFAULT_URL
-            }
-            OpenAiCompatibleProvider(ProviderId.OLLAMA, http, if (apiKey.startsWith("http")) "ollama" else apiKey, url)
+            val url = normalizeOllamaUrl(apiKey)
+            OpenAiCompatibleProvider(ProviderId.OLLAMA, http, "ollama", url)
+        }
+    }
+
+    companion object {
+        fun normalizeOllamaUrl(raw: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isBlank()) return "http://192.168.31.55:11434/v1"
+            val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "http://$trimmed"
+            val clean = withScheme.trimEnd('/')
+            val hostAndPort = clean.substringAfter("://")
+            val withPort = if (!hostAndPort.contains(":")) "$clean:11434" else clean
+            return if (withPort.endsWith("/v1")) withPort else "$withPort/v1"
         }
     }
 }

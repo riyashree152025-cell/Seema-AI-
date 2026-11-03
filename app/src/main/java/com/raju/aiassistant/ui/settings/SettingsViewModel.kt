@@ -194,6 +194,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                 }
                 id == SecretId.ELEVENLABS_API_KEY -> testElevenLabs(key)
                 id == SecretId.CARTESIA_API_KEY -> testCartesia(key)
+                id == SecretId.PC_SYNC_ENDPOINT || id == SecretId.PC_SYNC_TOKEN -> testPcSync()
                 id == SecretId.DEEPGRAM_API_KEY -> when (val r = DeepgramClient(c.http, key).synthesize("Hello", c.currentSettings.value.deepgramVoice)) {
                     is AiResult.Success -> AiResult.Success("Connected — received ${r.value.size / 1024} KB of audio. Deepgram can now listen (Speech input) and speak English.")
                     is AiResult.Failure -> r
@@ -243,6 +244,39 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     /** Real request with the chosen model and voice; also fills the model and voice pickers. */
+    private suspend fun testPcSync(): AiResult<String> = withContext(Dispatchers.IO) {
+        val endpoint = c.secureKeyStore.get(SecretId.PC_SYNC_ENDPOINT)?.ifBlank { null } ?: "http://192.168.31.55:11435"
+        val token = c.secureKeyStore.get(SecretId.PC_SYNC_TOKEN) ?: ""
+        val normalized = if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) endpoint else "http://$endpoint"
+        val cleanUrl = normalized.trimEnd('/') + "/api/v1/status"
+        try {
+            val req = okhttp3.Request.Builder()
+                .url(cleanUrl)
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+            c.http.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string().orEmpty()
+                    val host = runCatching {
+                        val obj = com.raju.aiassistant.data.ai.JsonFormat.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
+                        (obj["hostname"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    }.getOrNull() ?: "PC"
+                    AiResult.Success("Connected to PC ($host). Unified Brain Sync is active.")
+                } else if (resp.code == 401) {
+                    AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.INVALID_KEY, "Authentication failed. Check your PC Companion Auth Token.")
+                } else {
+                    AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.SERVER, "PC Companion returned HTTP ${resp.code}.")
+                }
+            }
+        } catch (e: Exception) {
+            AiResult.Failure(
+                com.raju.aiassistant.domain.ai.FailureKind.NETWORK,
+                "Cannot reach PC Companion at $cleanUrl. Run 'scripts/pc_companion/start_companion.bat' on PC and check firewall."
+            )
+        }
+    }
+
     private suspend fun testElevenLabs(key: String): AiResult<String> {
         val client = ElevenLabsClient(c.http, key)
         loadElevenLists(client)
