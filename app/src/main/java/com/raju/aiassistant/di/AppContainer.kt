@@ -273,7 +273,7 @@ class AppContainer(context: Context) {
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,
             // Auto fallback: the other AI providers whose keys are saved, tried when the chosen one fails.
-            fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it.secret in secureKeyStore.configured.value } },
+            fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it == com.raju.aiassistant.domain.ai.ProviderId.OLLAMA || it.secret in secureKeyStore.configured.value } },
             nowDescription = { SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a (yyyy-MM-dd'T'HH:mm, z)", Locale.ENGLISH).format(Date()) },
         ).also { e -> appScope.launch { e.load() } }
     }

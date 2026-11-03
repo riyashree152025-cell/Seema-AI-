@@ -174,7 +174,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     /** Real authenticated request; the result (and only a real success) is shown as Connected. */
     fun testSecret(id: SecretId) {
         viewModelScope.launch {
-            val key = c.secureKeyStore.get(id) ?: return@launch setStatus(id, "No key saved.", true)
+            val key = c.secureKeyStore.get(id) ?: when (id) {
+                SecretId.OLLAMA_ENDPOINT -> "http://192.168.31.55:11434"
+                SecretId.PC_SYNC_ENDPOINT -> "http://192.168.31.55:11435"
+                else -> return@launch setStatus(id, "No key saved.", true)
+            }
             setStatus(id, "Testing connection…", false, busy = true)
             val provider = ProviderId.entries.firstOrNull { it.secret == id }
             val result: AiResult<String> = when {

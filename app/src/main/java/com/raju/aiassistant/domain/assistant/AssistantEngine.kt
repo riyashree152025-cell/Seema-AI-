@@ -517,12 +517,12 @@ class AssistantEngine(
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
 
-        if (!isOnline()) {
+        if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
             fail("No internet connection. AI replies need internet.", AssistantState.Offline)
             return
         }
         val providerId = s.defaultProvider
-        val key = secret(providerId.secret)
+        val key = keyFor(providerId)
         if (key.isNullOrBlank()) {
             fail("${providerId.displayName} API key is not set. Add it in Settings.")
             return
@@ -657,7 +657,8 @@ class AssistantEngine(
         var hadActions = false
         for (action in parsed.actions) {
             hadActions = true
-            execute(action, provider, model, system, speak)
+            val activeProvider = if (answeredBy == providerId) provider else keyFor(answeredBy)?.let { providerFor(answeredBy, it) } ?: provider
+            execute(action, activeProvider, answeredModel, system, speak)
         }
 
         if (hadActions && _state.value != AssistantState.Error) {
@@ -688,10 +689,15 @@ class AssistantEngine(
 
     private class FallbackReply(val provider: ProviderId, val model: String, val text: String)
 
+    private suspend fun keyFor(id: ProviderId): String? {
+        val raw = secret(id.secret)?.takeIf { it.isNotBlank() }
+        return if (id == ProviderId.OLLAMA) raw ?: "http://192.168.31.55:11434" else raw
+    }
+
     /** Tries the other configured providers in turn; returns the first real reply, or null. */
     private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): FallbackReply? {
         for (id in fallbackProviders().filter { it != failed }) {
-            val key = secret(id.secret)?.takeIf { it.isNotBlank() } ?: continue
+            val key = keyFor(id) ?: continue
             val p = providerFor(id, key)
             val model = (resolveModel(id, key, p) as? AiResult.Success)?.value ?: continue
             trace("ai fallback ${id.shortName}")
@@ -727,8 +733,8 @@ class AssistantEngine(
         val started = clock()
         fun result(answeredBy: ProviderId? = null, model: String? = null, reply: String? = null, error: String? = null, fallbackReason: String? = null) =
             ActiveAiTest(id, answeredBy, model, clock() - started, reply, error, fallbackReason)
-        if (!isOnline()) return result(error = "No internet connection.")
-        val key = secret(id.secret)?.takeIf { it.isNotBlank() } ?: return result(error = "${id.displayName} API key is not set.")
+        if (!isOnline() && id != ProviderId.OLLAMA) return result(error = "No internet connection.")
+        val key = keyFor(id) ?: return result(error = "${id.displayName} API key is not set.")
         val provider = providerFor(id, key)
         val model = when (val m = resolveModel(id, key, provider)) {
             is AiResult.Success -> m.value
