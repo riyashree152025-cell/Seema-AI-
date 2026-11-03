@@ -19,6 +19,7 @@ enum class TtsEngine(val label: String, val hint: String) {
 
 /** How Seema talks. Changes only the tone; honesty and safety rules stay the same. */
 enum class Personality(val label: String, val hint: String) {
+    COMPANION("Humsafar / Girlfriend", "♥ caring, loving, deeply personal, attentive & thoughtful"),
     MASTI("Masti / Fun", "★ witty, playful, a little filmy — never boring"),
     DOST("Dost / Friendly", "warm and caring, light humour"),
     PRO("Professional", "short, clear and to the point"),
@@ -122,7 +123,7 @@ data class UserSettings(
     val thermalProtection: Boolean = true,
     /** Which AI core the Home screen shows. */
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
-    val personality: Personality = Personality.MASTI,
+    val personality: Personality = Personality.COMPANION,
     val announceNotifications: Boolean = false,
     val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),
     /** Say only who wrote, and read the message only after the user taps Read. */

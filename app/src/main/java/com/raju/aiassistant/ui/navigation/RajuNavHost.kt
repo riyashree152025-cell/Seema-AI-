@@ -135,8 +135,10 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            // Slim floating glass navigation on both designs.
-            HoloNavBar(current, navigateTo)
+            // Hide bottom bar on Home screen to allow full Sci-Fi Cockpit immersion; show on all other screens
+            if (current != Destination.Home) {
+                HoloNavBar(current, navigateTo)
+            }
         },
     ) { padding ->
         NavHost(
@@ -156,6 +158,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                 HomeScreen(
                     onOpenChat = { navigateTo(Destination.Chat) },
                     onOpenSettings = { navigateTo(Destination.Settings) },
+                    onOpenApps = { navigateTo(Destination.Apps) },
                     onOpenControlPanel = { navController.navigate(SubRoutes.CONTROL_PANEL) },
                     onOpenVoiceControl = { navController.navigate(SubRoutes.VOICE_CONTROL) },
                     onOpenAiBrain = { navController.navigate(SubRoutes.AI_BRAIN) },
