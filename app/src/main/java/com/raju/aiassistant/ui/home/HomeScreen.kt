@@ -1,6 +1,9 @@
 package com.raju.aiassistant.ui.home
 
 import android.Manifest
+import android.os.SystemClock
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -288,6 +291,8 @@ fun HomeScreen(
 
                     Spacer(Modifier.width(10.dp))
 
+                    var lastOrbTap by remember { mutableLongStateOf(0L) }
+
                     // Center ChatGPT-Style Living Voice Orb (Fluid Multi-Color Aurora Glow, No Old Mic Icon!)
                     SciFiVoiceOrb(
                         isListening = isListening,
@@ -295,10 +300,14 @@ fun HomeScreen(
                         isSpeaking = isSpeaking,
                         speechLevel = speechLevel,
                         onClick = {
-                            if (viewModel.hasMicPermission()) {
-                                if (isListening) viewModel.stop() else viewModel.startVoice()
-                            } else {
-                                micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            val now = SystemClock.elapsedRealtime()
+                            if (now - lastOrbTap >= 600L) {
+                                lastOrbTap = now
+                                if (viewModel.hasMicPermission()) {
+                                    if (isListening) viewModel.stop() else viewModel.startVoice()
+                                } else {
+                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
                         }
                     )

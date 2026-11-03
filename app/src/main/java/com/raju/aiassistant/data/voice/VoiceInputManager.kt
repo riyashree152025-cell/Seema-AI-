@@ -4,11 +4,14 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -56,9 +59,9 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             if (finished || id != session) return
             finished = true
             cancelWatchdog()
-            unmuteBeep()
             _listening.value = false
             release()
+            handler.postDelayed(unmuteRunnable, 250)
             block()
         }
         val r = runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
@@ -77,8 +80,6 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
                 _listening.value = true
                 readyAt = SystemClock.elapsedRealtime()
                 log("stt ready")
-                // The start beep has played (muted) by now: give the user their sound back shortly after.
-                handler.postDelayed(unmuteRunnable, 350)
             }
             override fun onBeginningOfSpeech() {
                 if (id != session) return
@@ -138,7 +139,10 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", com.raju.aiassistant.domain.language.additionalSpeechLanguages(languageTag))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            // Allow 3.5s of comfortable silence so user does not get cut off immediately
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
         }
         log("stt start $languageTag")
         muteBeep()
@@ -167,15 +171,14 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     }
 
     // ------------------------------------------------------------ start-beep muting
-    // Google's recogniser plays a "tu-dung" beep every time it starts. In hands-free mode it restarts
-    // often, so the streams that carry the beep are muted for a moment around each start and always
-    // restored (also by a safety timer). The muted streams are also written down, so that if the app
-    // is killed while they are muted they are restored at the next start (otherwise Seema's own voice,
-    // which plays on the media stream, would stay silent).
+    // Google's recogniser plays a "tu-dung" beep every time it starts and stops.
+    // We request transient exclusive audio focus and mute audio streams around recognizer lifecycle,
+    // holding mute until release() completes, eliminating start & stop earcons completely.
     private val audio: AudioManager? = context.getSystemService(AudioManager::class.java)
     private val prefs = context.getSharedPreferences("voice_input", Context.MODE_PRIVATE)
     private var mutedStreams: List<Int> = emptyList()
     private val unmuteRunnable = Runnable { unmuteBeep() }
+    private var focusRequest: AudioFocusRequest? = null
 
     init {
         // Recover from a crash or kill while the beep streams were muted.
@@ -186,18 +189,50 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         }
     }
 
+    private fun requestFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { }
+                .build()
+            focusRequest = req
+            runCatching { audio?.requestAudioFocus(req) }
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { audio?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE) }
+        }
+    }
+
+    private fun abandonFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest?.let { runCatching { audio?.abandonAudioFocusRequest(it) } }
+            focusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { audio?.abandonAudioFocus(null) }
+        }
+    }
+
     private fun muteBeep() {
+        requestFocus()
         val am = audio ?: return
         if (mutedStreams.isNotEmpty()) return
         mutedStreams = BEEP_STREAMS.filter { stream ->
             !am.isStreamMute(stream) && runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0) }.isSuccess
         }
         if (mutedStreams.isNotEmpty()) prefs.edit().putString(KEY_MUTED, mutedStreams.joinToString(",")).commit()
-        handler.postDelayed(unmuteRunnable, 1_500) // safety net
+        handler.removeCallbacks(unmuteRunnable)
+        handler.postDelayed(unmuteRunnable, 30_000) // safety net
     }
 
     private fun unmuteBeep() {
         handler.removeCallbacks(unmuteRunnable)
+        abandonFocus()
         val am = audio ?: return
         if (mutedStreams.isEmpty()) return
         mutedStreams.forEach { stream -> runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0) } }
@@ -209,10 +244,10 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         session++ // any callback still on its way belongs to an old session now
         cancelWatchdog()
         pendingTimeout = null
-        unmuteBeep()
         recognizer?.let { runCatching { it.cancel() } }
         release()
         _listening.value = false
+        handler.postDelayed(unmuteRunnable, 250)
     }
 
     private fun release() {
