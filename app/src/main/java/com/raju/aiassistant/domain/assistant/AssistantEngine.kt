@@ -204,6 +204,8 @@ class AssistantEngine(
     private var asleep = false
     /** Last time the user spoke or Seema finished a turn; the sleep timer counts from here. */
     private var lastActivityAt = 0L
+    private var lastSpokeAt = 0L
+    private var lastWakeAttemptAt = 0L
     /** Low-confidence recognitions in a row; she asks to repeat only for the first. */
     private var unclearInARow = 0
     /** First half of a sentence the user paused in ("… aur"), waiting for the rest. */
@@ -259,6 +261,23 @@ class AssistantEngine(
             }
             listen()
             return
+        }
+        val requestAfterWake = if (settings.value.wakeWord) afterWakeWord(text) else null
+        if (requestAfterWake != null) {
+            if (requestAfterWake.isBlank()) {
+                // The user only called her name ("हे सीमा" / "सीमा" / "Hey Seema") to wake/greet her:
+                // Instantly reply "हाँ जी, बोलिए?" (or Bengali "হ্যাঁ, বলুন?") and keep listening!
+                scope.launch {
+                    say(phrase(lang(), "हाँ जी, बोलिए?", "হ্যাঁ, বলুন?"), allowBargeIn = false)
+                    _voiceSession.value = true
+                    listen()
+                }
+                return
+            } else {
+                // The user said "हे सीमा, [कमांड]" -> run the clean command without wake prefix
+                submit(requestAfterWake, fromVoice = true)
+                return
+            }
         }
         submit(text, fromVoice = true)
     }
@@ -470,25 +489,39 @@ class AssistantEngine(
 
     private suspend fun onWakeAudio(pcm: ByteArray) {
         if (!asleep) return
-        val t = transcriber
-        if (t == null || !t.isAvailable()) {
-            // Voice detected in standby: wake up and greet Raju warmly ("हाँ जी, बोलिए?" / "হ্যাঁ, বলুন?"), then listen
-            wakeUp(greet = true)
+        val now = clock()
+        if (now - lastSpokeAt < 2_000L) {
+            armWakeListener()
             return
         }
-        val heard = runCatching { t.transcribe(pcm) }.getOrNull()?.trim().orEmpty()
-        if (!asleep) return
-        val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
-        when {
-            request == null -> armWakeListener() // someone else talking, TV, noise: keep sleeping
-            request.isBlank() -> wakeUp() // "Seema?" → "Haan ji, boliye?"
-            else -> {
-                // "Seema, kal ka mausam batao": wake and answer straight away.
-                leaveSleep()
-                _voiceSession.value = true
-                if (callStyleAllowed()) conversationMode.enter()
-                submit(request, fromVoice = true)
+        val t = transcriber
+        if (t != null && t.isAvailable()) {
+            val heard = runCatching { t.transcribe(pcm) }.getOrNull()?.trim().orEmpty()
+            if (!asleep) return
+            val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
+            when {
+                request == null -> armWakeListener() // someone else talking, TV, noise: keep sleeping
+                request.isBlank() -> wakeUp(greet = true) // "Seema?" → "Haan ji, boliye?"
+                else -> {
+                    // "Seema, kal ka mausam batao": wake and answer straight away.
+                    leaveSleep()
+                    _voiceSession.value = true
+                    if (callStyleAllowed()) conversationMode.enter()
+                    submit(request, fromVoice = true)
+                }
             }
+        } else {
+            // Offline / on-device fallback:
+            // Do NOT blindly speak "हाँ जी बोलिए" on ambient noise (which causes infinite loop).
+            // Instead, wake up SILENTLY into listen() (greet = false).
+            // The recognizer listens on-device: if user actually said "हे सीमा",
+            // onHeard() will greet. If it was just room noise, it silently returns to standby without making any sound!
+            if (now - lastWakeAttemptAt < 3_000L) {
+                armWakeListener()
+                return
+            }
+            lastWakeAttemptAt = now
+            wakeUp(greet = false)
         }
     }
 
@@ -821,6 +854,7 @@ class AssistantEngine(
             if (!interrupted.get()) bargeIn.stop()
         }
         lastSpoken = text
+        lastSpokeAt = clock()
         if (interrupted.get()) {
             trace("interrupted by the user after ${speaker.playedChunks} part(s)")
             onInterrupted(spoken, capture, utterance, depth)
