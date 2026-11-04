@@ -225,7 +225,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         mutedStreams = BEEP_STREAMS.filter { stream ->
             !am.isStreamMute(stream) && runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0) }.isSuccess
         }
-        if (mutedStreams.isNotEmpty()) prefs.edit().putString(KEY_MUTED, mutedStreams.joinToString(",")).commit()
+        if (mutedStreams.isNotEmpty()) prefs.edit().putString(KEY_MUTED, mutedStreams.joinToString(",")).apply()
         handler.removeCallbacks(unmuteRunnable)
         handler.postDelayed(unmuteRunnable, 30_000) // safety net
     }

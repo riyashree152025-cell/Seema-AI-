@@ -82,7 +82,7 @@ fun MemoryCenterScreen(
     val container = (context.applicationContext as RajuApp).container
     val scope = rememberCoroutineScope()
 
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
+    val settings by container.currentSettings.collectAsStateWithLifecycle()
     val memories by container.memoryRepository.memories.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showViewDialog by remember { mutableStateOf(false) }

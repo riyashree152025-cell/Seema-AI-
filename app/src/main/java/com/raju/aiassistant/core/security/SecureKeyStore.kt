@@ -53,7 +53,7 @@ class SecureKeyStore(context: Context) {
     suspend fun get(id: SecretId): String? = withContext(Dispatchers.IO) {
         val value = read(id)
         if (value == null && prefs.contains(id.storageKey)) {
-            prefs.edit().remove(id.storageKey).commit()
+            prefs.edit().remove(id.storageKey).apply()
             _configured.value = readConfiguredIds()
         }
         value

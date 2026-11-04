@@ -74,7 +74,7 @@ fun VoiceControlScreen(
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
+    val settings by container.currentSettings.collectAsStateWithLifecycle()
     val assistantState by container.engine.state.collectAsStateWithLifecycle()
     val isListening by container.engine.listening.collectAsStateWithLifecycle()
     val speechLevel by container.engine.speechLevel.collectAsStateWithLifecycle()

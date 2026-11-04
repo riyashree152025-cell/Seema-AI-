@@ -83,9 +83,11 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
             when (event) {
                 Lifecycle.Event.ON_START -> scope.launch {
                     val s = container.settingsRepository.settings.first() // stored values, not the startup default
-                    if (s.autoListen && !s.assistantPaused) {
-                        if (container.voiceInput.hasPermission()) container.engine.startHandsFree()
-                        else if (!askedMic) {
+                    if (!s.assistantPaused) {
+                        if (container.voiceInput.hasPermission()) {
+                            if (s.autoListen) container.engine.startHandsFree()
+                            else if (s.wakeWord) container.engine.startStandby()
+                        } else if (!askedMic) {
                             askedMic = true
                             handsFreeMic.launch(Manifest.permission.RECORD_AUDIO)
                         }

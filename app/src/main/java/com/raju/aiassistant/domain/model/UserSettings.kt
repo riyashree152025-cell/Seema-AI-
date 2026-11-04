@@ -124,16 +124,16 @@ data class UserSettings(
     /** Which AI core the Home screen shows. */
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
     val personality: Personality = Personality.COMPANION,
-    val announceNotifications: Boolean = false,
+    val announceNotifications: Boolean = true,
     val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),
     /** Say only who wrote, and read the message only after the user taps Read. */
     val askBeforeReading: Boolean = true,
-    /** Announce incoming phone (SIM) calls. Needs the call-screening role. Off until the user opts in. */
-    val announceCalls: Boolean = false,
+    /** Announce incoming phone (SIM) calls. Needs the call-screening role. */
+    val announceCalls: Boolean = true,
     /** Speak the number of callers who are not in Contacts (otherwise "unknown number"). */
-    val speakCallerNumber: Boolean = false,
+    val speakCallerNumber: Boolean = true,
     /** Best effort: announce WhatsApp/Telegram calls from their call notifications. */
-    val announceAppCalls: Boolean = false,
+    val announceAppCalls: Boolean = true,
     val directCalling: Boolean = false,
     val musicService: MusicService = MusicService.YOUTUBE_MUSIC,
     val memoryEnabled: Boolean = true,

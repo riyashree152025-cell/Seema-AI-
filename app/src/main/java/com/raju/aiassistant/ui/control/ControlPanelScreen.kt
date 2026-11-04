@@ -93,7 +93,7 @@ fun ControlPanelScreen(
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
+    val settings by container.currentSettings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     var automationEnabled by remember { mutableStateOf(!settings.assistantPaused) }

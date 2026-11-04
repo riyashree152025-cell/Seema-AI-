@@ -58,15 +58,38 @@ fun detectScript(text: String): Detection {
     }
 }
 
+private val ROMAN_BENGALI_WORDS = setOf(
+    "kemon", "aacho", "acho", "achho", "aami", "ami", "tumi", "tomar", "amader",
+    "bhalo", "bhaloachi", "korcho", "korchho", "shono", "bolchi", "bolun",
+    "kothay", "ekhon", "kichu", "kintu", "khobor", "valo", "shuncho", "bolo", "hobe", "cheno", "cheni"
+)
+
+private val ROMAN_HINDI_WORDS = setOf(
+    "kaise", "kaisa", "kaisi", "kya", "kar", "rahe", "rahi", "mera", "meri", "mere",
+    "mujhko", "mujhe", "batao", "suno", "bolo", "boliye", "kaha", "kahan", "nahi", "nahin"
+)
+
+fun detectLatinLanguage(text: String): SeemaLanguage? {
+    val words = text.lowercase().split(Regex("[^a-z]+")).filter { it.isNotBlank() }
+    val bnScore = words.count { it in ROMAN_BENGALI_WORDS }
+    val hiScore = words.count { it in ROMAN_HINDI_WORDS }
+    return when {
+        bnScore > hiScore -> SeemaLanguage.BENGALI
+        hiScore > bnScore -> SeemaLanguage.HINDI
+        else -> null
+    }
+}
+
 /**
  * The language of the conversation after the user said [text]:
  * a fixed choice in Settings always wins; in Auto, Bengali/Hindi script switches the language,
- * Latin (Hinglish) or mixed text keeps the current one (continuity).
+ * Latin (Hinglish/Benglish) switches if distinct keywords match, or keeps the current one.
  */
 fun nextConversationLanguage(setting: String, current: SeemaLanguage, text: String): SeemaLanguage =
     SeemaLanguage.fromTag(setting) ?: when (detectScript(text)) {
         Detection.BENGALI -> SeemaLanguage.BENGALI
         Detection.HINDI -> SeemaLanguage.HINDI
+        Detection.LATIN -> detectLatinLanguage(text) ?: current
         else -> current
     }
 

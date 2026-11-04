@@ -104,7 +104,7 @@ fun AiBrainScreen(
     val container = (context.applicationContext as RajuApp).container
     val scope = rememberCoroutineScope()
 
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
+    val settings by container.currentSettings.collectAsStateWithLifecycle()
     val configuredSecrets by container.secureKeyStore.configured.collectAsStateWithLifecycle(initialValue = emptySet())
     val latencies by container.engine.latencies.collectAsStateWithLifecycle()
 

@@ -158,7 +158,12 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Tap on the reactor: stops her talking, or wakes her from sleep mode. */
     fun tapReactor() {
-        if (engine.state.value == AssistantState.Sleeping) engine.wakeUp() else engine.interrupt()
+        when {
+            engine.state.value == AssistantState.Sleeping -> engine.wakeUp(greet = true)
+            engine.state.value == AssistantState.Speaking -> engine.interrupt()
+            engine.listening.value -> engine.interrupt()
+            else -> engine.startVoice()
+        }
     }
 
     /** The "Design" tag on Home: switches between the Arc Reactor and the 3D core in one tap (saved). */

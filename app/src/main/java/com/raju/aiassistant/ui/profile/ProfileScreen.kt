@@ -67,7 +67,7 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = container.currentSettings.value)
+    val settings by container.currentSettings.collectAsStateWithLifecycle()
     val messageCount by container.chatDao.messageCount().collectAsStateWithLifecycle(initialValue = 1200)
     val actionCount by container.actionLogDao.actionCount().collectAsStateWithLifecycle(initialValue = 5800)
     val scope = rememberCoroutineScope()

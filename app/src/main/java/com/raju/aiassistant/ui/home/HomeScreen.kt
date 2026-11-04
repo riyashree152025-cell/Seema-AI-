@@ -95,6 +95,7 @@ fun HomeScreen(
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) viewModel.startAlwaysListening() else viewModel.micDenied()
     }
+    var lastOrbTap by remember { mutableLongStateOf(0L) }
 
     val profile = motionProfileFor(
         lowPowerMode = state.lowPowerMode || state.systemPowerSave,
@@ -176,7 +177,22 @@ fun HomeScreen(
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                val now = SystemClock.elapsedRealtime()
+                                if (now - lastOrbTap >= 600L) {
+                                    lastOrbTap = now
+                                    if (viewModel.hasMicPermission()) {
+                                        viewModel.tapReactor()
+                                    } else {
+                                        micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
+                            }
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     val coreSize = minOf(maxWidth, maxHeight) * 0.98f
@@ -291,8 +307,6 @@ fun HomeScreen(
 
                     Spacer(Modifier.width(10.dp))
 
-                    var lastOrbTap by remember { mutableLongStateOf(0L) }
-
                     // Center ChatGPT-Style Living Voice Orb (Fluid Multi-Color Aurora Glow, No Old Mic Icon!)
                     SciFiVoiceOrb(
                         isListening = isListening,
@@ -304,7 +318,7 @@ fun HomeScreen(
                             if (now - lastOrbTap >= 600L) {
                                 lastOrbTap = now
                                 if (viewModel.hasMicPermission()) {
-                                    if (isListening) viewModel.stop() else viewModel.startVoice()
+                                    viewModel.tapReactor()
                                 } else {
                                     micLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 }

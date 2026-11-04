@@ -746,8 +746,8 @@ fun SciFiStateCapsule(
         isListening || state == AssistantState.Listening -> Triple("LISTENING", Color(0xFF00E5FF), "Voice Active")
         state == AssistantState.Thinking -> Triple("THINKING", Color(0xFFB388FF), "AI Processing")
         state == AssistantState.Speaking -> Triple("SPEAKING", Color(0xFF0077FF), "Voice Output")
-        state == AssistantState.Sleeping -> Triple("SLEEPING", Color(0xFFFFB300), "Tap to Wake")
-        else -> Triple("READY", Color(0xFF00E676), "SEEMA AI")
+        state == AssistantState.Sleeping -> Triple("STANDBY", Color(0xFF00E5FF), "Say 'हे सीमा' or Tap")
+        else -> Triple("READY", Color(0xFF00E676), "Say 'हे सीमा' or Tap")
     }
 
     Box(

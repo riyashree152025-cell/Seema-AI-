@@ -310,6 +310,14 @@ class AssistantEngine(
         if (!_voiceSession.value && !busy && _pending.value == null) startVoice()
     }
 
+    /** Standby wake-word listening: listens silently for her name ("Seema" / "सीमा") while app is open. */
+    fun startStandby() {
+        if (settings.value.assistantPaused) return
+        if (!asleep && _state.value == AssistantState.Idle) {
+            goToSleep()
+        }
+    }
+
     /** App went to the background: release the microphone. Hands-free resumes with [startHandsFree]. */
     fun suspendListening() {
         conversationMode.exit()
@@ -457,10 +465,8 @@ class AssistantEngine(
         if (!asleep) return
         val t = transcriber
         if (t == null || !t.isAvailable()) {
-            // No speech-to-text for the recording: any voice wakes her, and she listens properly.
-            wakeUp(greet = false)
-            // If it was only the TV, she dozes off again after a short while.
-            lastActivityAt = clock() - settings.value.sleepAfterSeconds * 1_000L + 12_000L
+            // Voice detected in standby: wake up and greet Raju warmly ("हाँ जी, बोलिए?" / "হ্যাঁ, বলুন?"), then listen
+            wakeUp(greet = true)
             return
         }
         val heard = runCatching { t.transcribe(pcm) }.getOrNull()?.trim().orEmpty()

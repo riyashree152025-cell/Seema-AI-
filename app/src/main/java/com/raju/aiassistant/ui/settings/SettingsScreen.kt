@@ -438,6 +438,45 @@ fun SettingsScreen(
                             viewModel = viewModel,
                             title = "Web Search Key (Tavily)",
                         )
+
+                        Spacer(Modifier.height(16.dp))
+                        Text("Voice API Keys (Ultra-Realistic Speech)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
+
+                        // Sarvam AI (Bulbul / Priya)
+                        val sarvamSecret = state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.SARVAM_API_KEY,
+                            status = sarvamSecret,
+                            viewModel = viewModel,
+                            title = "Sarvam AI (Bulbul / Priya) Voice Key",
+                        )
+
+                        // ElevenLabs
+                        val elevenSecret = state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.ELEVENLABS_API_KEY,
+                            status = elevenSecret,
+                            viewModel = viewModel,
+                            title = "ElevenLabs Voice Key",
+                        )
+
+                        // Cartesia Sonic
+                        val cartesiaSecret = state.secrets[SecretId.CARTESIA_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.CARTESIA_API_KEY,
+                            status = cartesiaSecret,
+                            viewModel = viewModel,
+                            title = "Cartesia Voice Key",
+                        )
+
+                        // Deepgram Aura
+                        val deepgramSecret = state.secrets[SecretId.DEEPGRAM_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.DEEPGRAM_API_KEY,
+                            status = deepgramSecret,
+                            viewModel = viewModel,
+                            title = "Deepgram Voice Key",
+                        )
                     }
                 },
                 confirmButton = {
@@ -468,6 +507,23 @@ fun SettingsScreen(
 
                         Text("TTS Engine", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
                         VoiceEngineManager(s, viewModel)
+
+                        Spacer(Modifier.height(8.dp))
+                        Text("Voice API Keys (Sarvam / ElevenLabs)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
+                        val sarvamVoiceSec = state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.SARVAM_API_KEY,
+                            status = sarvamVoiceSec,
+                            viewModel = viewModel,
+                            title = "Sarvam AI (Bulbul / Priya) Voice Key",
+                        )
+                        val elevenVoiceSec = state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus()
+                        SecretCard(
+                            id = SecretId.ELEVENLABS_API_KEY,
+                            status = elevenVoiceSec,
+                            viewModel = viewModel,
+                            title = "ElevenLabs Voice Key",
+                        )
 
                         Text("Speech Rate (${String.format("%.1f", s.speechRate)}x)", style = MaterialTheme.typography.bodyMedium)
                         Slider(
@@ -583,6 +639,16 @@ fun SettingsScreen(
                             checked = s.askBeforeReading,
                             onChange = viewModel::setAskBeforeReading,
                         )
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Android Notification Access", color = NeonCyan)
+                        }
                     }
                 },
                 confirmButton = {
