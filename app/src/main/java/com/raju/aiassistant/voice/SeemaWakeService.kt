@@ -28,15 +28,20 @@ class SeemaWakeService : Service() {
         super.onCreate()
         createNotificationChannel()
         val notification = buildForegroundNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        // Android 14+ throws if a microphone service starts without the permission or from the
+        // background: stop quietly instead of crashing the app.
+        val started = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+                startForeground(NOTIFICATION_ID, notification, type)
             } else {
-                0
+                startForeground(NOTIFICATION_ID, notification)
             }
-            startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        }
+        if (started.isFailure) {
+            android.util.Log.w("SeemaWake", "standby service not started: ${started.exceptionOrNull()?.javaClass?.simpleName}")
+            stopSelf()
+            return
         }
 
         runCatching {
@@ -48,9 +53,9 @@ class SeemaWakeService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
-    }
+    // Not restarted by Android from the background (it could not get the microphone there);
+    // opening the app starts it again.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -102,7 +107,11 @@ class SeemaWakeService : Service() {
         const val CHANNEL_ID = "seema_wake_standby_channel"
         const val NOTIFICATION_ID = 9021
 
+        /** Call while the app is on screen. Needs the microphone permission (otherwise it is not started). */
         fun start(context: Context) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) return
             runCatching {
                 val intent = Intent(context, SeemaWakeService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

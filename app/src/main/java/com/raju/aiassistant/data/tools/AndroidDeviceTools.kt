@@ -216,23 +216,38 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return start(intent, msg, "Could not open WhatsApp.")
     }
 
-    override fun endCall(): ToolOutcome {
+    override fun endCall(): ToolOutcome = telecomCall(answer = false)
+
+    override fun answerCall(): ToolOutcome = telecomCall(answer = true)
+
+    /** Ends or answers the ringing/active call (Android 9+, needs ANSWER_PHONE_CALLS). */
+    @Suppress("DEPRECATION") // endCall/acceptRingingCall are deprecated but still the only API for non-dialer apps
+    private fun telecomCall(answer: Boolean): ToolOutcome {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return ToolOutcome.Failed(if (answer) "कॉल उठाने के लिए Android 9+ आवश्यक है।" else "कॉल कट करने के लिए Android 9+ आवश्यक है।")
+        }
         val tm = context.getSystemService(TelecomManager::class.java)
             ?: return ToolOutcome.Failed("Telecom service is not available.")
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
+            return ToolOutcome.NeedsPermission(
+                Manifest.permission.ANSWER_PHONE_CALLS,
+                if (answer) "कॉल उठाने के लिए अनुमति आवश्यक है।" else "कॉल कट करने के लिए अनुमति आवश्यक है।",
+            )
+        }
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                if (granted(Manifest.permission.ANSWER_PHONE_CALLS)) {
-                    val ended = tm.endCall()
-                    if (ended) ToolOutcome.Done("फोन कॉल कट कर दिया गया है।")
-                    else ToolOutcome.Failed("कोई एक्टिव कॉल नहीं मिली।")
-                } else {
-                    ToolOutcome.NeedsPermission(Manifest.permission.ANSWER_PHONE_CALLS, "कॉल कट करने के लिए अनुमति आवश्यक है।")
-                }
+            if (answer) {
+                // Ringing is visible in the audio mode (no extra permission needed).
+                val ringing = context.getSystemService(android.media.AudioManager::class.java)?.mode == android.media.AudioManager.MODE_RINGTONE
+                if (!ringing) return ToolOutcome.Failed("अभी कोई कॉल नहीं आ रही है।")
+                tm.acceptRingingCall()
+                ToolOutcome.Done("कॉल उठा ली है।")
             } else {
-                ToolOutcome.Failed("कॉल कट करने के लिए Android 9+ आवश्यक है।")
+                if (tm.endCall()) ToolOutcome.Done("फोन कॉल कट कर दिया गया है।") else ToolOutcome.Failed("कोई एक्टिव कॉल नहीं मिली।")
             }
+        } catch (e: SecurityException) {
+            ToolOutcome.NeedsPermission(Manifest.permission.ANSWER_PHONE_CALLS, "फोन ने कॉल कंट्रोल की अनुमति नहीं दी।")
         } catch (e: Exception) {
-            ToolOutcome.Failed("कॉल कट करने में समस्या आई: ${e.message}")
+            ToolOutcome.Failed("कॉल में समस्या आई: ${e.message}")
         }
     }
 

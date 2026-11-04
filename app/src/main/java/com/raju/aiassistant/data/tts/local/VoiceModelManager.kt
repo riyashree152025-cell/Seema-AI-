@@ -3,6 +3,7 @@ package com.raju.aiassistant.data.tts.local
 import android.content.Context
 import android.net.ConnectivityManager
 import com.raju.aiassistant.domain.model.TtsEngine
+import com.raju.aiassistant.domain.voice.DownloadableModel
 import com.raju.aiassistant.domain.voice.LOCAL_VOICE_CATALOG
 import com.raju.aiassistant.domain.voice.LocalVoiceModel
 import kotlinx.coroutines.CoroutineScope
@@ -39,11 +40,11 @@ sealed interface ModelState {
  * against the catalog's SHA-256 and unpacked into app-private storage. After that the voice works
  * without internet.
  */
-class VoiceModelManager(
+class VoiceModelManager<M : DownloadableModel>(
     private val context: Context,
     http: OkHttpClient,
     private val scope: CoroutineScope,
-    val catalog: List<LocalVoiceModel> = LOCAL_VOICE_CATALOG,
+    val catalog: List<M>,
 ) {
     // Large files: no call timeout, generous read timeout per chunk.
     private val http = http.newBuilder().callTimeout(0, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
@@ -53,18 +54,15 @@ class VoiceModelManager(
     private val _states = MutableStateFlow(catalog.associate { it.id to stateOnDisk(it) })
     val states: StateFlow<Map<String, ModelState>> = _states.asStateFlow()
 
-    /** Engines with an installed model (ready to use offline). */
-    fun installedEngines(): Set<TtsEngine> = catalog.filter { _states.value[it.id] is ModelState.Installed }.map { it.engine }.toSet()
-
-    fun installedModel(engine: TtsEngine): LocalVoiceModel? = catalog.firstOrNull { it.engine == engine && _states.value[it.id] is ModelState.Installed }
+    fun isInstalled(model: M): Boolean = _states.value[model.id] is ModelState.Installed
 
     /** Directory that holds the model's files (only meaningful when installed). */
-    fun modelDir(model: LocalVoiceModel) = File(File(root, model.id), model.dirName)
+    fun modelDir(model: M) = File(File(root, model.id), model.dirName)
 
     /** True on mobile data or another metered network (the UI warns before a big download). */
     fun onMeteredNetwork(): Boolean = runCatching { context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered == true }.getOrDefault(false)
 
-    fun download(model: LocalVoiceModel) {
+    fun download(model: M) {
         if (jobs[model.id]?.isActive == true) return
         jobs[model.id] = scope.launch(Dispatchers.IO) {
             val result = runCatching { install(model) }
@@ -72,19 +70,19 @@ class VoiceModelManager(
         }
     }
 
-    fun cancel(model: LocalVoiceModel) {
+    fun cancel(model: M) {
         jobs.remove(model.id)?.cancel()
         set(model, stateOnDisk(model))
     }
 
-    fun delete(model: LocalVoiceModel) {
+    fun delete(model: M) {
         cancel(model)
         File(root, model.id).deleteRecursively()
         partFile(model).delete()
         set(model, ModelState.NotInstalled)
     }
 
-    private suspend fun install(model: LocalVoiceModel) = withContext(Dispatchers.IO) {
+    private suspend fun install(model: M) = withContext(Dispatchers.IO) {
         val part = partFile(model)
         part.parentFile?.mkdirs()
         // Resume: ask only for the bytes that are still missing.
@@ -136,7 +134,7 @@ class VoiceModelManager(
         part.delete()
     }
 
-    private fun stateOnDisk(model: LocalVoiceModel): ModelState {
+    private fun stateOnDisk(model: M): ModelState {
         val marker = File(File(root, model.id), MARKER)
         if (!marker.isFile) return ModelState.NotInstalled
         val lines = runCatching { marker.readLines() }.getOrDefault(emptyList())
@@ -146,11 +144,11 @@ class VoiceModelManager(
         return ModelState.Installed(version, updateAvailable = version < model.version || lines.getOrNull(1) != model.sha256)
     }
 
-    private fun set(model: LocalVoiceModel, state: ModelState) {
+    private fun set(model: M, state: ModelState) {
         _states.value = _states.value + (model.id to state)
     }
 
-    private fun partFile(model: LocalVoiceModel) = File(File(context.cacheDir, "voice-downloads"), "${model.id}.part")
+    private fun partFile(model: M) = File(File(context.cacheDir, "voice-downloads"), "${model.id}.part")
 
     companion object {
         private const val MARKER = "installed.txt"
@@ -190,3 +188,13 @@ class VoiceModelManager(
         }
     }
 }
+
+/** Offline voices (Piper, Kokoro). */
+typealias VoiceModels = VoiceModelManager<LocalVoiceModel>
+
+fun voiceModels(context: Context, http: OkHttpClient, scope: CoroutineScope): VoiceModels = VoiceModelManager(context, http, scope, LOCAL_VOICE_CATALOG)
+
+/** Engines with an installed model (ready to use offline). */
+fun VoiceModels.installedEngines(): Set<TtsEngine> = catalog.filter { isInstalled(it) }.map { it.engine }.toSet()
+
+fun VoiceModels.installedModel(engine: TtsEngine): LocalVoiceModel? = catalog.firstOrNull { it.engine == engine && isInstalled(it) }

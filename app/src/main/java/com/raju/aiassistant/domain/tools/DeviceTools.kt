@@ -49,6 +49,7 @@ interface DeviceTools {
     fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
+    fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
     fun goHome(): ToolOutcome = ToolOutcome.Failed("Going home is not supported here.")
     fun openSeema(): ToolOutcome = ToolOutcome.Failed("Opening Seema is not supported here.")
 }

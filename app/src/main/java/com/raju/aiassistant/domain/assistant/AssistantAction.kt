@@ -94,6 +94,9 @@ sealed interface AssistantAction {
     data object EndCall : AssistantAction {
         override val label get() = "End active call"
     }
+    data object AnswerCall : AssistantAction {
+        override val label get() = "Answer ringing call"
+    }
     data object GoHome : AssistantAction {
         override val label get() = "Go to home screen"
     }
@@ -216,6 +219,7 @@ private fun parseAction(json: String): AssistantAction? {
         "battery" -> AssistantAction.Battery
         "find_phone", "ring_phone" -> AssistantAction.FindPhone
         "end_call", "cut_call", "hangup", "hang_up" -> AssistantAction.EndCall
+        "answer_call", "pick_call", "accept_call", "receive_call" -> AssistantAction.AnswerCall
         "go_home", "home", "home_screen" -> AssistantAction.GoHome
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }

@@ -1,5 +1,6 @@
 package com.raju.aiassistant.di
 
+import com.raju.aiassistant.data.tts.local.installedEngines
 import android.content.Context
 import com.raju.aiassistant.core.audio.AudioPlayer
 import com.raju.aiassistant.core.audio.ConversationAudio
@@ -142,7 +143,34 @@ class AppContainer(context: Context) {
     val conversationAudio by lazy { ConversationAudio(appContext) }
     val audioPlayer by lazy { AudioPlayer(appContext) { conversationAudio.active } }
     /** Offline voices: model downloads, the sherpa-onnx runtime and measured engine speed. */
-    val voiceModels by lazy { com.raju.aiassistant.data.tts.local.VoiceModelManager(appContext, http, appScope) }
+    val voiceModels by lazy { com.raju.aiassistant.data.tts.local.voiceModels(appContext, http, appScope) }
+    /** The offline "Hey Seema" model download (same downloader as the offline voices). */
+    val wakeModels by lazy {
+        com.raju.aiassistant.data.tts.local.VoiceModelManager(appContext, http, appScope, listOf(com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL))
+    }
+    val kwsWakeListener by lazy {
+        com.raju.aiassistant.data.voice.KwsWakeListener(appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { sherpaHost.nativeAvailable }) {
+            android.util.Log.i("SeemaVoice", it)
+        }
+    }
+    /** Standby: offline "Hey Seema" when downloaded and "wake by name" is on; otherwise the voice detector (+ Deepgram name check). */
+    val wakeListener by lazy {
+        com.raju.aiassistant.data.voice.SwitchingWakeListener(kwsWakeListener, MicWakeListener(appContext, appScope)) { currentSettings.value.wakeWord }
+    }
+    /** Phone calls and headphone disconnects (started in RajuApp). */
+    val audioInterruptions by lazy {
+        com.raju.aiassistant.core.audio.AudioInterruptions(
+            appContext,
+            onCall = { phase ->
+                when (phase) {
+                    com.raju.aiassistant.core.audio.CallPhase.RINGING -> engine.onCallRinging()
+                    com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> engine.pauseForCall()
+                    com.raju.aiassistant.core.audio.CallPhase.NONE -> engine.resumeAfterCall()
+                }
+            },
+            onBecomingNoisy = { engine.interrupt() },
+        )
+    }
     val sherpaHost by lazy { com.raju.aiassistant.data.tts.local.SherpaTtsHost(voiceModels) }
     val voiceEngineStats by lazy { com.raju.aiassistant.data.tts.local.VoiceEngineStatsStore(appContext) }
 
@@ -267,7 +295,8 @@ class AppContainer(context: Context) {
             bargeIn = MicBargeIn(appContext, appScope, playbackLevel = { audioPlayer.levelNow() }, callStyle = { conversationAudio.active }),
             conversationMode = conversationAudio,
             transcriber = deepgramTranscriber,
-            wakeListener = MicWakeListener(appContext, appScope),
+            wakeListener = wakeListener,
+            onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
             business = businessRepository,
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,

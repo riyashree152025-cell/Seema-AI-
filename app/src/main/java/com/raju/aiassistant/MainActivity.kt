@@ -33,15 +33,14 @@ class MainActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
-        // Start continuous background microphone service
-        SeemaWakeService.start(this)
 
         // Auto-heal provider selection to guaranteed-working Gemini if current provider is broken or unconfigured
         val appContainer = (application as RajuApp).container
         appContainer.appScope.launch {
             val configured = appContainer.secureKeyStore.configured.value
             val s = appContainer.currentSettings.value
-            if (s.defaultProvider == com.raju.aiassistant.domain.ai.ProviderId.OLLAMA || s.defaultProvider.secret !in configured) {
+            // Only a provider that cannot work is replaced (Ollama counts as set up once its PC address is saved).
+            if (s.defaultProvider.secret !in configured) {
                 if (com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY in configured) {
                     appContainer.settingsRepository.setDefaultProvider(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
                 }
@@ -60,6 +59,13 @@ class MainActivity : ComponentActivity() {
                 RajuNavHost()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Background standby for "Hey Seema" (started while the app is on screen, as Android requires;
+        // needs the microphone permission, so it also starts right after that is granted).
+        SeemaWakeService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {

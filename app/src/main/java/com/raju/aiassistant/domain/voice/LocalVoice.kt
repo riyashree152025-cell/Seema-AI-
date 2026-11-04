@@ -13,27 +13,39 @@ data class LocalSpeaker(val id: Int, val name: String, val note: String)
  * internet. Every field was checked against the real release archive (size, SHA-256, files,
  * speakers, license); see docs/OFFLINE_VOICE_ENGINES.md. New engines are added here.
  */
+/** A model archive that is downloaded once, checked against its SHA-256 and unpacked on the phone. */
+interface DownloadableModel {
+    val id: String
+    val title: String
+    val url: String
+    val sizeBytes: Long
+    val sha256: String
+    /** Top-level directory inside the archive. */
+    val dirName: String
+    /** A file inside [dirName] that must exist after unpacking. */
+    val modelFile: String
+    /** Increase when the catalog points to a new archive: installed copies then show "Update". */
+    val version: Int
+}
+
 data class LocalVoiceModel(
-    val id: String,
+    override val id: String,
     val engine: TtsEngine,
     val kind: LocalModelKind,
-    val title: String,
+    override val title: String,
     val language: String,
-    val url: String,
-    val sizeBytes: Long,
-    val sha256: String,
-    /** Top-level directory inside the archive. */
-    val dirName: String,
-    /** Model file inside [dirName]. */
-    val modelFile: String,
+    override val url: String,
+    override val sizeBytes: Long,
+    override val sha256: String,
+    override val dirName: String,
+    override val modelFile: String,
     val voicesFile: String = "",
     val speakers: List<LocalSpeaker>,
     val license: String,
-    /** Increase when the catalog points to a new archive: installed copies then show "Update". */
-    val version: Int = 1,
+    override val version: Int = 1,
     /** espeak-ng language for Kokoro. */
     val lang: String = "",
-)
+) : DownloadableModel
 
 private const val TTS_MODELS = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
 

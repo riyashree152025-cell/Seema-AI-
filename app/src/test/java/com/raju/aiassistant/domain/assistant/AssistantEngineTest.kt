@@ -70,6 +70,10 @@ class AssistantEngineTest {
 
     private class FakeTools(var contacts: ContactLookup = ContactLookup.Found(emptyList())) : DeviceTools {
         val dialed = mutableListOf<Contact>()
+        var answered = 0
+        var ended = 0
+        override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
+        override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
         val music = mutableListOf<Pair<String, MusicService>>()
         val timers = mutableListOf<Int>()
         val sms = mutableListOf<Pair<String, String>>()
@@ -1219,5 +1223,60 @@ class AssistantEngineTest {
         settle()
         assertEquals("Groq ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
         assertNull(e.lastError.value)
+    }
+
+    @Test
+    fun sayingYesWhileACallRingsAnswersItWithoutTheAi() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("haan utha lo")
+        settle()
+        assertEquals(1, tools.answered)
+        assertEquals(0, tools.ended)
+        assertEquals(0, provider.calls.size) // no AI request
+    }
+
+    @Test
+    fun sayingNoWhileACallRingsRejectsIt() = runTest {
+        val e = engine()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("mat uthao, kaat do")
+        settle()
+        assertEquals(1, tools.ended)
+        assertEquals(0, tools.answered)
+    }
+
+    @Test
+    fun anAnsweredCallReleasesTheMicAndHandsFreeComesBackAfterIt() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val e = engine()
+        e.startHandsFree()
+        runCurrent()
+        e.pauseForCall()
+        e.pauseForCall()
+        runCurrent()
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertTrue(!e.voiceSession.value)
+        val before = voice.starts
+        e.resumeAfterCall()
+        runCurrent()
+        assertEquals(before + 1, voice.starts)
+        e.resumeAfterCall()
+        runCurrent()
+        assertEquals(before + 1, voice.starts)
+    }
+
+    @Test
+    fun outsideACallYesIsAnOrdinaryMessage() = runTest {
+        val e = engine(AiResult.Success("Ji"))
+        e.startVoice()
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(0, tools.answered)
+        assertEquals(1, provider.calls.size)
     }
 }

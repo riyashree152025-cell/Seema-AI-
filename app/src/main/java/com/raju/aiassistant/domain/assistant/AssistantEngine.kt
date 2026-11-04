@@ -1,5 +1,7 @@
 package com.raju.aiassistant.domain.assistant
 
+import com.raju.aiassistant.domain.notify.callCommand
+import com.raju.aiassistant.domain.notify.CallCommand
 import com.raju.aiassistant.data.search.WebSearch
 import com.raju.aiassistant.domain.ai.AiProvider
 import com.raju.aiassistant.domain.ai.Turn
@@ -81,6 +83,8 @@ private const val AI_TIMEOUT_MS = 45_000L
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
+/** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
+private const val CALL_COMMAND_WINDOW_MS = 25_000L
 private const val MAX_LISTEN_FAILURES = 3
 /** Chat messages kept in memory (older ones stay in the database). */
 private const val MAX_TRANSCRIPT_IN_MEMORY = 300
@@ -132,6 +136,8 @@ class AssistantEngine(
     /** Other AI providers to try when the chosen one fails (auto fallback). */
     private val fallbackProviders: () -> List<ProviderId> = { emptyList() },
     private val latestNotification: () -> String? = { null },
+    /** Called when she really wakes up (her name was recognised): the app turns the screen on. */
+    private val onWake: () -> Unit = {},
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -250,6 +256,7 @@ class AssistantEngine(
      */
     private fun onHeard(heard: String) {
         trace("recognized (${heard.length} chars)")
+        if (handleCallCommand(heard)) return
         val text = heldVoiceText?.let { "$it $heard" } ?: heard
         _heard.value = text
         heldVoiceText = null
@@ -496,6 +503,13 @@ class AssistantEngine(
 
     private suspend fun onWakeAudio(pcm: ByteArray) {
         if (!asleep) return
+        if (wakeListener.spotsWakeWord) {
+            // The offline detector heard "Hey Seema" on the phone itself: wake and listen.
+            trace("wake word (offline)")
+            onWake()
+            wakeUp(greet = true)
+            return
+        }
         val now = clock()
         if (now - lastSpokeAt < 2_000L) {
             armWakeListener()
@@ -511,8 +525,9 @@ class AssistantEngine(
             trace("wake request: $request")
             when {
                 request == null -> armWakeListener() // someone else talking, TV, noise: keep sleeping
-                request.isBlank() -> wakeUp(greet = true) // "Seema?" → "Haan ji, boliye?"
+                request.isBlank() -> { onWake(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
                 else -> {
+                    onWake()
                     // "Seema, kal ka mausam batao": wake and answer straight away.
                     leaveSleep()
                     _voiceSession.value = true
@@ -966,6 +981,82 @@ class AssistantEngine(
     }
 
     /** "Ruko": stop speaking right now but keep the conversation (hands-free listens again next). */
+    // ---------------------------------------------------------------- phone calls
+
+    @Volatile private var callCommandUntil = 0L
+    @Volatile private var pausedForCall = false
+    private var handsFreeBeforeCall = false
+
+    /** A call rings: her own reply stops; the microphone stays usable so she can hear "utha lo" / "kaat do". */
+    fun onCallRinging() {
+        trace("call ringing")
+        cancelWork()
+    }
+
+    /** After the caller announcement ("… ka call aa raha hai. Utha lun?"): listens for "haan / utha lo" or "kaat do". */
+    fun listenForCallCommand() {
+        if (settings.value.assistantPaused || !voice.isAvailable() || pausedForCall) return
+        callCommandUntil = clock() + CALL_COMMAND_WINDOW_MS
+        if (asleep) leaveSleep()
+        _voiceSession.value = true
+        listen()
+    }
+
+    /** "Utha lo" / "kaat do" while a call rings is handled here at once, without the AI. True when it was a call command. */
+    private fun handleCallCommand(text: String): Boolean {
+        if (clock() >= callCommandUntil) return false
+        when (callCommand(text)) {
+            CallCommand.ANSWER -> {
+                callCommandUntil = 0
+                trace("call: answer")
+                val outcome = tools.answerCall()
+                scope.launch { report(AssistantAction.AnswerCall, outcome) }
+            }
+            CallCommand.REJECT -> {
+                callCommandUntil = 0
+                trace("call: reject")
+                val outcome = tools.endCall()
+                scope.launch { report(AssistantAction.EndCall, outcome) }
+            }
+            null -> listen() // ringtone or other talk: keep listening for a yes / no while it rings
+        }
+        return true
+    }
+
+    /**
+     * The call was answered (or dialled): Seema stops talking and releases the microphone for the
+     * call. After the call hands-free comes back by itself ([resumeAfterCall]).
+     */
+    fun pauseForCall() {
+        callCommandUntil = 0
+        if (pausedForCall) return
+        pausedForCall = true
+        handsFreeBeforeCall = handsFree
+        trace("phone call: pause")
+        cancelWork()
+        speaker.stop()
+        conversationMode.exit()
+        heldJob?.cancel()
+        heldVoiceText = null
+        if (asleep) leaveSleep()
+        _voiceSession.value = false
+        listenGen++
+        voice.stop()
+        _state.value = AssistantState.Idle
+    }
+
+    /** The call ended: hands-free (or the wake-word standby) continues as before the call. */
+    fun resumeAfterCall() {
+        callCommandUntil = 0
+        if (!pausedForCall) return
+        pausedForCall = false
+        val wasHandsFree = handsFreeBeforeCall
+        handsFreeBeforeCall = false
+        trace("phone call ended")
+        if (settings.value.assistantPaused) return
+        if (wasHandsFree && handsFree) startHandsFree() else returnToStandby()
+    }
+
     fun interrupt() {
         speaker.stop()
     }
@@ -1003,6 +1094,7 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
             }
+            is AssistantAction.AnswerCall -> report(action, tools.answerCall())
             is AssistantAction.EndCall -> {
                 val outcome = tools.endCall()
                 report(action, outcome)
