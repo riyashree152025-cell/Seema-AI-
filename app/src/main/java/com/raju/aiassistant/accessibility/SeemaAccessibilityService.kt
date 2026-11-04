@@ -1,6 +1,7 @@
 package com.raju.aiassistant.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -37,8 +38,8 @@ class SeemaAccessibilityService : AccessibilityService() {
                     return
                 }
             }
-            // 2. By content description ("Send", "भेजें", "পাঠান")
-            val targetDescs = listOf("send", "भेजें", "পাঠান", "bheje")
+            // 2. By content description ("Send", "भेजें", "পাঠান", "bheje")
+            val targetDescs = listOf("send", "\u092d\u0947\u091c\u0947\u0902", "\u09aa\u09be\u09a0\u09be\u09a8", "bheje")
             val queue = ArrayDeque<AccessibilityNodeInfo>()
             queue.add(root)
             while (queue.isNotEmpty()) {
@@ -72,8 +73,15 @@ class SeemaAccessibilityService : AccessibilityService() {
         pendingWhatsAppAutoSend = false
         // Return back to Seema AI after brief delay so user stays hands-free
         handler.postDelayed({
-            performGlobalAction(GLOBAL_ACTION_BACK)
-        }, 800)
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            if (launchIntent != null) {
+                startActivity(launchIntent)
+            } else {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            }
+        }, 1200)
     }
 
     override fun onInterrupt() {
@@ -102,6 +110,16 @@ class SeemaAccessibilityService : AccessibilityService() {
             Handler(Looper.getMainLooper()).postDelayed({
                 pendingWhatsAppAutoSend = false
             }, 15_000)
+        }
+
+        fun goHome(): Boolean {
+            val service = instance ?: return false
+            return service.performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+
+        fun goBack(): Boolean {
+            val service = instance ?: return false
+            return service.performGlobalAction(GLOBAL_ACTION_BACK)
         }
 
         fun takeScreenshot(): Boolean {

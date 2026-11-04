@@ -958,8 +958,8 @@ class AssistantEngine(
         }
         _state.value = AssistantState.Executing
         when (action) {
-            is AssistantAction.Call -> callContact(action)
-            is AssistantAction.WhatsApp -> whatsApp(action)
+            is AssistantAction.Call -> callContact(action, speak)
+            is AssistantAction.WhatsApp -> whatsApp(action, speak)
             is AssistantAction.FindContact -> findContact(action, speak)
             is AssistantAction.LastCall -> checkLastCall(action, speak)
             is AssistantAction.ReadNotification -> readNotification(action, speak)
@@ -982,13 +982,31 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
             }
-            is AssistantAction.PlayMusic -> report(action, tools.playMusic(action.query, action.service ?: s.musicService))
+            is AssistantAction.GoHome -> {
+                val outcome = tools.goHome()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "लीजिए राजू, होम स्क्रीन पर आ गए।", "এই যে রাজু, হোম স্ক্রিনে চলে এসেছি।"))
+            }
+            is AssistantAction.OpenSeema -> {
+                val outcome = tools.openSeema()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "हाँ राजू, मैं अपनी स्क्रीन पर वापस आ गई!", "হ্যাঁ রাজু, আমি আমার স্ক্রিনে ফিরে এসেছি!"))
+            }
+            is AssistantAction.PlayMusic -> {
+                val outcome = tools.playMusic(action.query, action.service ?: s.musicService)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "राजू, यूट्यूब पर आपके लिए गाना बजा दिया है, सुनिए!", "রাজু, ইউটিউবে গান চালিয়ে দিয়েছি, শুনুন!"))
+            }
             is AssistantAction.Remember -> remember(action)
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))
             is AssistantAction.SetAlarm -> report(action, tools.setAlarm(action.hour, action.minute, action.note))
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
             is AssistantAction.Volume -> report(action, tools.setVolume(action.percent))
-            is AssistantAction.Media -> report(action, tools.mediaControl(action.command))
+            is AssistantAction.Media -> {
+                val outcome = tools.mediaControl(action.command)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "गाना बंद कर दिया गया है राजू।", "গান বন্ধ করে দেওয়া হয়েছে রাজু।"))
+            }
             is AssistantAction.Sms -> sendSms(action)
             is AssistantAction.AddEvent -> addEvent(action)
             is AssistantAction.Navigate -> report(action, tools.navigate(action.destination, action.mode))
@@ -1106,7 +1124,7 @@ class AssistantEngine(
         }
     }
 
-    private suspend fun callContact(action: AssistantAction.Call) {
+    private suspend fun callContact(action: AssistantAction.Call, speak: Boolean = false) {
         val candidates: List<Contact> = if (action.number != null && action.contact == null) {
             listOf(Contact(action.number, action.number))
         } else {
@@ -1119,12 +1137,20 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, "No contact named \"${action.contact}\" was found.")
             return
         }
-        val chosen = confirmContact(
-            title = "Call?",
-            message = if (candidates.size == 1) "Call ${candidates[0].name} (${candidates[0].number})?" else "Multiple contacts match \"${action.contact}\". Choose one to call:",
-            candidates = candidates,
-        ) ?: run { report(action, ActionStatus.CANCELLED, "Call cancelled."); return }
-        report(action, tools.dial(chosen, settings.value.directCalling))
+        val chosen = if (candidates.size == 1 && settings.value.directCalling) {
+            candidates[0]
+        } else {
+            confirmContact(
+                title = "Call?",
+                message = if (candidates.size == 1) "Call ${candidates[0].name} (${candidates[0].number})?" else "Multiple contacts match \"${action.contact}\". Choose one to call:",
+                candidates = candidates,
+            )
+        } ?: run { report(action, ActionStatus.CANCELLED, "Call cancelled."); return }
+        val outcome = tools.dial(chosen, settings.value.directCalling)
+        report(action, outcome)
+        if (speak && outcome is ToolOutcome.Done) {
+            say(phrase(lang(), "हाँ राजू, मैंने ${chosen.name} को कॉल लगा दी है!", "হ্যাঁ রাজু, আমি ${chosen.name} কে কল লাগিয়ে দিয়েছি!"))
+        }
     }
 
     private suspend fun sendSms(action: AssistantAction.Sms) {
@@ -1227,22 +1253,31 @@ class AssistantEngine(
         }
     }
 
-    private suspend fun whatsApp(action: AssistantAction.WhatsApp) {
+    private suspend fun whatsApp(action: AssistantAction.WhatsApp, speak: Boolean = false) {
         var target: Contact? = null
         if (action.contact != null) {
             val found = lookup(action.contact)
             if (found.isNullOrEmpty()) {
                 note(if (found == null) "Contacts permission not granted; WhatsApp will open without a recipient." else "No contact named \"${action.contact}\"; WhatsApp will open without a recipient.")
             } else {
-                target = confirmContact("Send on WhatsApp?", "Open WhatsApp with this message for you to review and send:\n\n\"${action.text}\"", found)
-                    ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+                target = if (found.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+                    found[0]
+                } else {
+                    confirmContact("Send on WhatsApp?", "Open WhatsApp with this message for you to review and send:\n\n\"${action.text}\"", found)
+                        ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+                }
             }
         }
-        if (target == null) {
+        if (target == null && !com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
             val ok = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "Open WhatsApp?", "Open WhatsApp with this message? You choose the chat and tap send yourself.\n\n\"${action.text}\""))
             if (ok !is Decision.Approve) { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
         }
-        report(action, tools.openWhatsApp(target?.number, action.text))
+        val outcome = tools.openWhatsApp(target?.number, action.text)
+        report(action, outcome)
+        if (speak && outcome is ToolOutcome.Done) {
+            val name = target?.name ?: action.contact ?: "जिओ"
+            say(phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप पर मैसेज भेज दिया है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি!"))
+        }
     }
 
     /** Returns contacts, or null if permission was refused. Handles the permission prompt. */

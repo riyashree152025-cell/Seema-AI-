@@ -56,6 +56,8 @@ fun buildSystemPrompt(
     appendLine("""<action>{"type":"screenshot"}</action>   (take a screenshot: "screenshot lo", "screen capture karo")""")
     appendLine("""<action>{"type":"call","contact":"NAME"}</action>   (or "number":"DIGITS")""")
     appendLine("""<action>{"type":"end_call"}</action>   (end active phone call: "call kato", "phone cut karo", "call disconnect karo", "phone rakh do")""")
+    appendLine("""<action>{"type":"go_home"}</action>   (go to Android home screen: "home screen par jao", "home par aao", "home screen par aa jao", "bahar aao")""")
+    appendLine("""<action>{"type":"open_seema"}</action>   (return to Seema assistant screen: "apni screen par aao", "apna screen par aa jao", "apna screen kholo", "seema screen par aao", "wapas aao")""")
     appendLine("""<action>{"type":"whatsapp","contact":"NAME","text":"MESSAGE"}</action>   (contact optional)""")
     appendLine("""<action>{"type":"open_app","name":"APP NAME"}</action>""")
     appendLine("""<action>{"type":"search_web","query":"QUERY","topic":"news"}</action>   (use for news, weather, prices, scores, anything current or that you are unsure of; "topic":"news" only for news/current events; never claim you searched unless the app shows results)""")

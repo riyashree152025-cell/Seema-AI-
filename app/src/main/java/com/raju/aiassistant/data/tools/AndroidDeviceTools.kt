@@ -107,10 +107,17 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     override fun openApp(name: String): ToolOutcome {
+        val wanted = name.trim().lowercase()
+        if (wanted in listOf("home", "home screen", "homescreen", "launcher", "होम स्क्रीन", "होम")) {
+            return goHome()
+        }
+        if (wanted in listOf("seema", "seema ai", "seema-ai", "assistant", "apni screen", "apna screen", "सीमा", "सीमा स्क्रीन")) {
+            return openSeema()
+        }
+
         val pm = context.packageManager
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val apps = pm.queryIntentActivities(launcher, 0)
-        val wanted = name.trim().lowercase()
         val match = apps.firstOrNull { it.loadLabel(pm).toString().lowercase() == wanted }
             ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().startsWith(wanted) }
             ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().contains(wanted) }
@@ -462,6 +469,39 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             ToolOutcome.Done("फोन पर 100% फुल वॉल्यूम में अलार्म और घंटी बजा दी गई है!")
         } catch (e: Exception) {
             ToolOutcome.Failed("घंटी बजाने में समस्या आई: ${e.message}")
+        }
+    }
+
+    override fun goHome(): ToolOutcome {
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning() &&
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.goHome()) {
+            return ToolOutcome.Done("Navigated to Home screen.")
+        }
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            ToolOutcome.Done("Navigated to Home screen.")
+        } catch (e: Exception) {
+            ToolOutcome.Failed("Could not navigate to Home screen: ${e.message}")
+        }
+    }
+
+    override fun openSeema(): ToolOutcome {
+        return try {
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            if (intent != null) {
+                context.startActivity(intent)
+                ToolOutcome.Done("Opened Seema.")
+            } else {
+                ToolOutcome.Failed("Could not find Seema activity.")
+            }
+        } catch (e: Exception) {
+            ToolOutcome.Failed("Could not open Seema: ${e.message}")
         }
     }
 

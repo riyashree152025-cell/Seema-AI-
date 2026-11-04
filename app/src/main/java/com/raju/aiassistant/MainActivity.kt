@@ -38,6 +38,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         LaunchRequest.from(intent)?.let { (application as RajuApp).container.launchRequests.value = it }
+        intent?.getStringExtra("seema_cmd")?.let { cmd ->
+            val c = (application as RajuApp).container
+            c.appScope.launch {
+                c.engine.submit(cmd, fromVoice = true)
+            }
+        }
         // Debug builds only: lets the emulator test choose an AI core (`--es seema_core MODERN`), like tapping Apply.
         if (BuildConfig.DEBUG) intent?.getStringExtra("seema_core")?.let { name ->
             CoreAppearance.entries.firstOrNull { it.name == name }?.let { core ->
