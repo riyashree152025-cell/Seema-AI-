@@ -139,49 +139,62 @@ fun SciFiHomeNavButton(
 ) {
     Box(
         modifier = modifier
-            .height(86.dp)
-            .clip(SciFiCardShape)
+            .height(92.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.verticalGradient(
-                    listOf(SciFiButtonGlassTop, SciFiButtonGlassMid, SciFiButtonGlassDeep)
+                    listOf(
+                        Color(0x4D0C2755),
+                        Color(0x2E061735),
+                        Color(0x24030D20)
+                    )
                 )
             )
             .border(
-                1.4.dp,
+                1.5.dp,
                 Brush.linearGradient(
                     listOf(
-                        SciFiCyanGlow,
-                        Color(0xFF38B6FF),
-                        SciFiBlueAccent
+                        iconColor.copy(alpha = 0.9f),
+                        Color(0xFF00E5FF),
+                        iconColor.copy(alpha = 0.8f)
                     )
                 ),
-                SciFiCardShape
+                RoundedCornerShape(18.dp)
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                icon,
-                contentDescription = title,
-                tint = iconColor,
-                modifier = Modifier.size(26.dp)
-            )
-            Spacer(Modifier.height(5.dp))
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(iconColor.copy(alpha = 0.2f))
+                    .border(1.3.dp, iconColor.copy(alpha = 0.8f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = title,
+                    tint = iconColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
                 title,
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 12.5.sp,
                     letterSpacing = 0.5.sp
                 ),
                 maxLines = 1
@@ -192,6 +205,7 @@ fun SciFiHomeNavButton(
 
 /**
  * Full-width Settings & Menu Card with glowing Icon Emblem, Title, Subtitle and Chevron >
+ * Exactly matching Panel 1 in User Reference Image (Glassy Rounded Navy/Cyan Glow)
  */
 @Composable
 fun SciFiListCard(
@@ -203,9 +217,35 @@ fun SciFiListCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SciFiCard(
-        modifier = modifier.fillMaxWidth(),
-        onClick = onClick
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF0C1F42),
+                        Color(0xFF06132C)
+                    )
+                )
+            )
+            .border(
+                1.5.dp,
+                Brush.horizontalGradient(
+                    listOf(
+                        emblemBorder.copy(alpha = 0.7f),
+                        Color(0xFF00E5FF).copy(alpha = 0.95f),
+                        emblemBorder.copy(alpha = 0.7f)
+                    )
+                ),
+                RoundedCornerShape(20.dp)
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -216,13 +256,13 @@ fun SciFiListCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Emblem Icon Box with cut corners / hexagonal feel
+                // Circular Glowing Emblem Matching Reference Image Panel 1
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(CutCornerShape(8.dp))
-                        .background(Color(0x2B00E5FF))
-                        .border(1.2.dp, emblemBorder.copy(alpha = 0.8f), CutCornerShape(8.dp)),
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(iconTint.copy(alpha = 0.18f))
+                        .border(1.4.dp, emblemBorder.copy(alpha = 0.85f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -233,7 +273,7 @@ fun SciFiListCard(
                     )
                 }
 
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(16.dp))
 
                 Column {
                     Text(
@@ -241,15 +281,15 @@ fun SciFiListCard(
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            fontSize = 15.sp
+                            fontSize = 16.sp
                         )
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 11.5.sp
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
                         )
                     )
                 }
@@ -258,8 +298,8 @@ fun SciFiListCard(
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = SciFiCyanGlow.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp)
+                tint = Color(0xFF00E5FF).copy(alpha = 0.85f),
+                modifier = Modifier.size(22.dp)
             )
         }
     }

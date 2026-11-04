@@ -22,14 +22,14 @@ class SarvamTtsClient(
     private val http: OkHttpClient,
     private val apiKey: String,
     private val baseUrl: String = "https://api.sarvam.ai",
-    // bulbul:v2 was retired by Sarvam (HTTP 400 "deprecated"). v3 has its own speaker list and no pitch/loudness.
     private val model: String = "bulbul:v4-flash",
 ) {
     suspend fun synthesize(text: String, speaker: String, languageCode: String, pace: Float): AiResult<ByteArray> = withRetry {
+        val targetSpeaker = resolveSpeaker(speaker, languageCode)
         val payload = buildJsonObject {
             put("text", text)
             put("target_language_code", languageCode)
-            put("speaker", speaker)
+            put("speaker", targetSpeaker)
             put("model", model)
             put("pace", pace.coerceIn(0.5f, 2.0f).toDouble())
             put("speech_sample_rate", 24000)
@@ -47,6 +47,26 @@ class SarvamTtsClient(
                 val (code, body) = r.value
                 if (code !in 200..299) httpFailure(code, body) else parse(body)
             }
+        }
+    }
+
+    private fun resolveSpeaker(rawSpeaker: String, languageCode: String): String {
+        if (rawSpeaker.contains("_")) return rawSpeaker
+        val lang = if (languageCode.startsWith("bn")) "bn" else "hi"
+        val lower = rawSpeaker.lowercase()
+        return when (lower) {
+            "roopa" -> if (lang == "bn") "roopa_bn_conversational" else "roopa_hi_companion"
+            "suman" -> "suman_hi_companion"
+            "simran" -> "simran_hi_companion"
+            "sanchita" -> "sanchita_hi_storytelling"
+            "ritu" -> "ritu_hi_advertisement"
+            "kavya" -> "kavya_hi_conversational"
+            "priya" -> "priya_hi_conversational"
+            "neha" -> "neha_hi_conversational"
+            "ishita" -> "ishita_hi_conversational"
+            "shreya" -> "shreya_hi_conversational"
+            "pooja" -> "pooja_hi_conversational"
+            else -> "${lower}_${lang}_conversational"
         }
     }
 

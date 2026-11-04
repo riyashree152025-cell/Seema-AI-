@@ -185,7 +185,7 @@ class ProvidersTest {
         val req = server.takeRequest()
         assertEquals("sk", req.getHeader("api-subscription-key"))
         val sent = req.body.readUtf8()
-        assertTrue(sent.contains("\"speaker\":\"priya\""))
+        assertTrue(sent.contains("\"speaker\":\"priya_hi_conversational\""))
         assertTrue(sent.contains("\"model\":\"bulbul:v4-flash\""))
         assertTrue(sent.contains("\"enable_preprocessing\":true"))
     }
