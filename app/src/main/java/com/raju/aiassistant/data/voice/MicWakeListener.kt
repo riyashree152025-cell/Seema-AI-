@@ -136,8 +136,8 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val PRE_ROLL_FRAMES = 25 // 0.5 s
         const val START_FRAMES = 5 // 0.1 s of voice
         const val MIN_SPEECH = 450.0
-        const val MIN_SPEECH_MS = 300
-        const val END_SILENCE_MS = 800
+        const val MIN_SPEECH_MS = 250
+        const val END_SILENCE_MS = 450
         const val MAX_UTTERANCE_MS = 10_000
     }
 }

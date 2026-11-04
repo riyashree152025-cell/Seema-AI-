@@ -9,6 +9,7 @@ import android.os.SystemClock
 import androidx.compose.runtime.mutableLongStateOf
 
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 
@@ -195,6 +196,12 @@ fun HomeScreen(
     }
 
     var lastOrbTap by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(state.paused) {
+        if (!state.paused && viewModel.hasMicPermission() && assistantState == AssistantState.Idle) {
+            viewModel.ensureStandby()
+        }
+    }
 
 
 

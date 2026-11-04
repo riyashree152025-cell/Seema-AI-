@@ -512,16 +512,13 @@ class AssistantEngine(
             }
         } else {
             // Offline / on-device fallback:
-            // Do NOT blindly speak "हाँ जी बोलिए" on ambient noise (which causes infinite loop).
-            // Instead, wake up SILENTLY into listen() (greet = false).
-            // The recognizer listens on-device: if user actually said "हे सीमा",
-            // onHeard() will greet. If it was just room noise, it silently returns to standby without making any sound!
+            // When user speaks in standby, greet and open the mic immediately
             if (now - lastWakeAttemptAt < 3_000L) {
                 armWakeListener()
                 return
             }
             lastWakeAttemptAt = now
-            wakeUp(greet = false)
+            wakeUp(greet = true)
         }
     }
 

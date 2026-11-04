@@ -177,12 +177,24 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch { c.settingsRepository.setSafetyMode(false) }
     }
 
-    /** "Resume" on the paused banner: un-pause, then listen hands-free if that is enabled. */
+    /** "Resume" on the paused banner: un-pause, then listen hands-free or enter standby. */
     fun resume() {
         viewModelScope.launch {
             c.settingsRepository.setAssistantPaused(false)
             val s = c.currentSettings.first { !it.assistantPaused }
-            if (s.autoListen && hasMicPermission()) engine.startHandsFree()
+            if (hasMicPermission()) {
+                if (s.autoListen) engine.startHandsFree()
+                else if (s.wakeWord) engine.startStandby()
+            }
+        }
+    }
+
+    /** Ensures wake-word standby is active while the app is open and unmuted. */
+    fun ensureStandby() {
+        if (!uiState.value.paused && hasMicPermission()) {
+            val s = c.currentSettings.value
+            if (s.autoListen) engine.startHandsFree()
+            else if (s.wakeWord) engine.startStandby()
         }
     }
 
@@ -195,7 +207,14 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     fun toggleMute() {
         val next = !uiState.value.paused
         if (next) c.stopEverything()
-        viewModelScope.launch { c.settingsRepository.setAssistantPaused(next) }
+        viewModelScope.launch {
+            c.settingsRepository.setAssistantPaused(next)
+            if (!next && hasMicPermission()) {
+                val s = c.currentSettings.first { !it.assistantPaused }
+                if (s.autoListen) engine.startHandsFree()
+                else if (s.wakeWord) engine.startStandby()
+            }
+        }
     }
 
     /** Shows a state's visuals for testing the UI. Pass null to return to the real state. */
