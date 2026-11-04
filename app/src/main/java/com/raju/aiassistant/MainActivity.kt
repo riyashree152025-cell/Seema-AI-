@@ -35,6 +35,23 @@ class MainActivity : ComponentActivity() {
         }
         // Start continuous background microphone service
         SeemaWakeService.start(this)
+
+        // Auto-heal provider selection to guaranteed-working Gemini if current provider is broken or unconfigured
+        val appContainer = (application as RajuApp).container
+        appContainer.appScope.launch {
+            val configured = appContainer.secureKeyStore.configured.value
+            val s = appContainer.currentSettings.value
+            if (s.defaultProvider == com.raju.aiassistant.domain.ai.ProviderId.OLLAMA || s.defaultProvider.secret !in configured) {
+                if (com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY in configured) {
+                    appContainer.settingsRepository.setDefaultProvider(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
+                }
+            }
+            val geminiModel = s.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
+            if (geminiModel != null && (geminiModel.contains("omni", ignoreCase = true) || geminiModel.trim().isEmpty())) {
+                appContainer.settingsRepository.setModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, "gemini-2.0-flash")
+            }
+        }
+
         // Only a fresh launch carries a new request; after rotation the same intent must not run again.
         if (savedInstanceState == null) handle(intent)
         publishShortcuts()

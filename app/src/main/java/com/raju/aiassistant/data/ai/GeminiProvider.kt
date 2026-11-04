@@ -61,11 +61,18 @@ class GeminiProvider(
         }
     }
 
-    private fun request(model: String, method: String, body: JsonObject) = Request.Builder()
-        .url("$baseUrl/models/${model.removePrefix("models/")}:$method")
-        .header("x-goog-api-key", apiKey)
-        .post(body.toRequestBody())
-        .build()
+    private fun request(model: String, method: String, body: JsonObject): Request {
+        val cleanModel = model.removePrefix("models/").trim()
+        val sanitized = when {
+            cleanModel.isBlank() || cleanModel.contains("omni", ignoreCase = true) -> "gemini-2.0-flash"
+            else -> cleanModel
+        }
+        return Request.Builder()
+            .url("$baseUrl/models/$sanitized:$method")
+            .header("x-goog-api-key", apiKey)
+            .post(body.toRequestBody())
+            .build()
+    }
 
     override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
         when (val r = http.fetch(request(model, "generateContent", payload(model, systemPrompt, turns)))) {

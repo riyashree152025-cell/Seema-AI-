@@ -578,14 +578,18 @@ class AssistantEngine(
         }
         var providerId = s.defaultProvider
         val cooldownUntil = providerCooldown[providerId] ?: 0L
-        if (cooldownUntil > clock()) {
-            val alternative = fallbackProviders().firstOrNull { it != providerId && (providerCooldown[it] ?: 0L) <= clock() && !keyFor(it).isNullOrBlank() }
+        var key = keyFor(providerId)
+        val primaryBroken = cooldownUntil > clock() || key.isNullOrBlank() || (providerId == ProviderId.OLLAMA && cooldownUntil > 0L)
+        if (primaryBroken) {
+            val alternative = fallbackProviders().firstOrNull {
+                it != providerId && (providerCooldown[it] ?: 0L) <= clock() && !keyFor(it).isNullOrBlank()
+            }
             if (alternative != null) {
-                trace("fast-routing away from ${providerId.shortName} (cooldown) to ${alternative.shortName}")
+                trace("fast-routing away from ${providerId.shortName} to ${alternative.shortName}")
                 providerId = alternative
+                key = keyFor(providerId)
             }
         }
-        val key = keyFor(providerId)
         if (key.isNullOrBlank()) {
             fail("${providerId.displayName} API key is not set. Add it in Settings.")
             return
@@ -664,16 +668,14 @@ class AssistantEngine(
         var raw = when (streamed) {
             is AiResult.Success -> streamed.value
             is AiResult.Failure -> {
-                trace("ai failed: ${streamed.kind}")
-                if (streamed.kind in setOf(FailureKind.QUOTA_EXCEEDED, FailureKind.RATE_LIMITED, FailureKind.INVALID_KEY)) {
-                    providerCooldown[providerId] = clock() + 15 * 60 * 1000L
-                }
+                trace("ai failed: ${streamed.kind} (${streamed.message})")
+                providerCooldown[providerId] = clock() + 15 * 60 * 1000L
                 recordLatency(providerId, model, firstTextAt.get(), ok = false)
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
-                val backup = if (streamed.kind in FALLBACK_KINDS && spokenHead == null) fallbackReply(providerId, system, turns) else null
+                val backup = if (spokenHead == null) fallbackReply(providerId, system, turns) else null
                 if (backup == null) {
                     _lastRoute.value = AiRoute(providerId, null, model, clock(), streamed.message)
-                    fail(streamed.message, if (streamed.kind == FailureKind.NETWORK) AssistantState.Offline else AssistantState.Error)
+                    fail(streamed.message, if (streamed.kind == FailureKind.NETWORK && !isOnline()) AssistantState.Offline else AssistantState.Error)
                     return
                 }
                 note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.provider.shortName} instead.")
@@ -770,7 +772,7 @@ class AssistantEngine(
             trace("ai fallback ${id.shortName}")
             val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
-            if (r is AiResult.Failure && r.kind in setOf(FailureKind.QUOTA_EXCEEDED, FailureKind.RATE_LIMITED, FailureKind.INVALID_KEY)) {
+            if (r is AiResult.Failure) {
                 providerCooldown[id] = now + 15 * 60 * 1000L
             }
         }
