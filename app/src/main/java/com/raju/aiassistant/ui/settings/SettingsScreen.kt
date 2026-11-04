@@ -1487,6 +1487,9 @@ fun VoiceSpeechScreen(
             }
         }
 
+        ListeningPanel(s, viewModel)
+        VoiceEngineManager(s, viewModel)
+
         // Engine Cards List Matching Reference Image Panel 4
         val isCartesiaActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
         VoiceEngineCard(

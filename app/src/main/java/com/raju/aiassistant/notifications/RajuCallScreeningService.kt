@@ -9,6 +9,7 @@ import android.telecom.CallScreeningService
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.raju.aiassistant.RajuApp
+import com.raju.aiassistant.domain.notify.ASK_TO_ANSWER
 import com.raju.aiassistant.domain.notify.callAnnouncementText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,7 +37,9 @@ class RajuCallScreeningService : CallScreeningService() {
 
         c.appScope.launch {
             val name = number?.let { lookupContactName(it) }
-            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber))
+            // "Mummy ka call aa raha hai. Utha lun?" — then "haan / utha lo" answers, "nahi / kaat do" rejects.
+            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber) + " " + ASK_TO_ANSWER)
+            c.engine.listenForCallCommand()
         }
     }
 

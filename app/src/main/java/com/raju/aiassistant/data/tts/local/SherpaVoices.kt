@@ -78,7 +78,7 @@ class VoiceEngineStatsStore(context: Context) {
  * Keeps one sherpa-onnx engine per installed model loaded ("warm"), so only the first sentence pays
  * the load time. Synthesis runs on a background thread, one sentence at a time per engine.
  */
-class SherpaTtsHost(private val manager: VoiceModelManager) {
+class SherpaTtsHost(private val manager: VoiceModels) {
     private class Loaded(val modelId: String, val tts: OfflineTts)
 
     private val loaded = mutableMapOf<TtsEngine, Loaded>()
@@ -135,7 +135,7 @@ class SherpaTtsHost(private val manager: VoiceModelManager) {
 class LocalTtsProvider(
     override val engine: TtsEngine,
     private val host: SherpaTtsHost,
-    private val manager: VoiceModelManager,
+    private val manager: VoiceModels,
     private val settings: () -> UserSettings,
 ) : TtsProvider {
     override val label = engine.label.substringBefore(" —") + " (offline)"

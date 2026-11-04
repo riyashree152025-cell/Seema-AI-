@@ -1,5 +1,6 @@
 package com.raju.aiassistant.ui.settings
 
+import com.raju.aiassistant.data.tts.local.installedModel
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
@@ -415,6 +416,17 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
     fun setPersonality(v: Personality) = launch { repo.setPersonality(v) }
     fun setBargeIn(v: Boolean) = launch { repo.setBargeIn(v) }
+
+    // ---------------------------------------------------------------- offline wake word "Hey Seema"
+    val wakeModel = com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL
+    val wakeModelState: StateFlow<Map<String, com.raju.aiassistant.data.tts.local.ModelState>> = c.wakeModels.states
+    fun downloadWakeModel() = c.wakeModels.download(wakeModel)
+    fun cancelWakeModel() = c.wakeModels.cancel(wakeModel)
+    fun deleteWakeModel() {
+        c.kwsWakeListener.stop()
+        c.kwsWakeListener.release()
+        c.wakeModels.delete(wakeModel)
+    }
     fun setSleepAfterSeconds(v: Int) = launch { repo.setSleepAfterSeconds(v) }
     fun setWakeWord(v: Boolean) = launch { repo.setWakeWord(v) }
     fun setBusinessReminders(v: Boolean) = launch { repo.setBusinessReminders(v) }
