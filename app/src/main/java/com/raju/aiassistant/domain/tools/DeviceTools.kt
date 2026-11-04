@@ -27,6 +27,7 @@ interface DeviceTools {
     fun batteryStatus(): ToolOutcome
     fun playMusic(query: String, service: MusicService): ToolOutcome
     fun openWhatsApp(number: String?, text: String): ToolOutcome
+    fun openWhatsAppCall(number: String?, video: Boolean = false): ToolOutcome = ToolOutcome.Failed("WhatsApp call is not supported here.")
 
     // Personal-use extras. Defaults keep older fakes compiling; AndroidDeviceTools overrides all of them.
     fun setTimer(seconds: Int, note: String): ToolOutcome = ToolOutcome.Failed("Timer is not supported here.")

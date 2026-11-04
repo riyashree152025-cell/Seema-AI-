@@ -60,13 +60,19 @@ fun detectScript(text: String): Detection {
 
 private val ROMAN_BENGALI_WORDS = setOf(
     "kemon", "aacho", "acho", "achho", "aami", "ami", "tumi", "tomar", "amader",
-    "bhalo", "bhaloachi", "korcho", "korchho", "shono", "bolchi", "bolun",
-    "kothay", "ekhon", "kichu", "kintu", "khobor", "valo", "shuncho", "bolo", "hobe", "cheno", "cheni"
+    "bhalo", "bhaloachi", "korcho", "korchho", "koro", "koren", "korbo", "korun",
+    "shono", "bolchi", "bolun", "bolo", "kothay", "ekhon", "kichu", "kintu", "khobor",
+    "valo", "shuncho", "hobe", "cheno", "cheni", "pathao", "pathan", "lagao", "khulo",
+    "bondho", "thamo", "eshe", "amar", "apnar", "aache", "ache", "nei", "holo", "gaan"
 )
 
 private val ROMAN_HINDI_WORDS = setOf(
-    "kaise", "kaisa", "kaisi", "kya", "kar", "rahe", "rahi", "mera", "meri", "mere",
-    "mujhko", "mujhe", "batao", "suno", "bolo", "boliye", "kaha", "kahan", "nahi", "nahin"
+    "kaise", "kaisa", "kaisi", "kya", "kar", "karo", "kare", "karein", "karna", "kijiye",
+    "rahe", "rahi", "raha", "mera", "meri", "mere", "mujhko", "mujhe", "batao", "suno",
+    "bolo", "boliye", "kaha", "kahan", "nahi", "nahin", "ko", "se", "lagao", "laga",
+    "bhejo", "bhejna", "kholo", "khol", "band", "rok", "roko", "apna", "apni", "apne",
+    "tha", "thi", "the", "hoga", "hogi", "hum", "aap", "tum", "gaana", "gana", "bajao",
+    "chalao", "sunao"
 )
 
 fun detectLatinLanguage(text: String): SeemaLanguage? {

@@ -178,6 +178,9 @@ class AssistantEngine(
     /** The last thing speech recognition really understood ("Recognized" stage); null while listening. */
     val heard: StateFlow<String?> = _heard.asStateFlow()
 
+    /** Cooldown timestamps for providers experiencing quota or rate-limit issues, enabling instantaneous fallback. */
+    private val providerCooldown = java.util.concurrent.ConcurrentHashMap<ProviderId, Long>()
+
     private val _hint = MutableStateFlow<String?>(null)
     /** A short status for the user that is not an error (e.g. "nothing was heard"); cleared on the next step. */
     val hint: StateFlow<String?> = _hint.asStateFlow()
@@ -347,21 +350,25 @@ class AssistantEngine(
         }
     }
 
-    /** App went to the background: release the microphone. Hands-free resumes with [startHandsFree]. */
+    /** App went to the background: keep wake detector alive if wakeWord is on (supported by SeemaWakeService). */
     fun suspendListening() {
         conversationMode.exit()
-        if (asleep) {
-            // No microphone in the background, not even the wake detector.
-            leaveSleep()
-            _state.value = AssistantState.Idle
-        }
         heldJob?.cancel()
         heldVoiceText = null
-        if (!_voiceSession.value) return
-        _voiceSession.value = false
-        listenGen++
-        voice.stop()
-        if (_state.value == AssistantState.Listening) _state.value = AssistantState.Idle
+        if (settings.value.wakeWord && !settings.value.assistantPaused && wakeListener !== NoWakeListener) {
+            // SeemaWakeService runs as a foreground service with microphone type, allowing continuous background wake word
+            if (!asleep) {
+                goToSleep()
+            }
+        } else {
+            if (asleep) {
+                leaveSleep()
+            }
+            _voiceSession.value = false
+            listenGen++
+            voice.stop()
+            _state.value = AssistantState.Idle
+        }
     }
 
     private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp()
@@ -569,7 +576,15 @@ class AssistantEngine(
             fail("No internet connection. AI replies need internet.", AssistantState.Offline)
             return
         }
-        val providerId = s.defaultProvider
+        var providerId = s.defaultProvider
+        val cooldownUntil = providerCooldown[providerId] ?: 0L
+        if (cooldownUntil > clock()) {
+            val alternative = fallbackProviders().firstOrNull { it != providerId && (providerCooldown[it] ?: 0L) <= clock() && !keyFor(it).isNullOrBlank() }
+            if (alternative != null) {
+                trace("fast-routing away from ${providerId.shortName} (cooldown) to ${alternative.shortName}")
+                providerId = alternative
+            }
+        }
         val key = keyFor(providerId)
         if (key.isNullOrBlank()) {
             fail("${providerId.displayName} API key is not set. Add it in Settings.")
@@ -650,6 +665,9 @@ class AssistantEngine(
             is AiResult.Success -> streamed.value
             is AiResult.Failure -> {
                 trace("ai failed: ${streamed.kind}")
+                if (streamed.kind in setOf(FailureKind.QUOTA_EXCEEDED, FailureKind.RATE_LIMITED, FailureKind.INVALID_KEY)) {
+                    providerCooldown[providerId] = clock() + 15 * 60 * 1000L
+                }
                 recordLatency(providerId, model, firstTextAt.get(), ok = false)
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
                 val backup = if (streamed.kind in FALLBACK_KINDS && spokenHead == null) fallbackReply(providerId, system, turns) else null
@@ -744,13 +762,17 @@ class AssistantEngine(
 
     /** Tries the other configured providers in turn; returns the first real reply, or null. */
     private suspend fun fallbackReply(failed: ProviderId, system: String, turns: List<Turn>): FallbackReply? {
-        for (id in fallbackProviders().filter { it != failed }) {
+        val now = clock()
+        for (id in fallbackProviders().filter { it != failed && (providerCooldown[it] ?: 0L) <= now }) {
             val key = keyFor(id) ?: continue
             val p = providerFor(id, key)
             val model = (resolveModel(id, key, p) as? AiResult.Success)?.value ?: continue
             trace("ai fallback ${id.shortName}")
             val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
+            if (r is AiResult.Failure && r.kind in setOf(FailureKind.QUOTA_EXCEEDED, FailureKind.RATE_LIMITED, FailureKind.INVALID_KEY)) {
+                providerCooldown[id] = now + 15 * 60 * 1000L
+            }
         }
         return null
     }
@@ -951,6 +973,7 @@ class AssistantEngine(
     private suspend fun execute(action: AssistantAction, provider: AiProvider, model: String, system: String, speak: Boolean) {
         val s = settings.value
         val sensitive = action is AssistantAction.Call || action is AssistantAction.WhatsApp ||
+            action is AssistantAction.WhatsAppCall ||
             action is AssistantAction.OpenApp || action is AssistantAction.PlayMusic || action is AssistantAction.Sms
         if (s.safetyMode && sensitive) {
             report(action, ActionStatus.BLOCKED, "Safety Mode is on, so \"${action.label}\" was not performed. Turn it off with \"Turn off\" on the Home screen (or Settings → Safety Mode) to allow it.")
@@ -960,6 +983,7 @@ class AssistantEngine(
         when (action) {
             is AssistantAction.Call -> callContact(action, speak)
             is AssistantAction.WhatsApp -> whatsApp(action, speak)
+            is AssistantAction.WhatsAppCall -> whatsAppCall(action, speak)
             is AssistantAction.FindContact -> findContact(action, speak)
             is AssistantAction.LastCall -> checkLastCall(action, speak)
             is AssistantAction.ReadNotification -> readNotification(action, speak)
@@ -1277,6 +1301,38 @@ class AssistantEngine(
         if (speak && outcome is ToolOutcome.Done) {
             val name = target?.name ?: action.contact ?: "जिओ"
             say(phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप पर मैसेज भेज दिया है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি!"))
+        }
+    }
+
+    private suspend fun whatsAppCall(action: AssistantAction.WhatsAppCall, speak: Boolean = false) {
+        var target: Contact? = null
+        if (!action.number.isNullOrBlank()) {
+            target = Contact(action.contact ?: action.number, action.number)
+        } else if (action.contact != null) {
+            val found = lookup(action.contact)
+            if (found.isNullOrEmpty()) {
+                note(if (found == null) "Contacts permission not granted." else "No contact named \"${action.contact}\".")
+            } else {
+                target = if (found.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+                    found[0]
+                } else {
+                    confirmContact(if (action.video) "WhatsApp video call?" else "WhatsApp call?", "Start WhatsApp ${if (action.video) "video call" else "call"} to:", found)
+                        ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp call cancelled."); return }
+                }
+            }
+        }
+        val targetNumber = target?.number ?: action.number
+        if (targetNumber == null && !com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+            report(action, ActionStatus.FAILED, "No recipient specified for WhatsApp call.")
+            return
+        }
+        val outcome = tools.openWhatsAppCall(targetNumber, action.video)
+        report(action, outcome)
+        if (speak && outcome is ToolOutcome.Done) {
+            val name = target?.name ?: action.contact ?: "जिओ"
+            val typeHi = if (action.video) "वीडियो कॉल" else "कॉल"
+            val typeBn = if (action.video) "ভিডিও কল" else "কল"
+            say(phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप $typeHi लगा दी है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপ $typeBn লাগিয়ে দিয়েছি!"))
         }
     }
 

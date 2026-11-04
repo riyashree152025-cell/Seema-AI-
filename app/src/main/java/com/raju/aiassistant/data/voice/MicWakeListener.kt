@@ -120,6 +120,7 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
                 }
                 if (speechMs >= MIN_SPEECH_MS) {
                     android.util.Log.d("SeemaWake", "Utterance captured: ${out.size()} bytes (${totalMs}ms)")
+                    com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(context)
                     return out.toByteArray()
                 }
                 // Too short (a knock, a cough): keep waiting.
@@ -161,9 +162,9 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val FRAME_BYTES = RATE / 1000 * FRAME_MS * 2
         const val PRE_ROLL_FRAMES = 25 // 0.5 s
         const val START_FRAMES = 3 // ~60 ms of voice
-        const val MIN_SPEECH = 120.0
+        const val MIN_SPEECH = 110.0
         const val MIN_SPEECH_MS = 200
-        const val END_SILENCE_MS = 350
-        const val MAX_UTTERANCE_MS = 5_000
+        const val END_SILENCE_MS = 650
+        const val MAX_UTTERANCE_MS = 7_500
     }
 }

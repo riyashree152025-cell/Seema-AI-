@@ -5,7 +5,9 @@ import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.data.tts.local.runOfflineVoiceTest
 import kotlinx.coroutines.launch
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,11 +17,24 @@ import androidx.core.graphics.drawable.IconCompat
 import com.raju.aiassistant.ui.LaunchRequest
 import com.raju.aiassistant.ui.navigation.RajuNavHost
 import com.raju.aiassistant.ui.theme.RajuTheme
+import com.raju.aiassistant.voice.SeemaWakeService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+        // Start continuous background microphone service
+        SeemaWakeService.start(this)
         // Only a fresh launch carries a new request; after rotation the same intent must not run again.
         if (savedInstanceState == null) handle(intent)
         publishShortcuts()

@@ -200,6 +200,22 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return start(intent, msg, "Could not open WhatsApp.")
     }
 
+    override fun openWhatsAppCall(number: String?, video: Boolean): ToolOutcome {
+        val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
+            ?: return ToolOutcome.Failed("WhatsApp is not installed.")
+        val normalized = number?.let { normalizeForWhatsApp(it) }
+            ?: return ToolOutcome.Failed("No valid WhatsApp phone number found.")
+        val autoCallActive = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        if (autoCallActive) {
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppCall(video)
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$normalized")).setPackage(pkg)
+        val callType = if (video) "वीडियो कॉल" else "वॉइस कॉल"
+        val msg = if (autoCallActive) "WhatsApp $callType सीधे लगाई जा रही है।"
+                  else "WhatsApp खुल गया है। बिना छुए ऑटो-कॉल के लिए Accessibility चालू करें।"
+        return start(intent, msg, "Could not open WhatsApp.")
+    }
+
     override fun endCall(): ToolOutcome {
         val tm = context.getSystemService(TelecomManager::class.java)
             ?: return ToolOutcome.Failed("Telecom service is not available.")

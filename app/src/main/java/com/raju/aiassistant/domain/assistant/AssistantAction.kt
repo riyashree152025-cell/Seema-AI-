@@ -51,6 +51,9 @@ sealed interface AssistantAction {
     data class WhatsApp(val contact: String?, val text: String) : AssistantAction {
         override val label get() = "WhatsApp draft" + (contact?.let { " to $it" } ?: "")
     }
+    data class WhatsAppCall(val contact: String?, val number: String?, val video: Boolean = false) : AssistantAction {
+        override val label get() = "WhatsApp " + (if (video) "video call" else "call") + (contact?.let { " to $it" } ?: number?.let { " to $it" } ?: "")
+    }
     data class SetTimer(val seconds: Int, val note: String) : AssistantAction {
         override val label get() = "Timer: ${seconds}s"
     }
@@ -216,7 +219,13 @@ private fun parseAction(json: String): AssistantAction? {
         "go_home", "home", "home_screen" -> AssistantAction.GoHome
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
-        "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact"), it) }
+        "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact") ?: str("name"), it) }
+        "whatsapp_call", "wa_call", "whatsapp_audio_call", "whatsapp_voice_call" -> {
+            AssistantAction.WhatsAppCall(str("contact") ?: str("name"), str("number"), video = false)
+        }
+        "whatsapp_video_call", "wa_video_call" -> {
+            AssistantAction.WhatsAppCall(str("contact") ?: str("name"), str("number"), video = true)
+        }
         "set_timer" -> {
             val seconds = num("seconds")?.roundToInt()
                 ?: (num("minutes")?.let { it * 60 } ?: num("hours")?.let { it * 3600 })?.roundToInt()
@@ -229,6 +238,8 @@ private fun parseAction(json: String): AssistantAction? {
         }
         "flashlight", "torch" -> AssistantAction.Flashlight((str("state")?.lowercase() ?: "on") !in setOf("off", "false", "0", "band"))
         "volume" -> int("percent")?.takeIf { it in 0..100 }?.let { AssistantAction.Volume(it) }
+        "stop_music", "pause_music", "music_stop", "music_pause" -> AssistantAction.Media(MediaCommand.PAUSE)
+        "resume_music" -> AssistantAction.Media(MediaCommand.PLAY)
         "media" -> when (str("command")?.lowercase()) {
             "play" -> MediaCommand.PLAY
             "pause", "stop" -> MediaCommand.PAUSE
