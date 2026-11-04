@@ -122,6 +122,18 @@ sealed interface AssistantAction {
     data class Research(val topic: String, val queries: List<String>) : AssistantAction {
         override val label get() = "Research: $topic"
     }
+    data class FindContact(val name: String) : AssistantAction {
+        override val label get() = "Find contact: $name"
+    }
+    data object LastCall : AssistantAction {
+        override val label get() = "Check last call"
+    }
+    data object ReadNotification : AssistantAction {
+        override val label get() = "Read notifications"
+    }
+    data object Screenshot : AssistantAction {
+        override val label get() = "Take screenshot"
+    }
 }
 
 /** Repeat rule for a calendar event; [rrule] is the iCalendar RRULE Android's calendar understands. */
@@ -164,6 +176,13 @@ private fun parseAction(json: String): AssistantAction? {
     fun int(key: String): Int? = num(key)?.roundToInt()
 
     return when (str("type")?.lowercase()) {
+                "find_contact", "search_contact", "lookup_contact" -> {
+            val name = str("name") ?: str("contact") ?: str("query")
+            name?.let { AssistantAction.FindContact(it) }
+        }
+        "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
+        "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification
+        "screenshot", "take_screenshot" -> AssistantAction.Screenshot
         "call" -> if (str("contact") == null && str("number") == null) null else AssistantAction.Call(str("contact"), str("number"))
         "open_app" -> str("name")?.let { AssistantAction.OpenApp(it) }
         "search_web" -> str("query")?.let { AssistantAction.SearchWeb(it, str("topic")?.lowercase()?.takeIf { t -> t == "news" }) }

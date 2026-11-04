@@ -31,12 +31,15 @@ class AnnouncementCoordinator(
     val pending: StateFlow<PendingAnnouncement?> = _pending.asStateFlow()
 
     private val queue = ArrayDeque<IncomingItem>()
+    private val recentMessages = ArrayDeque<IncomingItem>()
     private var worker: Job? = null
     private var timeout: Job? = null
     private var nextId = 1L
 
     /** Called for every parsed message notification. */
     fun onMessage(item: IncomingItem) {
+        recentMessages.addLast(item)
+        if (recentMessages.size > 10) recentMessages.removeFirst()
         val current = _pending.value
         if (current != null && current.item.threadId == item.threadId) {
             // Another message in the same chat while we wait: update the preview, don't ask twice.
@@ -73,6 +76,20 @@ class AnnouncementCoordinator(
             worker = null
             pump()
         }
+    }
+
+    fun getLatestMessageSummary(): String? {
+        val p = _pending.value
+        if (p != null) {
+            val item = p.item
+            clearPending(resume = false)
+            return "${item.appLabel} par ${readPreviewText(item)}"
+        }
+        val last = recentMessages.lastOrNull()
+        if (last != null) {
+            return "${last.appLabel} par ${readPreviewText(last)}"
+        }
+        return null
     }
 
     fun skip(id: Long) {

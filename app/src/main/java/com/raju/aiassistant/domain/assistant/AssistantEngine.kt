@@ -131,6 +131,7 @@ class AssistantEngine(
     private val knowledge: KnowledgeSearch = NoKnowledge,
     /** Other AI providers to try when the chosen one fails (auto fallback). */
     private val fallbackProviders: () -> List<ProviderId> = { emptyList() },
+    private val latestNotification: () -> String? = { null },
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -318,6 +319,15 @@ class AssistantEngine(
         }
     }
 
+    private fun returnToStandby() {
+        _voiceSession.value = false
+        if (settings.value.wakeWord && !settings.value.assistantPaused && settings.value.voiceMode != VoiceMode.SESSION && wakeListener !== NoWakeListener) {
+            goToSleep()
+        } else {
+            _state.value = AssistantState.Idle
+        }
+    }
+
     /** App went to the background: release the microphone. Hands-free resumes with [startHandsFree]. */
     fun suspendListening() {
         conversationMode.exit()
@@ -362,10 +372,7 @@ class AssistantEngine(
                     // Silent visual hint instead of unprompted speech loop in a quiet room
                     unclearInARow++
                     _hint.value = phrase(lang(), "साफ़ सुनाई नहीं दिया", "স্পষ্ট শোনা যায়নি")
-                    if (keepGoing) relisten(500) else {
-                        _voiceSession.value = false
-                        _state.value = AssistantState.Idle
-                    }
+                    if (keepGoing) relisten(500) else returnToStandby()
                 } else if (keepGoing && (err.noSpeech || err.unclear)) {
                     // Silence is normal in hands-free mode: listen again, or doze off after a quiet while.
                     if (sleepDue()) {
@@ -389,7 +396,7 @@ class AssistantEngine(
                     if (err.noSpeech) {
                         // Tap-to-talk heard nothing: say so on screen instead of silently going idle.
                         _hint.value = phrase(lang(), "कुछ सुनाई नहीं दिया — Mic दबाकर फिर बोलिए।", "কিছু শুনতে পাইনি — Mic চেপে আবার বলুন।")
-                        _state.value = AssistantState.Idle
+                        returnToStandby()
                     } else if (err.permissionDenied) permissionMissing(err.message) else failAsync(err.message)
                 }
             },
@@ -762,6 +769,7 @@ class AssistantEngine(
 
     private fun finishTurn() {
         val s = settings.value
+        val wasVoice = voiceTurn
         voiceTurn = false
         lastActivityAt = clock() // the sleep timer counts from the end of her answer
         if (_voiceSession.value && (s.continuousConversation || handsFree) && !s.assistantPaused) {
@@ -769,7 +777,13 @@ class AssistantEngine(
         } else {
             _voiceSession.value = false
             if (_state.value == AssistantState.Error) scheduleErrorReset()
-            else if (_state.value != AssistantState.Offline) _state.value = AssistantState.Idle
+            else if (_state.value != AssistantState.Offline) {
+                if (s.wakeWord && !s.assistantPaused && (s.voiceMode == VoiceMode.ALWAYS || wasVoice || handsFree) && wakeListener !== NoWakeListener) {
+                    goToSleep()
+                } else {
+                    _state.value = AssistantState.Idle
+                }
+            }
         }
     }
 
@@ -911,6 +925,10 @@ class AssistantEngine(
         when (action) {
             is AssistantAction.Call -> callContact(action)
             is AssistantAction.WhatsApp -> whatsApp(action)
+            is AssistantAction.FindContact -> findContact(action, speak)
+            is AssistantAction.LastCall -> checkLastCall(action, speak)
+            is AssistantAction.ReadNotification -> readNotification(action, speak)
+            is AssistantAction.Screenshot -> takeScreenshot(action, speak)
             is AssistantAction.OpenApp -> report(action, tools.openApp(action.name))
             is AssistantAction.OpenSettings -> report(action, tools.openSettings(action.page))
             is AssistantAction.Battery -> {
@@ -1104,6 +1122,64 @@ class AssistantEngine(
             return
         }
         report(action, tools.addCalendarEvent(action.title, startMillis, action.durationMinutes, action.location, action.repeat?.rrule))
+    }
+
+    private suspend fun findContact(action: AssistantAction.FindContact, speak: Boolean) {
+        val found = lookup(action.name)
+        val msg = if (found.isNullOrEmpty()) {
+            phrase(lang(), "फोन बुक में \"${action.name}\" नाम से कोई नंबर नहीं मिला।", "ফোনবুকে \"${action.name}\" নামের কোনো নম্বর নেই।")
+        } else {
+            val details = found.joinToString(", ") { "${it.name}: ${it.number}" }
+            phrase(lang(), "हाँ, फोन बुक में संपर्क मिला: $details", "হ্যাঁ, ফোনবুকে নম্বর পাওয়া গেছে: $details")
+        }
+        report(action, if (found.isNullOrEmpty()) ActionStatus.FAILED else ActionStatus.SUCCESS, msg)
+        if (speak) say(msg)
+    }
+
+    private suspend fun checkLastCall(action: AssistantAction.LastCall, speak: Boolean) {
+        when (val outcome = tools.getLastCall()) {
+            is ToolOutcome.Done -> {
+                report(action, ActionStatus.SUCCESS, outcome.message)
+                if (speak) say(outcome.message)
+            }
+            is ToolOutcome.NeedsPermission -> {
+                val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Call Log permission", outcome.reason, permission = outcome.permission))
+                if (d is Decision.PermissionResult && d.granted) {
+                    val retry = tools.getLastCall()
+                    report(action, retry)
+                    if (speak && retry is ToolOutcome.Done) say(retry.message)
+                } else {
+                    report(action, ActionStatus.CANCELLED, "Call log permission was denied.")
+                }
+            }
+            is ToolOutcome.Failed -> {
+                report(action, ActionStatus.FAILED, outcome.message)
+                if (speak) say(outcome.message)
+            }
+        }
+    }
+
+    private suspend fun readNotification(action: AssistantAction.ReadNotification, speak: Boolean) {
+        val summary = latestNotification()
+        val text = summary ?: phrase(lang(), "अभी कोई नया नोटिफिकेशन या मैसेज नहीं आया है।", "এখন কোনো নতুন নোটিফিকেশন নেই।")
+        report(action, ActionStatus.SUCCESS, text)
+        if (speak) say(text)
+    }
+
+    private suspend fun takeScreenshot(action: AssistantAction.Screenshot, speak: Boolean) {
+        when (val outcome = tools.takeScreenshot()) {
+            is ToolOutcome.Done -> {
+                report(action, ActionStatus.SUCCESS, outcome.message)
+                if (speak) say(outcome.message)
+            }
+            is ToolOutcome.Failed -> {
+                report(action, ActionStatus.FAILED, outcome.message)
+                if (speak) say(outcome.message)
+            }
+            is ToolOutcome.NeedsPermission -> {
+                report(action, ActionStatus.FAILED, outcome.reason)
+            }
+        }
     }
 
     private suspend fun whatsApp(action: AssistantAction.WhatsApp) {

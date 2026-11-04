@@ -44,6 +44,8 @@ interface DeviceTools {
     fun openWebPage(url: String): ToolOutcome = ToolOutcome.Failed("Opening web pages is not supported here.")
     /** Writes [content] to a file named [name] and opens the share sheet (save to Files/Drive, send). */
     fun shareTextFile(name: String, content: String): ToolOutcome = ToolOutcome.Failed("Saving files is not supported here.")
+    suspend fun getLastCall(): ToolOutcome = ToolOutcome.Failed("Call log is not supported here.")
+    fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
 }
 
 enum class TravelMode { DRIVE, WALK, BIKE, TRANSIT }

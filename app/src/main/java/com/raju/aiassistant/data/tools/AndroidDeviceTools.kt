@@ -307,6 +307,79 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         ToolOutcome.Failed("Could not save $name: ${e.message}")
     }
 
+    override suspend fun getLastCall(): ToolOutcome {
+        if (!granted(Manifest.permission.READ_CALL_LOG)) {
+            return ToolOutcome.NeedsPermission(
+                Manifest.permission.READ_CALL_LOG,
+                "Seema AI needs Call Log permission to see your recent calls."
+            )
+        }
+        return withContext(Dispatchers.IO) {
+            try {
+                val projection = arrayOf(
+                    android.provider.CallLog.Calls.NUMBER,
+                    android.provider.CallLog.Calls.CACHED_NAME,
+                    android.provider.CallLog.Calls.TYPE,
+                    android.provider.CallLog.Calls.DATE,
+                    android.provider.CallLog.Calls.DURATION,
+                )
+                context.contentResolver.query(
+                    android.provider.CallLog.Calls.CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    "${android.provider.CallLog.Calls.DATE} DESC LIMIT 1"
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val number = c.getString(0) ?: "Unknown"
+                        val name = c.getString(1)?.takeIf { it.isNotBlank() }
+                        val type = c.getInt(2)
+                        val date = c.getLong(3)
+                        val caller = name ?: number
+                        val typeStr = when (type) {
+                            android.provider.CallLog.Calls.INCOMING_TYPE -> "Incoming call"
+                            android.provider.CallLog.Calls.OUTGOING_TYPE -> "Outgoing call"
+                            android.provider.CallLog.Calls.MISSED_TYPE -> "Missed call"
+                            android.provider.CallLog.Calls.REJECTED_TYPE -> "Rejected call"
+                            android.provider.CallLog.Calls.VOICEMAIL_TYPE -> "Voicemail"
+                            else -> "Call"
+                        }
+                        val timeAgo = android.text.format.DateUtils.getRelativeTimeSpanString(
+                            date,
+                            System.currentTimeMillis(),
+                            android.text.format.DateUtils.MINUTE_IN_MILLIS
+                        ).toString()
+
+                        ToolOutcome.Done("लास्ट कॉल $caller की थी ($typeStr), $timeAgo।")
+                    } else {
+                        ToolOutcome.Done("कॉल लॉग में कोई कॉल नहीं मिली।")
+                    }
+                } ?: ToolOutcome.Failed("Could not access call log.")
+            } catch (e: SecurityException) {
+                ToolOutcome.NeedsPermission(Manifest.permission.READ_CALL_LOG, "Call log permission is required.")
+            } catch (e: Exception) {
+                ToolOutcome.Failed("Could not read call log: ${e.message}")
+            }
+        }
+    }
+
+    override fun takeScreenshot(): ToolOutcome {
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+            val taken = com.raju.aiassistant.accessibility.SeemaAccessibilityService.takeScreenshot()
+            return if (taken) {
+                ToolOutcome.Done("स्क्रीनशॉट ले लिया गया है।")
+            } else {
+                ToolOutcome.Failed("स्क्रीनशॉट लेने में समस्या आई।")
+            }
+        } else {
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            } catch (_: Exception) {}
+            return ToolOutcome.Failed("स्क्रीनशॉट के लिए Seema AI की Accessibility Service चालू करें (सेटिंग्स खुल गई हैं)।")
+        }
+    }
+
     private companion object {
         const val MAPS_PKG = "com.google.android.apps.maps"
     }

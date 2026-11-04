@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Seema AI Assistant</string>
     <string name="share_label">Ask Seema AI</string>
+    <string name="accessibility_service_description">Seema AI Accessibility Service enables taking screenshots and performing hands-free voice actions.</string>
 </resources>

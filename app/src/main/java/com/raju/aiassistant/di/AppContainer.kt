@@ -272,6 +272,7 @@ class AppContainer(context: Context) {
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,
+            latestNotification = { announcements.getLatestMessageSummary() },
             // Auto fallback: the other AI providers whose keys are saved, tried when the chosen one fails.
             fallbackProviders = { com.raju.aiassistant.domain.ai.ProviderId.entries.filter { it == com.raju.aiassistant.domain.ai.ProviderId.OLLAMA || it.secret in secureKeyStore.configured.value } },
             nowDescription = { SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a (yyyy-MM-dd'T'HH:mm, z)", Locale.ENGLISH).format(Date()) },

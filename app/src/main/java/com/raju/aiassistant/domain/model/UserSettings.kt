@@ -125,7 +125,7 @@ data class UserSettings(
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
     val personality: Personality = Personality.COMPANION,
     val announceNotifications: Boolean = true,
-    val announceApps: Set<String> = setOf(AnnounceApp.WHATSAPP.packageName, AnnounceApp.WHATSAPP_BUSINESS.packageName),
+    val announceApps: Set<String> = AnnounceApp.entries.map { it.packageName }.toSet(),
     /** Say only who wrote, and read the message only after the user taps Read. */
     val askBeforeReading: Boolean = true,
     /** Announce incoming phone (SIM) calls. Needs the call-screening role. */
