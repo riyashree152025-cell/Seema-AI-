@@ -186,7 +186,7 @@ class ProvidersTest {
         assertEquals("sk", req.getHeader("api-subscription-key"))
         val sent = req.body.readUtf8()
         assertTrue(sent.contains("\"speaker\":\"priya\""))
-        assertTrue(sent.contains("\"model\":\"bulbul:v3\""))
+        assertTrue(sent.contains("\"model\":\"bulbul:v4-flash\""))
         assertTrue(sent.contains("\"enable_preprocessing\":true"))
     }
 
@@ -203,8 +203,8 @@ class ProvidersTest {
 
     @Test
     fun oldBulbulV2VoiceFallsBackToV3Default() {
-        assertEquals("priya", validSarvamSpeaker("anushka"))
-        assertEquals("priya", validSarvamSpeaker(null))
+        assertEquals("roopa", validSarvamSpeaker("anushka"))
+        assertEquals("roopa", validSarvamSpeaker(null))
         assertEquals("kavya", validSarvamSpeaker("kavya"))
     }
 

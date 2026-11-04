@@ -112,7 +112,7 @@ class NotificationFlowTest {
         override fun stop() {}
     }
 
-    private val settings = MutableStateFlow(UserSettings(announceNotifications = true))
+    private val settings = MutableStateFlow(UserSettings(announceNotifications = true, askBeforeReading = true))
     private val speaker = FakeSpeaker()
     private fun TestScope.coordinator() = AnnouncementCoordinator(backgroundScope, speaker, settings, consentTimeoutMs = 30_000)
     private fun msg(sender: String, text: String?, key: String = "k-$sender") = IncomingItem(key, "com.whatsapp", "WhatsApp", sender, null, text)

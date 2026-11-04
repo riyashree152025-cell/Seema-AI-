@@ -60,6 +60,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -140,6 +142,7 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var activeDialog by remember { mutableStateOf<String?>(null) }
+    var activeVoiceSubPage by remember { mutableStateOf<String?>(null) }
     var selectedFilter by remember { mutableStateOf("All") }
     val filterTabs = listOf("All", "AI", "Voice", "System", "Security")
 
@@ -292,10 +295,10 @@ fun SettingsScreen(
                             viewModel = viewModel,
                         )
 
-                        Text("Select Primary Provider", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-                        ProviderId.entries.forEach { p ->
+                        Text("Select Primary Provider (मुख्य AI मॉडल)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
+                        listOf(ProviderId.GROQ, ProviderId.CEREBRAS, ProviderId.GEMINI).forEach { p ->
                             RadioRow(
-                                label = p.shortName + if (p == s.defaultProvider) " (Active Primary)" else "",
+                                label = p.displayName + if (p == s.defaultProvider) " ★ (सक्रिय - Active Primary)" else "",
                                 selected = p == s.defaultProvider,
                                 onClick = { viewModel.setDefaultProvider(p) },
                             )
@@ -448,50 +451,6 @@ fun SettingsScreen(
                             title = "Web Search Key (Tavily)",
                         )
 
-                        Spacer(Modifier.height(16.dp))
-                        Text("Voice API Keys (Ultra-Realistic Speech)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-
-                        // Sarvam AI (Bulbul / Priya)
-                        val sarvamSecret = state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.SARVAM_API_KEY,
-                            status = sarvamSecret,
-                            viewModel = viewModel,
-                            title = "Sarvam AI (Bulbul / Priya) Voice Key",
-                        ) {
-                            SarvamVoiceControls(s, viewModel, previewStatus)
-                        }
-
-                        // ElevenLabs
-                        val elevenSecret = state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.ELEVENLABS_API_KEY,
-                            status = elevenSecret,
-                            viewModel = viewModel,
-                            title = "ElevenLabs Voice Key",
-                        ) {
-                            ElevenLabsVoiceControls(s, viewModel, elevenModels, elevenVoices, previewStatus)
-                        }
-
-                        // Cartesia Sonic
-                        val cartesiaSecret = state.secrets[SecretId.CARTESIA_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.CARTESIA_API_KEY,
-                            status = cartesiaSecret,
-                            viewModel = viewModel,
-                            title = "Cartesia Voice Key",
-                        ) {
-                            CartesiaVoiceControls(s, viewModel, cartesiaVoices, previewStatus)
-                        }
-
-                        // Deepgram Aura
-                        val deepgramSecret = state.secrets[SecretId.DEEPGRAM_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.DEEPGRAM_API_KEY,
-                            status = deepgramSecret,
-                            viewModel = viewModel,
-                            title = "Deepgram Voice Key",
-                        )
                     }
                 },
                 confirmButton = {
@@ -502,130 +461,58 @@ fun SettingsScreen(
             )
         }
         "voice" -> {
-            AlertDialog(
-                onDismissRequest = { activeDialog = null },
-                containerColor = Color(0xFF071120),
-                title = { Text("Voice & Language", color = Color.White, fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Text("Language (भाषा)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-                        ChipRow(
-                            options = listOf("auto", "hi-IN", "bn-IN"),
-                            selected = s.speechLanguage,
-                            label = { when (it) { "auto" -> "Auto (हिन्दी/বাংলা)"; "hi-IN" -> "हिन्दी (Hindi)"; else -> "বাংলা (Bengali)" } },
-                            onSelect = viewModel::setSpeechLanguage,
-                        )
-
-                        Text("Primary Speaking Voice Engine (सीमा की मुख्य आवाज़)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-                        Text(
-                            "सक्रिय आवाज़: " + when {
-                                s.voiceEngineAuto -> "ऑटोमैटिक (Kokoro/Piper Offline अगर उपलब्ध है, अन्यथा ऑनलाइन)"
-                                s.ttsEngine == TtsEngine.CARTESIA -> "Cartesia Sonic (अत्यंत भावपूर्ण)"
-                                s.ttsEngine == TtsEngine.SARVAM -> "Sarvam AI Bulbul (भारतीय आवाज़ - ${s.sarvamSpeaker})"
-                                s.ttsEngine == TtsEngine.ELEVENLABS -> "ElevenLabs"
-                                s.ttsEngine == TtsEngine.ANDROID -> "Android TTS (फ़ोन डिफ़ॉल्ट)"
-                                else -> s.ttsEngine.label
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SuccessGreen,
-                        )
-
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            RadioRow("Cartesia Sonic (★ मूड्स एवं भावपूर्ण आवाज़)", s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto) {
-                                viewModel.setActiveVoiceEngine(TtsEngine.CARTESIA)
-                            }
-                            RadioRow("Sarvam AI Bulbul (★ भारतीय आवाज़ें - प्रिया, काव्या)", s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto) {
-                                viewModel.setActiveVoiceEngine(TtsEngine.SARVAM)
-                            }
-                            RadioRow("ElevenLabs (अत्यंत मधुर एवं प्राकृतिक आवाज़)", s.ttsEngine == TtsEngine.ELEVENLABS && !s.voiceEngineAuto) {
-                                viewModel.setActiveVoiceEngine(TtsEngine.ELEVENLABS)
-                            }
-                            RadioRow("Offline Neural Speech (Kokoro / Piper)", s.voiceEngineAuto) {
-                                viewModel.setVoiceEngineAuto(true)
-                            }
-                            RadioRow("Android TTS (फ़ोन की इनबिल्ट ऑफलाइन आवाज़)", s.ttsEngine == TtsEngine.ANDROID && !s.voiceEngineAuto) {
-                                viewModel.setActiveVoiceEngine(TtsEngine.ANDROID)
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        Text("Voice API Keys & Models (आवाज़ मॉडल एवं कुंजियाँ)", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-
-                        // Cartesia Sonic
-                        val cartesiaVoiceSec = state.secrets[SecretId.CARTESIA_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.CARTESIA_API_KEY,
-                            status = cartesiaVoiceSec,
-                            viewModel = viewModel,
-                            title = "Cartesia Voice Key",
-                        ) {
-                            CartesiaVoiceControls(s, viewModel, cartesiaVoices, previewStatus)
-                        }
-
-                        // Sarvam AI (Bulbul / Priya)
-                        val sarvamVoiceSec = state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.SARVAM_API_KEY,
-                            status = sarvamVoiceSec,
-                            viewModel = viewModel,
-                            title = "Sarvam AI (Bulbul / Priya) Voice Key",
-                        ) {
-                            SarvamVoiceControls(s, viewModel, previewStatus)
-                        }
-
-                        // ElevenLabs
-                        val elevenVoiceSec = state.secrets[SecretId.ELEVENLABS_API_KEY] ?: SecretStatus()
-                        SecretCard(
-                            id = SecretId.ELEVENLABS_API_KEY,
-                            status = elevenVoiceSec,
-                            viewModel = viewModel,
-                            title = "ElevenLabs Voice Key",
-                        ) {
-                            ElevenLabsVoiceControls(s, viewModel, elevenModels, elevenVoices, previewStatus)
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        Text("Offline Voice Engine Manager", style = MaterialTheme.typography.titleSmall, color = NeonCyan)
-                        VoiceEngineManager(s, viewModel)
-
-                        Text("Speech Rate (${String.format("%.1f", s.speechRate)}x)", style = MaterialTheme.typography.bodyMedium)
-                        Slider(
-                            value = s.speechRate,
-                            onValueChange = viewModel::setSpeechRate,
-                            valueRange = 0.5f..2.0f,
-                        )
-
-                        Text("Speech Pitch (${String.format("%.1f", s.speechPitch)}x)", style = MaterialTheme.typography.bodyMedium)
-                        Slider(
-                            value = s.speechPitch,
-                            onValueChange = viewModel::setSpeechPitch,
-                            valueRange = 0.5f..1.5f,
-                        )
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = viewModel::testVoice) {
-                                Text("Test Active Voice")
-                            }
-                            OutlinedButton(onClick = viewModel::stopVoice) {
-                                Text("Stop")
-                            }
-                        }
-                        voiceTest?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = NeonCyan)
-                        }
+            Dialog(
+                onDismissRequest = {
+                    if (activeVoiceSubPage != null) {
+                        activeVoiceSubPage = null
+                    } else {
+                        activeDialog = null
                     }
                 },
-                confirmButton = {
-                    TextButton(onClick = { activeDialog = null }) {
-                        Text("Done", color = NeonCyan)
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    dismissOnBackPress = true,
+                ),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF030712))
+                ) {
+                    when (activeVoiceSubPage) {
+                        "cartesia" -> {
+                            CartesiaStudioScreen(
+                                s = s,
+                                viewModel = viewModel,
+                                cartesiaVoices = cartesiaVoices,
+                                previewStatus = previewStatus,
+                                secretStatus = state.secrets[SecretId.CARTESIA_API_KEY] ?: SecretStatus(),
+                                onBack = { activeVoiceSubPage = null },
+                            )
+                        }
+                        "sarvam" -> {
+                            SarvamStudioScreen(
+                                s = s,
+                                viewModel = viewModel,
+                                previewStatus = previewStatus,
+                                secretStatus = state.secrets[SecretId.SARVAM_API_KEY] ?: SecretStatus(),
+                                onBack = { activeVoiceSubPage = null },
+                            )
+                        }
+                        else -> {
+                            VoiceStudioMainScreen(
+                                s = s,
+                                viewModel = viewModel,
+                                voiceTest = voiceTest,
+                                previewStatus = previewStatus,
+                                onOpenCartesia = { activeVoiceSubPage = "cartesia" },
+                                onOpenSarvam = { activeVoiceSubPage = "sarvam" },
+                                onClose = { activeDialog = null },
+                            )
+                        }
                     }
-                },
-            )
+                }
+            }
         }
         "privacy" -> {
             var confirmClearChat by remember { mutableStateOf(false) }
@@ -1096,288 +983,558 @@ internal fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> U
 }
 
 @Composable
-private fun CartesiaVoiceControls(
+private fun BigRadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.8f),
+            modifier = Modifier.weight(1f),
+        )
+        RadioButton(selected = selected, onClick = onClick)
+    }
+}
+
+@Composable
+private fun VoiceStudioMainScreen(
+    s: UserSettings,
+    viewModel: SettingsViewModel,
+    voiceTest: String?,
+    previewStatus: String?,
+    onOpenCartesia: () -> Unit,
+    onOpenSarvam: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val activeEngineName = when {
+        s.voiceEngineAuto -> "ऑफ़लाइन न्यूरल (Kokoro/Piper Offline)"
+        s.ttsEngine == TtsEngine.CARTESIA -> "Cartesia Sonic — ${s.cartesiaVoiceName ?: "Meera"} (${VoiceCatalog.cartesiaMoods.firstOrNull { it.first == s.cartesiaMood }?.second ?: "प्यार भरी"})"
+        s.ttsEngine == TtsEngine.SARVAM -> "Sarvam AI Bulbul v4-flash — ${VoiceCatalog.sarvamSpeakers.firstOrNull { it.id == s.sarvamSpeaker }?.name ?: s.sarvamSpeaker}"
+        s.ttsEngine == TtsEngine.ANDROID -> "Android सिस्टम आवाज़ (ऑफ़लाइन)"
+        else -> s.ttsEngine.label
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF06101E), Color(0xFF02040A))))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // 1. Top Bar: Back/Close & Screen Title
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = SciFiCyanGlow)
+                }
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "वॉइस स्टूडियो (Voice Studio)",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 21.sp,
+                            letterSpacing = 0.5.sp,
+                        ),
+                    )
+                    Text(
+                        "सीमा की आवाज़, अंदाज़ और स्पीड नियंत्रण",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                        ),
+                    )
+                }
+            }
+
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x2200E5FF))
+                    .border(1.dp, SciFiCyanGlow.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onClose)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("✕ बंद करें", color = SciFiCyanGlow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
+
+        // 2. HEADLINE SECTION: Current Active Voice Status Card (विशाल हेडलाइन कार्ड)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF07192F), Color(0xFF0A223D))
+                    )
+                )
+                .border(1.5.dp, SciFiCyanGlow, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "🔴 सक्रिय आवाज़ की स्थिति (Active Voice)",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = SciFiCyanGlow,
+                            fontSize = 13.sp,
+                            letterSpacing = 1.sp,
+                        ),
+                    )
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SuccessGreen.copy(alpha = 0.15f))
+                            .border(1.dp, SuccessGreen, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("सक्रिय (ACTIVE)", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+
+                Text(
+                    text = activeEngineName,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        fontSize = 17.sp,
+                    ),
+                )
+
+                Text(
+                    "सीमा इसी आवाज़ और अंदाज़ में आपसे बात करेगी। नीचे से किसी भी इंजन को तुरंत चालू कर सकते हैं:",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.8f), fontSize = 12.5.sp),
+                )
+
+                // Quick Switch Radio Rows (बड़ी और साफ़ पंक्तियाँ)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0x26000000))
+                        .border(1.dp, Color(0x3300D0FF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    BigRadioRow(
+                        label = "🌟 Cartesia Sonic (सुपर सजीव व प्यार भरा अंदाज़)",
+                        selected = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto,
+                        onClick = { viewModel.setActiveVoiceEngine(TtsEngine.CARTESIA) },
+                    )
+                    BigRadioRow(
+                        label = "🌸 Sarvam AI Bulbul v4-flash (भारतीय हिन्दी आवाज़)",
+                        selected = s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto,
+                        onClick = { viewModel.setActiveVoiceEngine(TtsEngine.SARVAM) },
+                    )
+                    BigRadioRow(
+                        label = "📱 Android TTS (ऑफ़लाइन सिस्टम आवाज़)",
+                        selected = s.ttsEngine == TtsEngine.ANDROID && !s.voiceEngineAuto,
+                        onClick = { viewModel.setActiveVoiceEngine(TtsEngine.ANDROID) },
+                    )
+                }
+
+                // Audio Test Row
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = viewModel::testVoice,
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("▶️ चालू आवाज़ टेस्ट करें", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    }
+                    OutlinedButton(
+                        onClick = viewModel::stopVoice,
+                        modifier = Modifier.height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("⏹️ बंद", color = ErrorRed, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+
+                (voiceTest ?: previewStatus)?.let {
+                    Text(
+                        "🔊 $it",
+                        style = MaterialTheme.typography.bodySmall.copy(color = SciFiCyanGlow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
+        }
+
+        // 3. SECTION 1: CARTESIA SONIC CARD (Tapping opens subpage)
+        val isCartesiaActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF061E2E), Color(0xFF03101C))
+                    )
+                )
+                .border(1.5.dp, if (isCartesiaActive) SuccessGreen else SciFiCyanGlow.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "🌟 Cartesia Sonic",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                            ),
+                        )
+                    }
+                    if (isCartesiaActive) {
+                        StatusChip(label = "सक्रिय आवाज़", color = SuccessGreen)
+                    }
+                }
+
+                Text(
+                    "राजू जी की पसंदीदा: Meera (दोस्ताना, नटखट और सजीव बातचीत) एवं Ananya। इसमें आप आवाज़ का अंदाज़ (Pyaar bhari, Khush आदि) भी चुन सकते हैं।",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary, fontSize = 13.sp),
+                )
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "आवाज़: ${s.cartesiaVoiceName ?: "Meera - Bright Companion"}",
+                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp),
+                    )
+                    Text(
+                        "अंदाज़: ${VoiceCatalog.cartesiaMoods.firstOrNull { it.first == s.cartesiaMood }?.second ?: "Natural"}",
+                        style = MaterialTheme.typography.bodySmall.copy(color = SciFiCyanGlow, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp),
+                    )
+                }
+
+                Button(
+                    onClick = onOpenCartesia,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Text(
+                        "👉 कार्टेज़िया आवाज़ें और मूड्स खोलें ➔",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+
+        // 4. SECTION 2: SARVAM AI BULBUL v4 CARD (Tapping opens subpage)
+        val isSarvamActive = s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF260D20), Color(0xFF140510))
+                    )
+                )
+                .border(1.5.dp, if (isSarvamActive) SuccessGreen else Color(0xFFFF4081).copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "🌸 Sarvam AI Bulbul v4",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                        ),
+                    )
+                    if (isSarvamActive) {
+                        StatusChip(label = "सक्रिय आवाज़", color = SuccessGreen)
+                    }
+                }
+
+                Text(
+                    "राजू जी की पसंदीदा: Roopa (रूपा - सुकून भरी, कोमल व सजीव) एवं Suman (सुमन - मीठी, सांसों की नज़ाकत वाली आवाज़)। अपग्रेडेड v4-flash मॉडल (<250ms लेटेंसी, 30% बचत)।",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary, fontSize = 13.sp),
+                )
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "आवाज़: ${VoiceCatalog.sarvamSpeakers.firstOrNull { it.id == s.sarvamSpeaker }?.name ?: s.sarvamSpeaker}",
+                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp),
+                    )
+                    Text(
+                        "मॉडल: Bulbul v4-flash",
+                        style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFFF80AB), fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp),
+                    )
+                }
+
+                Button(
+                    onClick = onOpenSarvam,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Text(
+                        "👉 सर्वण आवाज़ें और मॉडल्स खोलें ➔",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+
+        // 5. SECTION 3: SPEECH TUNING & OFFLINE CONTROLS
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF091424))
+                .border(1.dp, Color(0xFF1E3A5F), RoundedCornerShape(16.dp))
+                .padding(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "⚙️ भाषा और बोलने की रफ़्तार (Tuning & Language)",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                    ),
+                )
+
+                Text("भाषा चुनें (Language):", style = MaterialTheme.typography.bodySmall, color = SciFiCyanGlow)
+                ChipRow(
+                    options = listOf("auto", "hi-IN", "bn-IN"),
+                    selected = s.speechLanguage,
+                    label = { when (it) { "auto" -> "Auto (हिन्दी/বাংলা)"; "hi-IN" -> "हिन्दी (Hindi)"; else -> "বাংলা (Bengali)" } },
+                    onSelect = viewModel::setSpeechLanguage,
+                )
+
+                Text("बोलने की रफ़्तार (Speed): ${String.format("%.1f", s.speechRate)}x", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                Slider(
+                    value = s.speechRate,
+                    onValueChange = viewModel::setSpeechRate,
+                    valueRange = 0.5f..2.0f,
+                )
+
+                Text("आवाज़ की टोन (Pitch): ${String.format("%.1f", s.speechPitch)}x", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                Slider(
+                    value = s.speechPitch,
+                    onValueChange = viewModel::setSpeechPitch,
+                    valueRange = 0.5f..1.5f,
+                )
+
+                // Direct read status note
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x1F00E676))
+                        .border(1.dp, SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        "✅ सीधा पढ़ना सक्रिय (Direct Read): मैसेज आने पर कोई अनुमति पॉप-अप नहीं आएगा और सीधे पढ़ कर सुनाएगी।",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun CartesiaStudioScreen(
     s: UserSettings,
     viewModel: SettingsViewModel,
     cartesiaVoices: List<CloudVoice>,
-    previewStatus: String? = null,
+    previewStatus: String?,
+    secretStatus: SecretStatus,
+    onBack: () -> Unit,
 ) {
     val isActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
-    var modelMenuOpen by remember { mutableStateOf(false) }
-    var voiceMenuOpen by remember { mutableStateOf(false) }
-    var moodMenuOpen by remember { mutableStateOf(false) }
     val mergedVoices = remember(cartesiaVoices) { VoiceCatalog.mergeCartesiaVoices(cartesiaVoices) }
-
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Active indicator / Activate button
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isActive) {
-                StatusChip(label = "★ ACTIVE SEEMA VOICE", color = SuccessGreen)
-            } else {
-                Button(
-                    onClick = { viewModel.setActiveVoiceEngine(TtsEngine.CARTESIA) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text("सीमा की आवाज़ बनाएं", fontSize = 12.sp, maxLines = 1)
-                }
-            }
-            OutlinedButton(
-                onClick = { viewModel.previewEngine(TtsEngine.CARTESIA) },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text("▶️ टेस्ट सुनें", fontSize = 12.sp, color = NeonCyan, maxLines = 1)
-            }
-        }
-
-        if (previewStatus != null) {
-            Text(previewStatus, style = MaterialTheme.typography.bodySmall, color = NeonCyan)
-        }
-
-        // 1. Model Dropdown
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val modelTitle = VoiceCatalog.cartesiaModels.firstOrNull { it.id == s.cartesiaModel }?.title ?: s.cartesiaModel
-            Text("Model: $modelTitle", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Box {
-                TextButton(onClick = { modelMenuOpen = true }) { Text("Change", color = NeonCyan) }
-                DropdownMenu(expanded = modelMenuOpen, onDismissRequest = { modelMenuOpen = false }) {
-                    VoiceCatalog.cartesiaModels.forEach { opt ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text((if (opt.recommended) "★ " else "") + opt.title, fontWeight = FontWeight.Bold)
-                                    Text(opt.note, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                }
-                            },
-                            onClick = {
-                                viewModel.setCartesiaModel(opt.id)
-                                modelMenuOpen = false
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Voice Dropdown (loaded voices)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val currentVoiceName = s.cartesiaVoiceName ?: mergedVoices.firstOrNull { it.id == s.cartesiaVoiceId }?.name ?: "Ananya (Hindi Female)"
-            Text("Voice: $currentVoiceName", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            TextButton(onClick = { viewModel.loadCartesia() }) { Text("Refresh", color = NeonCyan) }
-            Box {
-                TextButton(onClick = { voiceMenuOpen = true }) { Text("Select", color = NeonCyan) }
-                DropdownMenu(expanded = voiceMenuOpen, onDismissRequest = { voiceMenuOpen = false }) {
-                    mergedVoices.forEach { v ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text((if (v.hindi) "🇮🇳 " else "") + v.name + (if (v.female) " (Female)" else ""), fontWeight = FontWeight.Bold)
-                                    if (v.detail.isNotBlank()) Text(v.detail, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                }
-                            },
-                            onClick = {
-                                viewModel.setCartesiaVoice(v)
-                                voiceMenuOpen = false
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        // 3. Mood / Emotion Dropdown
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val moodLabel = VoiceCatalog.cartesiaMoods.firstOrNull { it.first == s.cartesiaMood }?.second ?: "Natural (सामान्य)"
-            Text("Mood (अंदाज़): $moodLabel", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Box {
-                TextButton(onClick = { moodMenuOpen = true }) { Text("Change", color = NeonCyan) }
-                DropdownMenu(expanded = moodMenuOpen, onDismissRequest = { moodMenuOpen = false }) {
-                    VoiceCatalog.cartesiaMoods.forEach { (key, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label, color = if (key == s.cartesiaMood) NeonCyan else Color.White) },
-                            onClick = {
-                                viewModel.setCartesiaMood(key)
-                                moodMenuOpen = false
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        Text(
-            "सुझाव: Sonic 3 + Ananya (Hindi) + 'Pyaar bhari' या 'Khush' मूड चुनने पर सीमा बेहद मीठी व सजीव हिन्दी बोलती है।",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-        )
-    }
-}
-
-@Composable
-private fun SarvamVoiceControls(
-    s: UserSettings,
-    viewModel: SettingsViewModel,
-    previewStatus: String? = null,
-) {
-    val isActive = s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto
-    var speakerMenuOpen by remember { mutableStateOf(false) }
-
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Active indicator / Activate button
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isActive) {
-                StatusChip(label = "★ ACTIVE SEEMA VOICE", color = SuccessGreen)
-            } else {
-                Button(
-                    onClick = { viewModel.setActiveVoiceEngine(TtsEngine.SARVAM) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text("सीमा की आवाज़ बनाएं", fontSize = 12.sp, maxLines = 1)
-                }
-            }
-            OutlinedButton(
-                onClick = { viewModel.previewEngine(TtsEngine.SARVAM) },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text("▶️ टेस्ट सुनें", fontSize = 12.sp, color = NeonCyan, maxLines = 1)
-            }
-        }
-
-        if (previewStatus != null) {
-            Text(previewStatus, style = MaterialTheme.typography.bodySmall, color = NeonCyan)
-        }
-
-        Text("Model: Bulbul v3 (उच्च-गुणवत्ता भारतीय भाषा मॉडल)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-
-        // Speaker Dropdown
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val currentSpeaker = VoiceCatalog.sarvamSpeakers.firstOrNull { it.id == s.sarvamSpeaker }?.name ?: s.sarvamSpeaker
-            Text("Voice: $currentSpeaker", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Box {
-                TextButton(onClick = { speakerMenuOpen = true }) { Text("Change", color = NeonCyan) }
-                DropdownMenu(expanded = speakerMenuOpen, onDismissRequest = { speakerMenuOpen = false }) {
-                    VoiceCatalog.sarvamSpeakers.forEach { sp ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text((if (sp.recommended) "★ " else "") + sp.name, fontWeight = FontWeight.Bold)
-                                    Text(sp.note, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                }
-                            },
-                            onClick = {
-                                viewModel.setSarvamSpeaker(sp.id)
-                                speakerMenuOpen = false
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        Text(
-            "सुझाव: 'Priya' (प्रिया) सबसे लोकप्रिय व मधुर हिन्दी आवाज़ है। आप 'Kavya' या 'Ritu' भी चुन सकते हैं।",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-        )
-    }
-}
-
-@Composable
-private fun ElevenLabsVoiceControls(
-    s: UserSettings,
-    viewModel: SettingsViewModel,
-    elevenModels: List<VoiceModelOption>,
-    elevenVoices: List<CloudVoice>,
-    previewStatus: String? = null,
-) {
-    val isActive = s.ttsEngine == TtsEngine.ELEVENLABS && !s.voiceEngineAuto
     var modelMenuOpen by remember { mutableStateOf(false) }
-    var voiceMenuOpen by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF061828), Color(0xFF02040A))))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        // Top Back Row
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            if (isActive) {
-                StatusChip(label = "★ ACTIVE SEEMA VOICE", color = SuccessGreen)
-            } else {
-                Button(
-                    onClick = { viewModel.setActiveVoiceEngine(TtsEngine.ELEVENLABS) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text("सीमा की आवाज़ बनाएं", fontSize = 12.sp, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = SciFiCyanGlow)
+                }
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "Cartesia Sonic Studio",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 20.sp,
+                        ),
+                    )
+                    Text("भावपूर्ण आवाज़ें एवं मूड्स", color = TextSecondary, fontSize = 12.sp)
                 }
             }
-            OutlinedButton(
-                onClick = { viewModel.previewEngine(TtsEngine.ELEVENLABS) },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0x2200E5FF))
+                    .border(1.dp, SciFiCyanGlow.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                    .clickable(onClick = onBack)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Text("▶️ टेस्ट सुनें", fontSize = 12.sp, color = NeonCyan, maxLines = 1)
+                Text("⬅ वापस", color = SciFiCyanGlow, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
             }
         }
 
-        if (previewStatus != null) {
-            Text(previewStatus, style = MaterialTheme.typography.bodySmall, color = NeonCyan)
-        }
-
-        // Model Dropdown
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val modelTitle = elevenModels.firstOrNull { it.id == s.elevenModel }?.title ?: s.elevenModel
-            Text("Model: $modelTitle", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Box {
-                TextButton(onClick = { modelMenuOpen = true }) { Text("Change", color = NeonCyan) }
-                DropdownMenu(expanded = modelMenuOpen, onDismissRequest = { modelMenuOpen = false }) {
-                    elevenModels.forEach { opt ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text((if (opt.recommended) "★ " else "") + opt.title, fontWeight = FontWeight.Bold)
-                                    Text(opt.note, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                }
-                            },
-                            onClick = {
-                                viewModel.setElevenModel(opt.id)
-                                modelMenuOpen = false
-                            },
+        // Action Box: Make Active / Current Status
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (isActive) Color(0x2400E676) else Color(0x1F00D0FF))
+                .border(1.2.dp, if (isActive) SuccessGreen else SciFiCyanGlow, RoundedCornerShape(14.dp))
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (isActive) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("✅", fontSize = 16.sp)
+                        Text(
+                            "Cartesia Sonic वर्तमान में सीमा की मुख्य आवाज़ है!",
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen,
+                            fontSize = 14.5.sp,
                         )
                     }
+                } else {
+                    Button(
+                        onClick = { viewModel.setActiveVoiceEngine(TtsEngine.CARTESIA) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("⭐ इसे सीमा की मुख्य आवाज़ बनाएं (Make Active)", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    }
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.previewEngine(TtsEngine.CARTESIA) },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("▶️ टेस्ट आवाज़ सुनें (Preview)", color = SciFiCyanGlow, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    }
+                    OutlinedButton(
+                        onClick = viewModel::loadCartesia,
+                        modifier = Modifier.height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("🔄 रिफ्रेश", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+
+                previewStatus?.let {
+                    Text("🔊 $it", color = SciFiCyanGlow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
 
-        // Voice Dropdown
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val currentVoiceName = s.elevenVoiceName ?: elevenVoices.firstOrNull { it.id == s.elevenVoiceId }?.name ?: "Sarah (Default)"
-            Text("Voice: $currentVoiceName", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            TextButton(onClick = { viewModel.loadElevenLabs() }) { Text("Refresh", color = NeonCyan) }
-            Box {
-                TextButton(onClick = { voiceMenuOpen = true }) { Text("Select", color = NeonCyan) }
-                DropdownMenu(expanded = voiceMenuOpen, onDismissRequest = { voiceMenuOpen = false }) {
-                    if (elevenVoices.isEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("No voices loaded — tap Refresh") },
-                            onClick = { voiceMenuOpen = false },
-                        )
-                    } else {
-                        elevenVoices.forEach { v ->
+        // Cartesia Key Card
+        SecretCard(
+            id = SecretId.CARTESIA_API_KEY,
+            status = secretStatus,
+            viewModel = viewModel,
+            title = "Cartesia Voice API Key (कुंजी)",
+        )
+
+        // Model Picker
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF091424))
+                .border(1.dp, Color(0xFF1E3A5F), RoundedCornerShape(12.dp))
+                .padding(14.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                val modelTitle = VoiceCatalog.cartesiaModels.firstOrNull { it.id == s.cartesiaModel }?.title ?: s.cartesiaModel
+                Column {
+                    Text("Cartesia Model", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text(modelTitle, style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Box {
+                    Button(onClick = { modelMenuOpen = true }, shape = RoundedCornerShape(8.dp)) {
+                        Text("मॉडल बदलें", fontSize = 12.sp)
+                    }
+                    DropdownMenu(expanded = modelMenuOpen, onDismissRequest = { modelMenuOpen = false }) {
+                        VoiceCatalog.cartesiaModels.forEach { opt ->
                             DropdownMenuItem(
                                 text = {
                                     Column {
-                                        Text((if (v.hindi) "🇮🇳 " else "") + v.label, fontWeight = FontWeight.Bold)
+                                        Text((if (opt.recommended) "★ " else "") + opt.title, fontWeight = FontWeight.Bold)
+                                        Text(opt.note, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                     }
                                 },
                                 onClick = {
-                                    viewModel.setElevenVoice(v)
-                                    voiceMenuOpen = false
+                                    viewModel.setCartesiaModel(opt.id)
+                                    modelMenuOpen = false
                                 },
                             )
                         }
@@ -1385,5 +1542,310 @@ private fun ElevenLabsVoiceControls(
                 }
             }
         }
+
+        // Mood Selector Cards
+        Text(
+            "आवाज़ का अंदाज़ / मूड (Emotion):",
+            style = MaterialTheme.typography.titleSmall.copy(color = SciFiCyanGlow, fontWeight = FontWeight.Bold, fontSize = 15.sp),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            VoiceCatalog.cartesiaMoods.chunked(2).forEach { rowMoods ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowMoods.forEach { (key, label) ->
+                        val isSelected = key == s.cartesiaMood
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) Color(0x3300E5FF) else Color(0xFF071220))
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) SciFiCyanGlow else Color(0xFF1E3A5F),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { viewModel.setCartesiaMood(key) }
+                                .padding(vertical = 12.dp, horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) SciFiCyanGlow else Color.White,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Voice List (Big prominent voice cards)
+        Text(
+            "आवाज़ चुनें (Select Voice):",
+            style = MaterialTheme.typography.titleSmall.copy(color = SciFiCyanGlow, fontWeight = FontWeight.Bold, fontSize = 15.sp),
+        )
+
+        // Favorite Voices: Meera & Ananya + mergedVoices
+        mergedVoices.forEach { voice ->
+            val isCurrentVoice = s.cartesiaVoiceId == voice.id || (s.cartesiaVoiceName == voice.name)
+            val isFavorite = voice.name.contains("Meera", ignoreCase = true) || voice.name.contains("Ananya", ignoreCase = true)
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isCurrentVoice) Color(0x2B00E5FF) else Color(0xFF071220))
+                    .border(
+                        width = if (isCurrentVoice) 1.8.dp else 1.dp,
+                        color = if (isCurrentVoice) SciFiCyanGlow else if (isFavorite) Color(0xFF00B0FF).copy(alpha = 0.5f) else Color(0xFF182A44),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { viewModel.setCartesiaVoice(voice) }
+                    .padding(14.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (isFavorite) {
+                                Text("★", color = WarningAmber, fontSize = 16.sp)
+                            }
+                            Text(
+                                text = (if (voice.hindi) "🇮🇳 " else "") + voice.name + (if (voice.female) " (Female)" else ""),
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrentVoice) SciFiCyanGlow else Color.White,
+                                fontSize = 15.sp,
+                            )
+                            if (voice.name.contains("Meera", ignoreCase = true)) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0x33FFB300))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("राजू जी की पसंद (Bright Companion)", color = WarningAmber, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        if (voice.detail.isNotBlank()) {
+                            Text(voice.detail, style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontSize = 12.5.sp)
+                        }
+                    }
+
+                    RadioButton(
+                        selected = isCurrentVoice,
+                        onClick = { viewModel.setCartesiaVoice(voice) }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun SarvamStudioScreen(
+    s: UserSettings,
+    viewModel: SettingsViewModel,
+    previewStatus: String?,
+    secretStatus: SecretStatus,
+    onBack: () -> Unit,
+) {
+    val isActive = s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF1D0618), Color(0xFF02040A))))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        // Top Back Row
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFFFF4081))
+                }
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "Sarvam AI Bulbul Studio",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 20.sp,
+                        ),
+                    )
+                    Text("Bulbul v4-flash (<250ms HD भारतीय आवाज़ें)", color = TextSecondary, fontSize = 12.sp)
+                }
+            }
+
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0x22FF4081))
+                    .border(1.dp, Color(0xFFFF4081).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                    .clickable(onClick = onBack)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text("⬅ वापस", color = Color(0xFFFF80AB), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+            }
+        }
+
+        // Action Box: Make Active / Current Status
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (isActive) Color(0x2400E676) else Color(0x2BFF4081))
+                .border(1.2.dp, if (isActive) SuccessGreen else Color(0xFFFF4081), RoundedCornerShape(14.dp))
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (isActive) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("✅", fontSize = 16.sp)
+                        Text(
+                            "Sarvam AI Bulbul v4 वर्तमान में सीमा की मुख्य आवाज़ है!",
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen,
+                            fontSize = 14.5.sp,
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = { viewModel.setActiveVoiceEngine(TtsEngine.SARVAM) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("⭐ इसे सीमा की मुख्य आवाज़ बनाएं (Make Active)", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    }
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.previewEngine(TtsEngine.SARVAM) },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Text("▶️ टेस्ट आवाज़ सुनें (Preview)", color = Color(0xFFFF80AB), fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    }
+                }
+
+                previewStatus?.let {
+                    Text("🔊 $it", color = Color(0xFFFF80AB), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // Sarvam Key Card
+        SecretCard(
+            id = SecretId.SARVAM_API_KEY,
+            status = secretStatus,
+            viewModel = viewModel,
+            title = "Sarvam AI Voice API Key (कुंजी)",
+        )
+
+        // Model Banner Card
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E0A1A))
+                .border(1.dp, Color(0xFF4A153D), RoundedCornerShape(12.dp))
+                .padding(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("⚡", fontSize = 16.sp)
+                    Text("Model: bulbul:v4-flash (अल्ट्रा फ़ास्ट)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                }
+                Text(
+                    "<250ms लेटेंसी, 24kHz HD ऑडियो, स्वाभाविक उच्चारण और v3 से 30% सस्ता!",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 12.5.sp,
+                )
+            }
+        }
+
+        // Sarvam Speaker Voices
+        Text(
+            "भारतीय आवाज़ चुनें (Select Voice):",
+            style = MaterialTheme.typography.titleSmall.copy(color = Color(0xFFFF80AB), fontWeight = FontWeight.Bold, fontSize = 15.sp),
+        )
+
+        VoiceCatalog.sarvamSpeakers.forEach { speaker ->
+            val isCurrent = s.sarvamSpeaker.equals(speaker.id, ignoreCase = true)
+            val isFavorite = speaker.id in listOf("roopa", "suman")
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isCurrent) Color(0x33FF4081) else Color(0xFF130612))
+                    .border(
+                        width = if (isCurrent) 1.8.dp else 1.dp,
+                        color = if (isCurrent) Color(0xFFFF4081) else if (isFavorite) WarningAmber.copy(alpha = 0.6f) else Color(0xFF350E2D),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { viewModel.setSarvamSpeaker(speaker.id) }
+                    .padding(14.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (isFavorite) {
+                                Text("★", color = WarningAmber, fontSize = 16.sp)
+                            }
+                            Text(
+                                text = speaker.name,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrent) Color(0xFFFF80AB) else Color.White,
+                                fontSize = 15.sp,
+                            )
+                            if (isFavorite) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0x33FFB300))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("राजू जी की पसंद", color = WarningAmber, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Text(speaker.note, style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontSize = 12.5.sp)
+                    }
+
+                    RadioButton(
+                        selected = isCurrent,
+                        onClick = { viewModel.setSarvamSpeaker(speaker.id) }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
     }
 }

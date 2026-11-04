@@ -68,7 +68,8 @@ object VoiceCatalog {
 
     /** Default popular Cartesia female voices (available without initial network wait). */
     val defaultCartesiaVoices = listOf(
-        CloudVoice("ffa0d297-8cf9-4ec9-8e4e-99a59e939b02", "Ananya", "Hindi Female · Warm & sweet", female = true, hindi = true),
+        CloudVoice("3d253570-d3bc-487c-a3ed-b8d7669b3ff0", "Meera", "Bright Companion · दोस्ताना, नटखट और सजीव बातचीत", female = true, hindi = true),
+        CloudVoice("ffa0d297-8cf9-4ec9-8e4e-99a59e939b02", "Ananya", "Paced Helper · कोमल, धीमी और स्पष्ट हिन्दी/बंगाली", female = true, hindi = true),
         CloudVoice("256a42a0-47b8-4034-8461-5509a24bb887", "Sarah", "Multilingual Female · Natural", female = true, hindi = false),
         CloudVoice("694f120f-baa9-4482-a42e-13c5443e03d4", "Madame Secretary", "Professional Female", female = true, hindi = false),
     )
@@ -91,15 +92,17 @@ object VoiceCatalog {
 
     // ---------------------------------------------------------------- Sarvam AI
     val sarvamSpeakers = listOf(
-        SarvamSpeakerOption("priya", "Priya (प्रिया)", "★ सबसे मधुर, स्वाभाविक हिन्दी (अनुशंसित)", recommended = true),
-        SarvamSpeakerOption("ritu", "Ritu (रितु)", "शांत, सौम्य और कोमल आवाज़"),
+        SarvamSpeakerOption("roopa", "Roopa (रूपा)", "★ सुकून भरी, कोमल और सजीव बातचीत (Companion - पसंदीदा)", recommended = true),
+        SarvamSpeakerOption("suman", "Suman (सुमन)", "★ मीठी, सांसों की नज़ाकत वाली आवाज़ (Companion - पसंदीदा)", recommended = true),
+        SarvamSpeakerOption("simran", "Simran (सिमरन)", "चुलबुली, युवा और दोस्ताना बातचीत (Companion)", recommended = true),
+        SarvamSpeakerOption("sanchita", "Sanchita (संचिता)", "रोमांटिक, धीमी और कोमल आवाज़ (Storytelling)"),
+        SarvamSpeakerOption("priya", "Priya (प्रिया)", "मधुर और स्वाभाविक हिन्दी"),
         SarvamSpeakerOption("kavya", "Kavya (काव्या)", "दोस्ताना और स्पष्ट बातचीत"),
-        SarvamSpeakerOption("neha", "Neha (नेहा)", "ब्राइट, स्पष्ट और प्रोफेशनल टोन"),
-        SarvamSpeakerOption("simran", "Simran (सिमरन)", "चुलबुली, युवा और मधुर"),
+        SarvamSpeakerOption("ritu", "Ritu (रितु)", "शांत और कोमल आवाज़"),
+        SarvamSpeakerOption("neha", "Neha (नेहा)", "ब्राइट और स्पष्ट टोन"),
         SarvamSpeakerOption("ishita", "Ishita (इशिता)", "कोमल और शांत बातचीत"),
         SarvamSpeakerOption("shreya", "Shreya (श्रेया)", "मेलोडिक और भावुक"),
-        SarvamSpeakerOption("pooja", "Pooja (पूजा)", "परिपक्व और स्पष्ट आवाज़"),
-        SarvamSpeakerOption("roopa", "Roopa (रूपा)", "ऊर्जावान और स्पष्ट"),
+        SarvamSpeakerOption("pooja", "Pooja (पूजा)", "घरेलू और परिचित लहज़ा"),
     )
 
     // ---------------------------------------------------------------- Deepgram

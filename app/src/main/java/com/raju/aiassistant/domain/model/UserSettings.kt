@@ -127,7 +127,7 @@ data class UserSettings(
     val announceNotifications: Boolean = true,
     val announceApps: Set<String> = AnnounceApp.entries.map { it.packageName }.toSet(),
     /** Say only who wrote, and read the message only after the user taps Read. */
-    val askBeforeReading: Boolean = true,
+    val askBeforeReading: Boolean = false,
     /** Announce incoming phone (SIM) calls. Needs the call-screening role. */
     val announceCalls: Boolean = true,
     /** Speak the number of callers who are not in Contacts (otherwise "unknown number"). */
@@ -153,7 +153,7 @@ data class UserSettings(
 }
 
 /** Female voices of Sarvam Bulbul v3 (names are lowercase and case-sensitive). The first one is the default. */
-val SARVAM_FEMALE_SPEAKERS = listOf("priya", "ritu", "kavya", "neha", "simran", "ishita", "shreya", "pooja", "roopa")
+val SARVAM_FEMALE_SPEAKERS = listOf("roopa", "suman", "simran", "sanchita", "priya", "ritu", "kavya", "neha", "ishita", "shreya", "pooja")
 
 /** A saved Bulbul v2 voice (anushka, manisha, ...) is rejected by v3, so it falls back to the default. */
 fun validSarvamSpeaker(saved: String?): String = saved?.takeIf { it in SARVAM_FEMALE_SPEAKERS } ?: SARVAM_FEMALE_SPEAKERS.first()

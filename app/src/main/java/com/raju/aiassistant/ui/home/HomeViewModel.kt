@@ -191,6 +191,13 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         c.stopEverything()
     }
 
+    /** Emergency Mute / Silent switch: immediately silences speech and stops announcements while keeping app open. */
+    fun toggleMute() {
+        val next = !uiState.value.paused
+        if (next) c.stopEverything()
+        viewModelScope.launch { c.settingsRepository.setAssistantPaused(next) }
+    }
+
     /** Shows a state's visuals for testing the UI. Pass null to return to the real state. */
     fun setPreview(state: AssistantState?) {
         preview.value = state

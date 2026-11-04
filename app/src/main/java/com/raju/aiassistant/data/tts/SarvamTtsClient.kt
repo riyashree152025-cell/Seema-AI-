@@ -23,7 +23,7 @@ class SarvamTtsClient(
     private val apiKey: String,
     private val baseUrl: String = "https://api.sarvam.ai",
     // bulbul:v2 was retired by Sarvam (HTTP 400 "deprecated"). v3 has its own speaker list and no pitch/loudness.
-    private val model: String = "bulbul:v3",
+    private val model: String = "bulbul:v4-flash",
 ) {
     suspend fun synthesize(text: String, speaker: String, languageCode: String, pace: Float): AiResult<ByteArray> = withRetry {
         val payload = buildJsonObject {
@@ -32,7 +32,7 @@ class SarvamTtsClient(
             put("speaker", speaker)
             put("model", model)
             put("pace", pace.coerceIn(0.5f, 2.0f).toDouble())
-            put("speech_sample_rate", 22050)
+            put("speech_sample_rate", 24000)
             // Sarvam normalises numbers and English words inside Hindi/Hinglish text when enabled.
             put("enable_preprocessing", true)
         }
