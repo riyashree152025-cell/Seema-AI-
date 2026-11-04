@@ -25,6 +25,18 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // One fixed DEBUG signing key for every build (CI and Android Studio), so a new test APK installs
+    // over the old one and keeps the user's keys, voices and settings. Debug-only, not a secret: it can
+    // never sign a Play Store release (release signing stays local, see README).
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

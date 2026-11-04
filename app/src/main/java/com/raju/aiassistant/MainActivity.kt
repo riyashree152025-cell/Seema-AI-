@@ -45,9 +45,11 @@ class MainActivity : ComponentActivity() {
                     appContainer.settingsRepository.setDefaultProvider(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
                 }
             }
+            // A saved Gemini model that Google has retired (or a broken value) goes back to "auto":
+            // Seema then picks the newest Flash model the key lists (never a fixed, ageing name).
             val geminiModel = s.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
-            if (geminiModel != null && (geminiModel.contains("omni", ignoreCase = true) || geminiModel.trim().isEmpty())) {
-                appContainer.settingsRepository.setModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, "gemini-2.0-flash")
+            if (geminiModel != null && com.raju.aiassistant.domain.ai.ModelAdvice.isRetiredGemini(geminiModel)) {
+                appContainer.settingsRepository.clearModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
             }
         }
 

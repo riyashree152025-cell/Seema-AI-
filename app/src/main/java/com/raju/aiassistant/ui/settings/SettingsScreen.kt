@@ -1349,6 +1349,15 @@ fun TavilyDetailScreen(
                         enabled = keyInput.isNotBlank()
                     ) { Text("Save") }
                 }
+                // What really happened: saved (masked key), testing, connected or the error.
+                Text(
+                    if (secretStatus.configured) "✓ Key saved ${secretStatus.maskedValue}" else "Key abhi save nahi hai",
+                    color = if (secretStatus.configured) Color(0xFF69F0AE) else Color(0xFFFFC857),
+                    fontSize = 13.sp,
+                )
+                secretStatus.message?.let {
+                    Text(it, color = if (secretStatus.isError) Color(0xFFFF6B8A) else Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                }
             }
         }
     }
@@ -1487,9 +1496,6 @@ fun VoiceSpeechScreen(
             }
         }
 
-        ListeningPanel(s, viewModel)
-        VoiceEngineManager(s, viewModel)
-
         // Engine Cards List Matching Reference Image Panel 4
         val isCartesiaActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
         VoiceEngineCard(
@@ -1558,6 +1564,10 @@ fun VoiceSpeechScreen(
                 }
             }
         }
+
+        // Below your voice choices (which stay where they were): listening / wake word and offline voices.
+        ListeningPanel(s, viewModel)
+        VoiceEngineManager(s, viewModel)
 
         Spacer(Modifier.height(16.dp))
     }

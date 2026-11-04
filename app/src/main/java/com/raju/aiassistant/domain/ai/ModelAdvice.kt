@@ -23,6 +23,19 @@ object ModelAdvice {
 
     fun isChatModel(id: String) = NOT_CHAT.none { id.contains(it, ignoreCase = true) }
 
+    private val GEMINI_FLASH = Regex("^(?:models/)?gemini-(\\d+(?:\\.\\d+)?)-flash$")
+
+    /** Gemini models Google has switched off (HTTP 404 "no longer available"), or values that are not a model. */
+    fun isRetiredGemini(id: String): Boolean {
+        val m = id.trim().removePrefix("models/")
+        return m.isEmpty() || m.contains("omni", ignoreCase = true) || m.startsWith("gemini-1.") || m.startsWith("gemini-2.0")
+    }
+
+    /** The newest plain "gemini-X.Y-flash" the key lists (not lite / preview / experimental), e.g. gemini-3.8-flash. */
+    fun newestGeminiFlash(models: List<AiModel>): AiModel? = models
+        .mapNotNull { m -> GEMINI_FLASH.find(m.id.trim())?.groupValues?.get(1)?.toDoubleOrNull()?.let { it to m } }
+        .maxByOrNull { it.first }?.second
+
     /** Non-null when the model is a poor fit for this assistant; shown next to the model in Settings and Chat. */
     fun warning(id: String?): String? = when {
         id == null -> null
@@ -51,4 +64,5 @@ object ModelAdvice {
 
 /** Picks a sensible default when the user has not chosen a model yet. */
 fun pickDefaultModel(provider: ProviderId, models: List<AiModel>): AiModel? =
+    (if (provider == ProviderId.GEMINI) ModelAdvice.newestGeminiFlash(models) else null) ?:
     ModelAdvice.rank(provider, models).firstOrNull { ModelAdvice.warning(it.id) == null } ?: models.firstOrNull()

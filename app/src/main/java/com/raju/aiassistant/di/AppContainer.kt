@@ -297,13 +297,21 @@ class AppContainer(context: Context) {
             transcriber = deepgramTranscriber,
             wakeListener = wakeListener,
             onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
+            onModelReplaced = { id, model -> appScope.launch { settingsRepository.setModel(id, model) } },
             describeImage = { jpeg, question ->
                 val key = secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY)
                 if (key.isNullOrBlank()) {
                     com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Photo samajhne ke liye Gemini key chahiye (Settings → Brain).")
                 } else {
-                    com.raju.aiassistant.data.ai.GeminiProvider(http, key).describeImage(
-                        currentSettings.value.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI) ?: "gemini-2.0-flash",
+                    val gemini = com.raju.aiassistant.data.ai.GeminiProvider(http, key)
+                    // The saved Gemini model, or (auto / retired) the newest Flash model the key lists.
+                    val model = currentSettings.value.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
+                        ?.takeUnless { com.raju.aiassistant.domain.ai.ModelAdvice.isRetiredGemini(it) }
+                        ?: (gemini.listModels() as? com.raju.aiassistant.domain.ai.AiResult.Success)?.value
+                            ?.let { com.raju.aiassistant.domain.ai.pickDefaultModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, it)?.id }
+                        ?: "gemini-flash-latest"
+                    gemini.describeImage(
+                        model,
                         "You are Seema, the user's phone assistant, looking through the phone camera. Describe briefly and helpfully what is in the photo; answer the user's question about it.",
                         question, jpeg,
                     )
