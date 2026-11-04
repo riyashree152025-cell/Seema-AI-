@@ -3,7 +3,6 @@ package com.raju.aiassistant.ui.chat
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +46,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -350,12 +348,26 @@ private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Uni
             Spacer(Modifier.width(8.dp))
         }
 
-        // Message Bubble
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = if (isUser) Color(0xFF0077FF) else Color(0xDD0B162C),
-            border = if (isUser) null else BorderStroke(1.dp, Color(0x3300E5FF)),
-            modifier = Modifier.widthIn(max = 280.dp),
+        // Message Bubble (reference look): yours a bright blue gradient, Seema's a dark glass card with a neon edge.
+        val bubbleShape = RoundedCornerShape(
+            topStart = 18.dp, topEnd = 18.dp,
+            bottomStart = if (isUser) 18.dp else 6.dp,
+            bottomEnd = if (isUser) 6.dp else 18.dp,
+        )
+        Box(
+            Modifier
+                .widthIn(max = 280.dp)
+                .clip(bubbleShape)
+                .background(
+                    if (isUser) Brush.linearGradient(listOf(Color(0xFF1E90FF), Color(0xFF0060E0)))
+                    else Brush.verticalGradient(listOf(Color(0xE6102446), Color(0xE6081530))),
+                )
+                .border(
+                    1.dp,
+                    if (isUser) Brush.linearGradient(listOf(Color(0x9980D8FF), Color(0x5500A0FF)))
+                    else Brush.linearGradient(listOf(Color(0x9900E5FF), Color(0x337C4DFF))),
+                    bubbleShape,
+                ),
         ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 SelectionContainer {
@@ -364,6 +376,11 @@ private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Uni
                         color = Color.White,
                         style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     )
+                }
+
+                // Which AI really answered (this session's replies), e.g. "via Gemini · gemini-3.8-flash".
+                if (!isUser) message.via?.let { via ->
+                    Text("via $via", color = Color.White.copy(alpha = 0.55f), fontSize = 10.5.sp, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 // Copy / Repeat row for assistant messages
