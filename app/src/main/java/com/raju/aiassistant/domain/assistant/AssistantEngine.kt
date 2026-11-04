@@ -968,6 +968,11 @@ class AssistantEngine(
                 // Informational result: in a voice conversation the user expects to hear it.
                 if (speak && outcome is ToolOutcome.Done) say(outcome.message)
             }
+            is AssistantAction.FindPhone -> {
+                val outcome = tools.findMyPhone()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
+            }
             is AssistantAction.PlayMusic -> report(action, tools.playMusic(action.query, action.service ?: s.musicService))
             is AssistantAction.Remember -> remember(action)
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))

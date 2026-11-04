@@ -12,6 +12,8 @@ import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
+import android.media.RingtoneManager
+import android.media.AudioAttributes
 import android.os.Build
 import android.provider.AlarmClock
 import android.provider.CalendarContract
@@ -377,6 +379,36 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 context.startActivity(intent)
             } catch (_: Exception) {}
             return ToolOutcome.Failed("स्क्रीनशॉट के लिए Seema AI की Accessibility Service चालू करें (सेटिंग्स खुल गई हैं)।")
+        }
+    }
+
+    override fun findMyPhone(): ToolOutcome {
+        val am = context.getSystemService(AudioManager::class.java) ?: return ToolOutcome.Failed("Audio service is not available.")
+        return try {
+            // Unmute silent mode & maximize ring, alarm, and music volume
+            runCatching { am.ringerMode = AudioManager.RINGER_MODE_NORMAL }
+            val maxAlarm = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            val maxMusic = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val maxRing = am.getStreamMaxVolume(AudioManager.STREAM_RING)
+            am.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusic, 0)
+            am.setStreamVolume(AudioManager.STREAM_RING, maxRing, 0)
+
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val ringtone = RingtoneManager.getRingtone(context, uri)
+            ringtone?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    it.audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                }
+                it.play()
+            }
+            ToolOutcome.Done("फोन पर 100% फुल वॉल्यूम में अलार्म और घंटी बजा दी गई है!")
+        } catch (e: Exception) {
+            ToolOutcome.Failed("घंटी बजाने में समस्या आई: ${e.message}")
         }
     }
 

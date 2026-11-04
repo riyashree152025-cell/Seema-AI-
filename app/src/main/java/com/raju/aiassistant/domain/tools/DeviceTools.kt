@@ -46,6 +46,7 @@ interface DeviceTools {
     fun shareTextFile(name: String, content: String): ToolOutcome = ToolOutcome.Failed("Saving files is not supported here.")
     suspend fun getLastCall(): ToolOutcome = ToolOutcome.Failed("Call log is not supported here.")
     fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
+    fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
 }
 
 enum class TravelMode { DRIVE, WALK, BIKE, TRANSIT }
