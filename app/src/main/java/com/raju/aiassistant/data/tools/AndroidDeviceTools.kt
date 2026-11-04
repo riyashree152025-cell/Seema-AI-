@@ -253,6 +253,34 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     override fun hasPermission(permission: String): Boolean = granted(permission)
 
+    override suspend fun takePhoto(front: Boolean, save: Boolean): com.raju.aiassistant.domain.tools.PhotoResult {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            return com.raju.aiassistant.domain.tools.PhotoResult.NeedsPermission(Manifest.permission.CAMERA, "फोटो लेने के लिए कैमरा की अनुमति चाहिए।")
+        }
+        val jpeg = try {
+            CameraCapture.capture(context, front)
+        } catch (e: SecurityException) {
+            return com.raju.aiassistant.domain.tools.PhotoResult.Failed("कैमरा तभी चलता है जब सीमा स्क्रीन पर खुली हो।")
+        } catch (e: Exception) {
+            return com.raju.aiassistant.domain.tools.PhotoResult.Failed("कैमरा नहीं चल पाया (${e.message ?: e.javaClass.simpleName})।")
+        }
+        val saved = if (save) savePhoto(jpeg) else null
+        return com.raju.aiassistant.domain.tools.PhotoResult.Taken(jpeg, saved)
+    }
+
+    /** Saves into the gallery (Pictures/Seema); no storage permission is needed for this on Android 10+. */
+    private fun savePhoto(jpeg: ByteArray): String? = runCatching {
+        val name = "Seema_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date()) + ".jpg"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Seema")
+        }
+        val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return@runCatching null
+        context.contentResolver.openOutputStream(uri)?.use { it.write(jpeg) }
+        name
+    }.getOrNull()
+
     override fun setTimer(seconds: Int, note: String): ToolOutcome {
         val intent = Intent(AlarmClock.ACTION_SET_TIMER)
             .putExtra(AlarmClock.EXTRA_LENGTH, seconds.coerceIn(1, 86_400))

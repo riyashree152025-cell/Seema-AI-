@@ -84,6 +84,39 @@ class GeminiProvider(
         }
     }
 
+    /** One photo + a question ("kya dikh raha hai?"), answered by the same Gemini model (all Flash models accept images). */
+    suspend fun describeImage(model: String, systemPrompt: String, question: String, jpeg: ByteArray): AiResult<String> = withRetry {
+        val body = buildJsonObject {
+            putJsonObject("systemInstruction") { putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } } }
+            putJsonArray("contents") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        addJsonObject { put("text", question) }
+                        addJsonObject {
+                            putJsonObject("inline_data") {
+                                put("mime_type", "image/jpeg")
+                                put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))
+                            }
+                        }
+                    }
+                }
+            }
+            putJsonObject("generationConfig") {
+                put("temperature", 0.4)
+                put("maxOutputTokens", 1024)
+                if (model.contains("2.5-flash")) putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
+            }
+        }
+        when (val r = http.fetch(request(model, "generateContent", body))) {
+            is AiResult.Failure -> r
+            is AiResult.Success -> {
+                val (code, text) = r.value
+                if (code !in 200..299) httpFailure(code, text) else parseReply(text)
+            }
+        }
+    }
+
     override val streams = true
 
     override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {

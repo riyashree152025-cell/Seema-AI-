@@ -11,6 +11,9 @@
 
     <!-- Runtime permissions: requested only when the related feature is used -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- "Photo lo" / "dekho kya dikh raha hai": asked the first time the camera is used. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Weather on the 3D dashboard (city-level only, asked when the user taps the weather panel). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Call-style audio (echo cancellation) while you talk with Seema hands-free, so you can interrupt her. -->

@@ -297,6 +297,18 @@ class AppContainer(context: Context) {
             transcriber = deepgramTranscriber,
             wakeListener = wakeListener,
             onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
+            describeImage = { jpeg, question ->
+                val key = secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY)
+                if (key.isNullOrBlank()) {
+                    com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Photo samajhne ke liye Gemini key chahiye (Settings → Brain).")
+                } else {
+                    com.raju.aiassistant.data.ai.GeminiProvider(http, key).describeImage(
+                        currentSettings.value.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI) ?: "gemini-2.0-flash",
+                        "You are Seema, the user's phone assistant, looking through the phone camera. Describe briefly and helpfully what is in the photo; answer the user's question about it.",
+                        question, jpeg,
+                    )
+                }
+            },
             business = businessRepository,
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,

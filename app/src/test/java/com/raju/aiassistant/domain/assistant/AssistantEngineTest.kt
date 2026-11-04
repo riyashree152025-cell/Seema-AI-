@@ -74,6 +74,11 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        var photos = mutableListOf<Pair<Boolean, Boolean>>() // front, saved
+        override suspend fun takePhoto(front: Boolean, save: Boolean): com.raju.aiassistant.domain.tools.PhotoResult {
+            photos += front to save
+            return com.raju.aiassistant.domain.tools.PhotoResult.Taken(byteArrayOf(1, 2, 3), if (save) "Seema_1.jpg" else null)
+        }
         val music = mutableListOf<Pair<String, MusicService>>()
         val timers = mutableListOf<Int>()
         val sms = mutableListOf<Pair<String, String>>()
@@ -1278,5 +1283,33 @@ class AssistantEngineTest {
         settle()
         assertEquals(0, tools.answered)
         assertEquals(1, provider.calls.size)
+    }
+
+    @Test
+    fun lookThroughTheCameraSendsThePhotoToTheAiAndSpeaksTheAnswer() = runTest {
+        provider = FakeProvider(ArrayDeque(listOf(AiResult.Success("""Dekhti hoon. <action>{"type":"look","camera":"front","question":"main kaisa lag raha hoon?"}</action>"""))))
+        var seen: Pair<Int, String>? = null
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            describeImage = { jpeg, q -> seen = jpeg.size to q; AiResult.Success("Aap muskura rahe hain.") },
+        )
+        e.submit("front camera se dekho main kaisa lag raha hoon", fromVoice = true)
+        settle()
+        assertEquals(listOf(true to false), tools.photos) // front camera, not saved to the gallery
+        assertEquals(3, seen!!.first)
+        assertTrue(seen!!.second.startsWith("main kaisa lag raha hoon?"))
+        assertEquals("Aap muskura rahe hain.", speaker.spoken.last())
+    }
+
+    @Test
+    fun takePhotoSavesItToTheGallery() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"take_photo","camera":"back"}</action>"""))
+        e.submit("photo lo", fromVoice = true)
+        settle()
+        assertEquals(listOf(false to true), tools.photos)
+        assertTrue(speaker.spoken.last().contains("फोटो ले ली"))
     }
 }

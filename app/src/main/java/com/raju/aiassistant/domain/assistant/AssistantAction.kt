@@ -97,6 +97,12 @@ sealed interface AssistantAction {
     data object AnswerCall : AssistantAction {
         override val label get() = "Answer ringing call"
     }
+    data class TakePhoto(val front: Boolean) : AssistantAction {
+        override val label get() = if (front) "Take a selfie (front camera)" else "Take a photo (back camera)"
+    }
+    data class LookCamera(val front: Boolean, val question: String) : AssistantAction {
+        override val label get() = "Look through the ${if (front) "front" else "back"} camera"
+    }
     data object GoHome : AssistantAction {
         override val label get() = "Go to home screen"
     }
@@ -220,6 +226,10 @@ private fun parseAction(json: String): AssistantAction? {
         "find_phone", "ring_phone" -> AssistantAction.FindPhone
         "end_call", "cut_call", "hangup", "hang_up" -> AssistantAction.EndCall
         "answer_call", "pick_call", "accept_call", "receive_call" -> AssistantAction.AnswerCall
+        "take_photo", "photo", "click_photo" -> AssistantAction.TakePhoto(front = str("camera").equals("front", ignoreCase = true))
+        "selfie" -> AssistantAction.TakePhoto(front = true)
+        "look", "look_camera", "camera_look", "what_do_you_see" ->
+            AssistantAction.LookCamera(front = str("camera").equals("front", ignoreCase = true), question = str("question") ?: "Is photo mein kya dikh raha hai?")
         "go_home", "home", "home_screen" -> AssistantAction.GoHome
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }

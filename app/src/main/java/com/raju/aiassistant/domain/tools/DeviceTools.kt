@@ -12,6 +12,13 @@ sealed interface ToolOutcome {
     data class NeedsPermission(val permission: String, val reason: String) : ToolOutcome
 }
 
+/** A photo from the phone's camera (Seema's "photo lo" / "dekho kya dikh raha hai"). */
+sealed interface PhotoResult {
+    class Taken(val jpeg: ByteArray, val savedAs: String?) : PhotoResult
+    data class Failed(val message: String) : PhotoResult
+    data class NeedsPermission(val permission: String, val reason: String) : PhotoResult
+}
+
 sealed interface ContactLookup {
     data class Found(val contacts: List<Contact>) : ContactLookup
     data class NeedsPermission(val permission: String, val reason: String) : ContactLookup
@@ -50,6 +57,8 @@ interface DeviceTools {
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
+    /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */
+    suspend fun takePhoto(front: Boolean, save: Boolean): PhotoResult = PhotoResult.Failed("Camera is not supported here.")
     fun goHome(): ToolOutcome = ToolOutcome.Failed("Going home is not supported here.")
     fun openSeema(): ToolOutcome = ToolOutcome.Failed("Opening Seema is not supported here.")
 }

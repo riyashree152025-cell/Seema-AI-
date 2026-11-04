@@ -1,5 +1,6 @@
 package com.raju.aiassistant.domain.assistant
 
+import com.raju.aiassistant.domain.tools.PhotoResult
 import com.raju.aiassistant.domain.notify.callCommand
 import com.raju.aiassistant.domain.notify.CallCommand
 import com.raju.aiassistant.data.search.WebSearch
@@ -138,6 +139,9 @@ class AssistantEngine(
     private val latestNotification: () -> String? = { null },
     /** Called when she really wakes up (her name was recognised): the app turns the screen on. */
     private val onWake: () -> Unit = {},
+    /** Answers a question about a photo (Gemini); used for "dekho kya dikh raha hai". */
+    private val describeImage: suspend (jpeg: ByteArray, question: String) -> AiResult<String> =
+        { _, _ -> AiResult.Failure(FailureKind.NOT_CONFIGURED, "Image understanding is not available.") },
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -1095,6 +1099,8 @@ class AssistantEngine(
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
             }
             is AssistantAction.AnswerCall -> report(action, tools.answerCall())
+            is AssistantAction.TakePhoto -> camera(action, action.front, question = null, speak = speak)
+            is AssistantAction.LookCamera -> camera(action, action.front, question = action.question, speak = speak)
             is AssistantAction.EndCall -> {
                 val outcome = tools.endCall()
                 report(action, outcome)
@@ -1353,6 +1359,41 @@ class AssistantEngine(
         val text = summary ?: phrase(lang(), "अभी कोई नया नोटिफिकेशन या मैसेज नहीं आया है।", "এখন কোনো নতুন নোটিফিকেশন নেই।")
         report(action, ActionStatus.SUCCESS, text)
         if (speak) say(text)
+    }
+
+    /** "Photo lo" (saved to the gallery) or, with [question], "dekho kya dikh raha hai" (photo → Gemini → spoken answer). */
+    private suspend fun camera(action: AssistantAction, front: Boolean, question: String?, speak: Boolean) {
+        var r = tools.takePhoto(front, save = question == null)
+        if (r is PhotoResult.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Camera permission", r.reason, permission = r.permission))
+            r = if (d is Decision.PermissionResult && d.granted) tools.takePhoto(front, save = question == null)
+            else return report(action, ActionStatus.CANCELLED, "Camera permission was denied.")
+        }
+        when (r) {
+            is PhotoResult.Failed -> {
+                report(action, ActionStatus.FAILED, r.message)
+                if (speak) say(r.message)
+            }
+            is PhotoResult.NeedsPermission -> report(action, ActionStatus.FAILED, r.reason)
+            is PhotoResult.Taken -> if (question == null) {
+                val msg = phrase(lang(), "फोटो ले ली है राजू" + (r.savedAs?.let { ", गैलरी में Seema फोल्डर में रखी है।" } ?: "।"), "ছবি তুলে নিয়েছি রাজু।")
+                report(action, ActionStatus.SUCCESS, msg + (r.savedAs?.let { " ($it)" } ?: ""))
+                if (speak) say(msg)
+            } else {
+                _state.value = AssistantState.Thinking
+                val answer = describeImage(r.jpeg, question + " (" + (if (lang() == SeemaLanguage.BENGALI) "Answer in Bengali" else "Answer in short, natural Hindi") + ")")
+                when (answer) {
+                    is AiResult.Success -> {
+                        report(action, ActionStatus.SUCCESS, answer.value)
+                        if (speak) say(answer.value)
+                    }
+                    is AiResult.Failure -> {
+                        report(action, ActionStatus.FAILED, answer.message)
+                        if (speak) say(phrase(lang(), "फोटो तो ले ली, पर उसे समझ नहीं पाई: ${answer.message}", "ছবি নিয়েছি, কিন্তু বুঝতে পারিনি।"))
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun takeScreenshot(action: AssistantAction.Screenshot, speak: Boolean) {
