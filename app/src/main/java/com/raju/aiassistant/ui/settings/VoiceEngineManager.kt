@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -28,6 +29,7 @@ import com.raju.aiassistant.domain.voice.LocalVoiceModel
 import com.raju.aiassistant.domain.voice.voiceEngineOrder
 import com.raju.aiassistant.ui.components.HudPanel
 import com.raju.aiassistant.ui.theme.ErrorRed
+import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.SuccessGreen
 import com.raju.aiassistant.ui.theme.TextSecondary
 import com.raju.aiassistant.ui.theme.WarningAmber
@@ -59,8 +61,25 @@ fun VoiceEngineManager(s: UserSettings, viewModel: SettingsViewModel) {
         HintRadioRow("Automatic (recommended)", "Kokoro when it is fast enough on this phone, otherwise Piper; Android TTS if neither works. Once a model is downloaded only on-phone engines are used — no voice API costs. Until then the voice chosen under Voice is used.", s.voiceEngineAuto) {
             viewModel.setVoiceEngineAuto(true)
         }
-        HintRadioRow("Manual", "Uses the engine chosen under Voice → Speech output first; offline engines and Android TTS are the fallback.", !s.voiceEngineAuto) {
+        HintRadioRow("Manual", "Uses the engine chosen below first; offline engines and Android TTS are the fallback.", !s.voiceEngineAuto) {
             viewModel.setVoiceEngineAuto(false)
+        }
+        if (!s.voiceEngineAuto) {
+            Column(Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Select Manual Voice Engine:", style = MaterialTheme.typography.bodySmall, color = NeonCyan)
+                listOf(
+                    TtsEngine.CARTESIA to "Cartesia Sonic (Online, Moods & Emotion)",
+                    TtsEngine.SARVAM to "Sarvam AI Bulbul (Online, Indian Voices)",
+                    TtsEngine.ELEVENLABS to "ElevenLabs (Online, Sweet Voice)",
+                    TtsEngine.KOKORO to "Kokoro (Offline 82M)",
+                    TtsEngine.PIPER to "Piper (Offline Fast)",
+                    TtsEngine.ANDROID to "Android TTS (Built-in)",
+                ).forEach { (engine, label) ->
+                    HintRadioRow(label, "", s.ttsEngine == engine) {
+                        viewModel.setActiveVoiceEngine(engine)
+                    }
+                }
+            }
         }
         val installed = viewModel.voiceModelCatalog.filter { states[it.id] is ModelState.Installed }.map { it.engine }.toSet()
         Text(

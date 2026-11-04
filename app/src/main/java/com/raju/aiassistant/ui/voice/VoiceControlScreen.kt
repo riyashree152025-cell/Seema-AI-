@@ -57,6 +57,7 @@ import com.raju.aiassistant.domain.language.SeemaLanguage
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.raju.aiassistant.domain.model.AssistantState
+import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.ui.theme.GoldAccent
 import com.raju.aiassistant.ui.theme.NeonCyan
 import kotlin.math.abs
@@ -211,8 +212,16 @@ fun VoiceControlScreen(
                     scope.launch { container.settingsRepository.setSpeechLanguage(next) }
                 },
             )
+            val activeVoiceName = when {
+                settings.voiceEngineAuto -> "Auto\n(Offline)"
+                settings.ttsEngine == TtsEngine.CARTESIA -> "Voice\n(${settings.cartesiaVoiceName ?: "Cartesia"})"
+                settings.ttsEngine == TtsEngine.SARVAM -> "Voice\n(${settings.sarvamSpeaker.replaceFirstChar { it.uppercase() }})"
+                settings.ttsEngine == TtsEngine.ELEVENLABS -> "Voice\n(ElevenLabs)"
+                settings.ttsEngine == TtsEngine.ANDROID -> "Voice\n(Android)"
+                else -> "Voice\n(Offline)"
+            }
             VoiceChip(
-                label = "Voice\n(British Male)",
+                label = activeVoiceName,
                 onClick = onOpenVoiceSettings,
             )
             VoiceChip(

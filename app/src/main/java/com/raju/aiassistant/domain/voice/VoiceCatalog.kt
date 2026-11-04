@@ -16,6 +16,9 @@ data class CloudVoice(
     val label: String get() = name + (if (hindi) " · Hindi" else "") + (if (paidOnly) " · paid plan" else "") + (if (detail.isNotBlank()) " — $detail" else "")
 }
 
+/** Sarvam AI Indian speaker choice with description. */
+data class SarvamSpeakerOption(val id: String, val name: String, val note: String, val recommended: Boolean = false)
+
 /** Deepgram speech-to-text choice: "model:language", e.g. "nova-3:multi". */
 data class SttModelOption(val id: String, val title: String, val note: String, val recommended: Boolean = false) {
     val model: String get() = id.substringBefore(':')
@@ -59,12 +62,45 @@ object VoiceCatalog {
     const val CARTESIA_DEFAULT_MODEL = "sonic-3"
     val cartesiaModels = listOf(
         VoiceModelOption("sonic-3", "Sonic 3", "Hindi समझता है, भाव (mood) के साथ · 1 credit/अक्षर", recommended = true),
-        VoiceModelOption("sonic-3.5", "Sonic 3.5", "सबसे नया, ज़्यादा प्राकृतिक"),
+        VoiceModelOption("sonic-3.5", "Sonic 3.5", "सबसे नया, ज़्यादा प्राकृतिक एवं स्पष्ट आवाज़"),
         VoiceModelOption("sonic-latest", "Sonic latest", "हमेशा Cartesia का सबसे नया model"),
     )
 
+    /** Default popular Cartesia female voices (available without initial network wait). */
+    val defaultCartesiaVoices = listOf(
+        CloudVoice("ffa0d297-8cf9-4ec9-8e4e-99a59e939b02", "Ananya", "Hindi Female · Warm & sweet", female = true, hindi = true),
+        CloudVoice("256a42a0-47b8-4034-8461-5509a24bb887", "Sarah", "Multilingual Female · Natural", female = true, hindi = false),
+        CloudVoice("694f120f-baa9-4482-a42e-13c5443e03d4", "Madame Secretary", "Professional Female", female = true, hindi = false),
+    )
+
     /** Cartesia Sonic 3 emotions that suit a friendly assistant. "" = natural (no emotion hint). */
-    val cartesiaMoods = listOf("" to "Natural", "content" to "Khush", "calm" to "Shaant", "affectionate" to "Pyaar bhari", "happy" to "Excited")
+    val cartesiaMoods = listOf(
+        "" to "Natural (सामान्य)",
+        "affectionate" to "Pyaar bhari (स्नेही)",
+        "content" to "Khush (प्रसन्न)",
+        "calm" to "Shaant (शांत)",
+        "happy" to "Excited (उत्साहित)",
+    )
+
+    fun mergeCartesiaVoices(available: List<CloudVoice>): List<CloudVoice> {
+        if (available.isEmpty()) return defaultCartesiaVoices
+        val ids = available.map { it.id }.toSet()
+        val extra = defaultCartesiaVoices.filter { it.id !in ids }
+        return sortVoices(available + extra)
+    }
+
+    // ---------------------------------------------------------------- Sarvam AI
+    val sarvamSpeakers = listOf(
+        SarvamSpeakerOption("priya", "Priya (प्रिया)", "★ सबसे मधुर, स्वाभाविक हिन्दी (अनुशंसित)", recommended = true),
+        SarvamSpeakerOption("ritu", "Ritu (रितु)", "शांत, सौम्य और कोमल आवाज़"),
+        SarvamSpeakerOption("kavya", "Kavya (काव्या)", "दोस्ताना और स्पष्ट बातचीत"),
+        SarvamSpeakerOption("neha", "Neha (नेहा)", "ब्राइट, स्पष्ट और प्रोफेशनल टोन"),
+        SarvamSpeakerOption("simran", "Simran (सिमरन)", "चुलबुली, युवा और मधुर"),
+        SarvamSpeakerOption("ishita", "Ishita (इशिता)", "कोमल और शांत बातचीत"),
+        SarvamSpeakerOption("shreya", "Shreya (श्रेया)", "मेलोडिक और भावुक"),
+        SarvamSpeakerOption("pooja", "Pooja (पूजा)", "परिपक्व और स्पष्ट आवाज़"),
+        SarvamSpeakerOption("roopa", "Roopa (रूपा)", "ऊर्जावान और स्पष्ट"),
+    )
 
     // ---------------------------------------------------------------- Deepgram
     const val DEEPGRAM_DEFAULT_VOICE = "aura-2-thalia-en"

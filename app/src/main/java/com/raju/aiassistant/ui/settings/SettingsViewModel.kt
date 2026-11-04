@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
+import com.raju.aiassistant.core.audio.parseWav
 import com.raju.aiassistant.core.security.maskSecret
 import com.raju.aiassistant.data.search.TavilyClient
 import com.raju.aiassistant.data.tts.CartesiaClient
@@ -97,8 +98,10 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     val elevenModels: StateFlow<List<VoiceModelOption>> = _elevenModels.asStateFlow()
     private val _elevenVoices = MutableStateFlow<List<CloudVoice>>(emptyList())
     val elevenVoices: StateFlow<List<CloudVoice>> = _elevenVoices.asStateFlow()
-    private val _cartesiaVoices = MutableStateFlow<List<CloudVoice>>(emptyList())
+    private val _cartesiaVoices = MutableStateFlow<List<CloudVoice>>(VoiceCatalog.defaultCartesiaVoices)
     val cartesiaVoices: StateFlow<List<CloudVoice>> = _cartesiaVoices.asStateFlow()
+    private val _previewStatus = MutableStateFlow<String?>(null)
+    val previewStatus: StateFlow<String?> = _previewStatus.asStateFlow()
     /** Result of the last voice/model list load (errors are shown under the picker). */
     private val _voiceListMessage = MutableStateFlow<String?>(null)
     val voiceListMessage: StateFlow<String?> = _voiceListMessage.asStateFlow()
@@ -145,7 +148,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     init {
-        viewModelScope.launch { refreshMasks() }
+        viewModelScope.launch {
+            refreshMasks()
+            if (c.secureKeyStore.get(SecretId.CARTESIA_API_KEY) != null) loadCartesia()
+            if (c.secureKeyStore.get(SecretId.ELEVENLABS_API_KEY) != null) loadElevenLabs()
+        }
     }
 
     // ------------------------------------------------------------ secrets
@@ -157,6 +164,8 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             refreshMasks()
             // A new key needs a new test: the old result must not keep saying "Connected".
             ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
+            if (id == SecretId.CARTESIA_API_KEY) loadCartesia()
+            if (id == SecretId.ELEVENLABS_API_KEY) loadElevenLabs()
             if (ok) setStatus(id, "Saved and encrypted on this device. Tap Test connection to check it.", false)
             else setStatus(id, "Save failed. The key was not stored.", true)
         }
@@ -203,8 +212,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     is AiResult.Success -> AiResult.Success("Connected — received ${r.value.size / 1024} KB of audio. Deepgram can now listen (Speech input) and speak English.")
                     is AiResult.Failure -> r
                 }
-                else -> when (val r = SarvamTtsClient(c.http, key).synthesize("Namaste", c.currentSettings.value.sarvamSpeaker, "hi-IN", 1f)) {
-                    is AiResult.Success -> AiResult.Success("Connected — received ${r.value.size / 1024} KB of audio.")
+                else -> when (val r = SarvamTtsClient(c.http, key).synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", c.currentSettings.value.sarvamSpeaker, "hi-IN", 1f)) {
+                    is AiResult.Success -> {
+                        parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
+                        AiResult.Success("Connected — Sarvam Bulbul (${c.currentSettings.value.sarvamSpeaker}), received ${r.value.size / 1024} KB.")
+                    }
                     is AiResult.Failure -> r
                 }
             }
@@ -287,8 +299,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val s = c.currentSettings.value
         val voice = s.elevenVoiceId ?: VoiceCatalog.bestDefault(_elevenVoices.value)?.also { repo.setElevenVoice(it.id, it.name) }?.id
             ?: VoiceCatalog.ELEVEN_FALLBACK_VOICE
-        return when (val r = client.synthesize("Namaste", voice, s.elevenModel, 1f)) {
-            is AiResult.Success -> AiResult.Success("Connected — model ${s.elevenModel}, received ${r.value.size / 1024} KB of audio.")
+        return when (val r = client.synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", voice, s.elevenModel, 1f)) {
+            is AiResult.Success -> {
+                parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
+                AiResult.Success("Connected — model ${s.elevenModel}, received ${r.value.size / 1024} KB.")
+            }
             is AiResult.Failure -> r
         }
     }
@@ -299,8 +314,12 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val s = c.currentSettings.value
         val voice = s.cartesiaVoiceId ?: VoiceCatalog.bestDefault(_cartesiaVoices.value)?.also { repo.setCartesiaVoice(it.id, it.name) }?.id
             ?: return AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, _voiceListMessage.value ?: "No Cartesia voice found.")
-        return when (val r = client.synthesize("Namaste", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)) {
-            is AiResult.Success -> AiResult.Success("Connected — model ${s.cartesiaModel}, received ${r.value.size / 1024} KB of audio.")
+        return when (val r = client.synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)) {
+            is AiResult.Success -> {
+                parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
+                val vName = s.cartesiaVoiceName ?: _cartesiaVoices.value.firstOrNull { it.id == voice }?.name ?: "Cartesia"
+                AiResult.Success("Connected — model ${s.cartesiaModel}, voice $vName, received ${r.value.size / 1024} KB.")
+            }
             is AiResult.Failure -> r
         }
     }
@@ -320,10 +339,13 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     private suspend fun loadCartesiaList(client: CartesiaClient) {
         when (val voices = client.listVoices()) {
             is AiResult.Success -> {
-                _cartesiaVoices.value = VoiceCatalog.sortVoices(voices.value)
-                _voiceListMessage.value = "Cartesia: ${voices.value.size} female voices loaded (Hindi voices first)."
+                _cartesiaVoices.value = VoiceCatalog.mergeCartesiaVoices(voices.value)
+                _voiceListMessage.value = "Cartesia: ${_cartesiaVoices.value.size} female voices loaded (Hindi voices first)."
             }
-            is AiResult.Failure -> _voiceListMessage.value = "Cartesia voices could not be loaded: ${voices.message}"
+            is AiResult.Failure -> {
+                _cartesiaVoices.value = VoiceCatalog.defaultCartesiaVoices
+                _voiceListMessage.value = "Cartesia voices: using default voices (${voices.message})"
+            }
         }
     }
 
@@ -368,6 +390,10 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     fun setDefaultProvider(v: ProviderId) = launch { repo.setDefaultProvider(v) }
     fun setTtsEngine(v: TtsEngine) = launch { repo.setTtsEngine(v) }
+    fun setActiveVoiceEngine(engine: TtsEngine) = launch {
+        repo.setTtsEngine(engine)
+        repo.setVoiceEngineAuto(engine == TtsEngine.KOKORO || engine == TtsEngine.PIPER)
+    }
     fun setSarvamSpeaker(v: String) = launch { repo.setSarvamSpeaker(v) }
     fun setElevenModel(v: String) = launch { repo.setElevenModel(v) }
     fun setElevenVoice(v: CloudVoice) = launch { repo.setElevenVoice(v.id, v.name) }
@@ -499,8 +525,12 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Speaks a sample with exactly this engine, so voices can be compared. */
     fun previewEngine(engine: TtsEngine) = launch {
+        _previewStatus.value = "आवाज़ तैयार हो रही है..."
         val r = c.speaker.preview(engine, "नमस्ते! मैं सीमा हूँ। आज आपकी क्या मदद कर सकती हूँ?")
+        _previewStatus.value = if (r.completed) "▶️ आवाज़ बज रही है (${r.engineLabel})" else "Error: ${r.error ?: "ऑडियो नहीं मिला"}"
         _voiceTest.value = if (r.completed) "Preview: ${r.engineLabel}" else "Preview failed: ${r.error ?: "no audio"}"
+        kotlinx.coroutines.delay(4000)
+        if (_previewStatus.value?.startsWith("▶️") == true) _previewStatus.value = null
     }
 
     fun runVoiceBenchmark() = launch {

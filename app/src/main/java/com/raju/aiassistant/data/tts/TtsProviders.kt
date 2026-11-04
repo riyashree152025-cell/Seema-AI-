@@ -91,11 +91,14 @@ class CartesiaTtsProvider(
         val key = secret(SecretId.CARTESIA_API_KEY) ?: return AiResult.Failure(FailureKind.NOT_CONFIGURED, "Cartesia API key is not set")
         val client = CartesiaClient(http, key)
         val s = settings()
-        val voice = s.cartesiaVoiceId ?: when (val r = client.listVoices(maxPages = 2)) {
-            is AiResult.Success -> VoiceCatalog.bestDefault(r.value)?.also { rememberVoice(it) }?.id
-                ?: return AiResult.Failure(FailureKind.NOT_CONFIGURED, "No Cartesia voice found — pick one in Settings → Voice")
-            is AiResult.Failure -> return r
-        }
+        val voice = s.cartesiaVoiceId
+            ?: runCatching {
+                when (val r = client.listVoices(maxPages = 2)) {
+                    is AiResult.Success -> VoiceCatalog.bestDefault(r.value)?.also { rememberVoice(it) }?.id
+                    is AiResult.Failure -> null
+                }
+            }.getOrNull()
+            ?: VoiceCatalog.defaultCartesiaVoices.first().id
         val language = languageTag.substringBefore('-').lowercase().ifBlank { "hi" }
         return wavOrFailure(client.synthesize(text, voice, s.cartesiaModel, language, rate, s.cartesiaMood), "Cartesia")
     }
