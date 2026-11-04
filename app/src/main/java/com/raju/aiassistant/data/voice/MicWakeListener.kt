@@ -56,9 +56,28 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
     private suspend fun waitForSpeech(): ByteArray? {
         val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (min <= 0) return null
-        val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, max(min, FRAME_BYTES * 10))
-        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-            recorder.release()
+        val bufSize = max(min * 2, FRAME_BYTES * 10)
+        val sources = intArrayOf(
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.DEFAULT,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION
+        )
+        var recorder: AudioRecord? = null
+        for (src in sources) {
+            try {
+                val rec = AudioRecord(src, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+                if (rec.state == AudioRecord.STATE_INITIALIZED) {
+                    recorder = rec
+                    break
+                } else {
+                    rec.release()
+                }
+            } catch (e: Exception) {
+                // Try next source
+            }
+        }
+        if (recorder == null) {
+            android.util.Log.w("SeemaWake", "AudioRecord initialization failed for all sources")
             return null
         }
         val preRoll = ArrayDeque<ByteArray>()
@@ -67,6 +86,7 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         try {
             recorder.startRecording()
             activeRecorder = recorder
+            android.util.Log.d("SeemaWake", "MicWakeListener started recording, awaiting wake word...")
             while (true) {
                 if (!coroutineContext.isActive) return null
                 // 1) Wait for a voice.
@@ -79,23 +99,29 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
                     level < noise -> noise * 0.9 + level * 0.1
                     else -> noise * 0.998 + level * 0.002
                 }
-                loudFrames = if (level > max(noise * 3.0, MIN_SPEECH)) loudFrames + 1 else 0
+                loudFrames = if (level > max(noise * 2.2, MIN_SPEECH)) loudFrames + 1 else 0
                 if (loudFrames < START_FRAMES) continue
 
                 // 2) Record until a pause.
+                android.util.Log.d("SeemaWake", "Voice detected! Level=$level, recording utterance...")
                 val out = ByteArrayOutputStream()
                 preRoll.forEach { out.write(it) }
                 var quietMs = 0
                 var speechMs = START_FRAMES * FRAME_MS
                 var totalMs = 0
+                val pauseThreshold = max(noise * 1.6, MIN_SPEECH * 1.1)
                 while (coroutineContext.isActive && totalMs < MAX_UTTERANCE_MS) {
                     val f = readFrame(recorder) ?: break
                     out.write(f)
                     totalMs += FRAME_MS
-                    if (rms(f) < max(noise * 2.5, MIN_SPEECH * 0.7)) quietMs += FRAME_MS else { quietMs = 0; speechMs += FRAME_MS }
+                    val fRms = rms(f)
+                    if (fRms < pauseThreshold) quietMs += FRAME_MS else { quietMs = 0; speechMs += FRAME_MS }
                     if (quietMs >= END_SILENCE_MS) break
                 }
-                if (speechMs >= MIN_SPEECH_MS) return out.toByteArray()
+                if (speechMs >= MIN_SPEECH_MS) {
+                    android.util.Log.d("SeemaWake", "Utterance captured: ${out.size()} bytes (${totalMs}ms)")
+                    return out.toByteArray()
+                }
                 // Too short (a knock, a cough): keep waiting.
                 preRoll.clear()
                 loudFrames = 0
@@ -134,10 +160,10 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val FRAME_MS = 20
         const val FRAME_BYTES = RATE / 1000 * FRAME_MS * 2
         const val PRE_ROLL_FRAMES = 25 // 0.5 s
-        const val START_FRAMES = 5 // 0.1 s of voice
-        const val MIN_SPEECH = 450.0
-        const val MIN_SPEECH_MS = 250
-        const val END_SILENCE_MS = 450
-        const val MAX_UTTERANCE_MS = 10_000
+        const val START_FRAMES = 3 // ~60 ms of voice
+        const val MIN_SPEECH = 120.0
+        const val MIN_SPEECH_MS = 200
+        const val END_SILENCE_MS = 350
+        const val MAX_UTTERANCE_MS = 5_000
     }
 }

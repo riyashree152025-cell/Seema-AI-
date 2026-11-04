@@ -197,7 +197,7 @@ fun HomeScreen(
 
     var lastOrbTap by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(state.paused) {
+    LaunchedEffect(state.paused, assistantState) {
         if (!state.paused && viewModel.hasMicPermission() && assistantState == AssistantState.Idle) {
             viewModel.ensureStandby()
         }

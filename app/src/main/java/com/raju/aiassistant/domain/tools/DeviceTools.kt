@@ -47,6 +47,7 @@ interface DeviceTools {
     suspend fun getLastCall(): ToolOutcome = ToolOutcome.Failed("Call log is not supported here.")
     fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
+    fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
 }
 
 enum class TravelMode { DRIVE, WALK, BIKE, TRANSIT }

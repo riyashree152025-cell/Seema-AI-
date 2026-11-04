@@ -21,6 +21,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Only used if the user turns on "Direct calling"; otherwise the dialer is opened. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Personal-use extras: SMS (asked at first use, every SMS is confirmed) and timers/alarms (normal permission). -->
     <uses-permission android:name="android.permission.SEND_SMS" />

@@ -494,11 +494,14 @@ class AssistantEngine(
             armWakeListener()
             return
         }
+        trace("wake audio: ${pcm.size} bytes")
         val t = transcriber
         if (t != null && t.isAvailable()) {
             val heard = runCatching { t.transcribe(pcm) }.getOrNull()?.trim().orEmpty()
+            trace("wake heard: $heard")
             if (!asleep) return
             val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
+            trace("wake request: $request")
             when {
                 request == null -> armWakeListener() // someone else talking, TV, noise: keep sleeping
                 request.isBlank() -> wakeUp(greet = true) // "Seema?" → "Haan ji, boliye?"
@@ -513,6 +516,7 @@ class AssistantEngine(
         } else {
             // Offline / on-device fallback:
             // When user speaks in standby, greet and open the mic immediately
+            trace("wake: transcriber unavailable, fallback")
             if (now - lastWakeAttemptAt < 3_000L) {
                 armWakeListener()
                 return
@@ -808,7 +812,7 @@ class AssistantEngine(
             _voiceSession.value = false
             if (_state.value == AssistantState.Error) scheduleErrorReset()
             else if (_state.value != AssistantState.Offline) {
-                if (s.wakeWord && !s.assistantPaused && (s.voiceMode == VoiceMode.ALWAYS || wasVoice || handsFree) && wakeListener !== NoWakeListener) {
+                if (s.wakeWord && !s.assistantPaused && wakeListener !== NoWakeListener) {
                     goToSleep()
                 } else {
                     _state.value = AssistantState.Idle
@@ -972,6 +976,11 @@ class AssistantEngine(
                 val outcome = tools.findMyPhone()
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
+            }
+            is AssistantAction.EndCall -> {
+                val outcome = tools.endCall()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
             }
             is AssistantAction.PlayMusic -> report(action, tools.playMusic(action.query, action.service ?: s.musicService))
             is AssistantAction.Remember -> remember(action)

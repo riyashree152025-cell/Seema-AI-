@@ -88,6 +88,9 @@ sealed interface AssistantAction {
     data object FindPhone : AssistantAction {
         override val label get() = "Find phone: ring loud alert"
     }
+    data object EndCall : AssistantAction {
+        override val label get() = "End active call"
+    }
 
     // ---- Business brain: khata, PNR diary, mandi prices
     data class ExpenseAdd(val amountPaise: Long, val note: String, val category: String) : AssistantAction {
@@ -203,6 +206,7 @@ private fun parseAction(json: String): AssistantAction? {
         }
         "battery" -> AssistantAction.Battery
         "find_phone", "ring_phone" -> AssistantAction.FindPhone
+        "end_call", "cut_call", "hangup", "hang_up" -> AssistantAction.EndCall
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
         "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact"), it) }
         "set_timer" -> {

@@ -18,6 +18,7 @@ import android.os.Build
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.telephony.SmsManager
+import android.telecom.TelecomManager
 import android.view.KeyEvent
 import android.net.Uri
 import android.os.BatteryManager
@@ -80,10 +81,29 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override fun dial(contact: Contact, direct: Boolean): ToolOutcome {
         val uri = Uri.parse("tel:" + contact.number.filter { it.isDigit() || it == '+' })
         val useDirect = direct && granted(Manifest.permission.CALL_PHONE)
+        if (useDirect) {
+            val am = context.getSystemService(AudioManager::class.java)
+            am?.let {
+                it.mode = AudioManager.MODE_IN_COMMUNICATION
+                it.isSpeakerphoneOn = true
+            }
+        }
         val intent = Intent(if (useDirect) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri)
         return start(intent,
-            success = if (useDirect) "Calling ${contact.name} (${contact.number})." else "Dialer opened for ${contact.name} (${contact.number}). Tap the call button to call.",
+            success = if (useDirect) "कॉल लगाई जा रही है ${contact.name} को (लाउडस्पीकर चालू)।" else "Dialer opened for ${contact.name} (${contact.number}). Tap the call button to call.",
             failure = "No phone app found to make the call.")
+    }
+
+    private fun isFinancialOrBankingApp(packageName: String, label: String): Boolean {
+        val lowerPkg = packageName.lowercase()
+        val lowerLabel = label.lowercase()
+        val financialKeywords = listOf(
+            "paisa", "phonepe", "paytm", "bhim", "gpay", "google pay",
+            "yono", "bank", "banking", "wallet", "cred", "hdfc",
+            "icici", "axis mobile", "kotak", "canara", "union bank",
+            "pnb one", "bob world", "mobikwik", "freecharge", "zerodha", "groww"
+        )
+        return financialKeywords.any { lowerPkg.contains(it) || lowerLabel.contains(it) }
     }
 
     override fun openApp(name: String): ToolOutcome {
@@ -96,7 +116,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().contains(wanted) }
             ?: return ToolOutcome.Failed("No installed app called \"$name\" was found.")
         val label = match.loadLabel(pm).toString()
-        val intent = pm.getLaunchIntentForPackage(match.activityInfo.packageName)
+        val packageName = match.activityInfo.packageName
+
+        // Strict Non-Banking & Financial Security Shield
+        if (isFinancialOrBankingApp(packageName, label)) {
+            return ToolOutcome.Failed("सुरक्षा कारणों से बैंकिंग और UPI ऐप्स ($label) को Seema AI द्वारा नियंत्रित करना पूरी तरह ब्लॉक है।")
+        }
+
+        val intent = pm.getLaunchIntentForPackage(packageName)
             ?: return ToolOutcome.Failed("$label cannot be opened.")
         return start(intent, "Opened $label.", "$label could not be opened.")
     }
@@ -157,7 +184,33 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         } else {
             Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text).setPackage(pkg)
         }
-        return start(intent, "WhatsApp opened with your message. Review it and tap send yourself — nothing was sent automatically.", "Could not open WhatsApp.")
+        val autoSendActive = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        if (autoSendActive) {
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend()
+        }
+        val msg = if (autoSendActive) "WhatsApp संदेश सीधे भेजा जा रहा है (ऑटो-सेंड सक्रिय)।"
+                  else "WhatsApp खुल गया है। बिना छुए ऑटो-सेंड के लिए सेटिंग्स में Seema Accessibility चालू करें।"
+        return start(intent, msg, "Could not open WhatsApp.")
+    }
+
+    override fun endCall(): ToolOutcome {
+        val tm = context.getSystemService(TelecomManager::class.java)
+            ?: return ToolOutcome.Failed("Telecom service is not available.")
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                if (granted(Manifest.permission.ANSWER_PHONE_CALLS)) {
+                    val ended = tm.endCall()
+                    if (ended) ToolOutcome.Done("फोन कॉल कट कर दिया गया है।")
+                    else ToolOutcome.Failed("कोई एक्टिव कॉल नहीं मिली।")
+                } else {
+                    ToolOutcome.NeedsPermission(Manifest.permission.ANSWER_PHONE_CALLS, "कॉल कट करने के लिए अनुमति आवश्यक है।")
+                }
+            } else {
+                ToolOutcome.Failed("कॉल कट करने के लिए Android 9+ आवश्यक है।")
+            }
+        } catch (e: Exception) {
+            ToolOutcome.Failed("कॉल कट करने में समस्या आई: ${e.message}")
+        }
     }
 
     override fun hasPermission(permission: String): Boolean = granted(permission)
