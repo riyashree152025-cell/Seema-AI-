@@ -125,6 +125,8 @@ data class UserSettings(
     /** Which AI core the Home screen shows. */
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
     val personality: Personality = Personality.COMPANION,
+    /** WhatsApp number the booking slips go to (always asked first); "" = choose the chat each time. */
+    val bookingWhatsApp: String = "",
     val announceNotifications: Boolean = true,
     val announceApps: Set<String> = AnnounceApp.entries.map { it.packageName }.toSet(),
     /** Say only who wrote, and read the message only after the user taps Read. */

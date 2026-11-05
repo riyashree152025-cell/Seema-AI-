@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit
 object BusinessScheduler {
     private const val MORNING = "morning_briefing"
     private const val WEEKLY = "weekly_expense_report"
+    private const val BOOKINGS = "booking_reminder"
 
     fun schedule(context: Context) {
         val wm = WorkManager.getInstance(context)
@@ -51,6 +52,12 @@ object BusinessScheduler {
             MORNING, ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<MorningBriefingWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(delayUntil(now, nextMorning(now)), TimeUnit.MILLISECONDS)
+                .build(),
+        )
+        wm.enqueueUniquePeriodicWork(
+            BOOKINGS, ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<BookingReminderWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(delayUntil(now, nextBookingCheck(now)), TimeUnit.MILLISECONDS)
                 .build(),
         )
         wm.enqueueUniquePeriodicWork(
@@ -63,6 +70,12 @@ object BusinessScheduler {
 
     internal fun nextMorning(now: LocalDateTime): LocalDateTime {
         val today = now.toLocalDate().atTime(LocalTime.of(7, 0))
+        return if (now.isBefore(today)) today else today.plusDays(1)
+    }
+
+    /** 8 AM: before Tatkal opens (10 AM AC, 11 AM sleeper) for tomorrow's journeys. */
+    internal fun nextBookingCheck(now: LocalDateTime): LocalDateTime {
+        val today = now.toLocalDate().atTime(LocalTime.of(8, 0))
         return if (now.isBefore(today)) today else today.plusDays(1)
     }
 
@@ -85,6 +98,21 @@ class MorningBriefingWorker(context: Context, params: WorkerParameters) : Corout
         val (from, to) = periodRange(Period.YESTERDAY, System.currentTimeMillis(), zone)
         val text = morningBriefing(today, repo.journeysFrom(today), repo.expensesBetween(from, to)) ?: return Result.success()
         BusinessNotifier(applicationContext).show(BusinessNotifier.MORNING_ID, "☀️ Seema: aaj ki briefing", text, LaunchRequest.ACTION_BRIEFING)
+        return Result.success()
+    }
+}
+
+/** Pending train bookings for today and tomorrow, so none is forgotten. */
+class BookingReminderWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val c = (applicationContext as RajuApp).container
+        if (!c.settingsRepository.settings.first().businessReminders) return Result.success()
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val all = runCatching { c.bookingRepository.all() }.getOrDefault(emptyList())
+        // The day's file is written again so it is ready to open before booking starts.
+        runCatching { c.bookingRepository.writeDayFile(today.plusDays(1)) }
+        val text = com.raju.aiassistant.domain.booking.bookingReminder(today, all) ?: return Result.success()
+        BusinessNotifier(applicationContext).show(BusinessNotifier.BOOKING_ID, "🚆 Seema: बुकिंग याद है?", text, LaunchRequest.ACTION_BOOKINGS)
         return Result.success()
     }
 }
@@ -142,5 +170,6 @@ class BusinessNotifier(private val context: Context) {
         const val CHANNEL_ID = "business_briefings"
         const val MORNING_ID = 4201
         const val WEEKLY_ID = 4202
+        const val BOOKING_ID = 4203
     }
 }

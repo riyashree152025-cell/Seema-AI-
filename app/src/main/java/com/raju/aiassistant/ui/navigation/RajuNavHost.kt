@@ -117,6 +117,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                     else micPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
                 LaunchRequest.Chat -> navigateTo(Destination.Chat)
+                LaunchRequest.Bookings -> navController.navigate(SubRoutes.BOOKINGS) { launchSingleTop = true }
                 is LaunchRequest.Ask -> {
                     navigateTo(Destination.Chat)
                     container.engine.submit(request.text)
@@ -176,6 +177,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
             composable(Destination.Apps.route) {
                 AppsScreen(
                     onOpenTools = { navController.navigate(SubRoutes.TOOLS) },
+                    onOpenBookings = { navController.navigate(SubRoutes.BOOKINGS) },
                 )
             }
             composable(Destination.Settings.route) {
@@ -221,7 +223,11 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
             composable(SubRoutes.TOOLS) {
                 ToolsScreen(
                     onOpenChat = { navigateTo(Destination.Chat) },
+                    onOpenBookings = { navController.navigate(SubRoutes.BOOKINGS) },
                 )
+            }
+            composable(SubRoutes.BOOKINGS) {
+                com.raju.aiassistant.ui.bookings.BookingsScreen(onBack = { navController.popBackStack() })
             }
         }
     }

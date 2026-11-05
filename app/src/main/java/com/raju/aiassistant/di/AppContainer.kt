@@ -80,6 +80,14 @@ class AppContainer(context: Context) {
     val memoryRepository by lazy { MemoryRepository(database.memoryDao()) }
     val actionLogRepository by lazy { ActionLogRepository(database.actionLogDao()) }
     val businessRepository by lazy { BusinessRepository(database.businessDao()) }
+    /** Train booking requests (a JSON file in private storage) + daily slip files in Download/Seema Bookings. */
+    val bookingRepository by lazy {
+        com.raju.aiassistant.data.booking.BookingRepository(
+            java.io.File(appContext.filesDir, "bookings.json"),
+            com.raju.aiassistant.data.booking.DownloadsSlipWriter(appContext),
+            log = { android.util.Log.i("SeemaBookings", it) },
+        )
+    }
     /** Imported documents (RAG), stored and searched on the phone. */
     val knowledgeRepository by lazy { com.raju.aiassistant.data.knowledge.KnowledgeRepository(appContext, database.knowledgeDao()) }
     /** Hindi or Bengali right now: set by the engine from what the user says, used by the voice. */
@@ -333,6 +341,8 @@ class AppContainer(context: Context) {
                 }
             },
             business = businessRepository,
+            bookings = bookingRepository,
+            onPersonality = { p -> appScope.launch { settingsRepository.setPersonality(p) } },
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,

@@ -47,7 +47,7 @@ import com.raju.aiassistant.domain.business.formatRupees
 import java.util.Date
 
 @Composable
-fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewModel(factory = RajuViewModelFactory)) {
+fun ToolsScreen(onOpenChat: () -> Unit = {}, onOpenBookings: () -> Unit = {}, viewModel: ToolsViewModel = viewModel(factory = RajuViewModelFactory)) {
     val memories by viewModel.memories.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
@@ -98,6 +98,16 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
                     Modifier.weight(1f),
                 )
                 IconButton(onClick = { viewModel.deleteExpense(e.id) }) { Icon(Icons.Filled.Delete, contentDescription = "Delete expense") }
+            }
+        }
+
+        item {
+            HudPanel(title = "Train bookings (पर्ची)") {
+                Text(
+                    "बोलकर बुकिंग डालिए: \"कल दिल्ली से पटना, 3A, आनंद 34 साल पुरुष, सीता 30 महिला, राकेश ने भेजा\". गलती हो तो बोलिए \"नहीं, नाम आनंद है\".",
+                    style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+                )
+                Button(onClick = onOpenBookings) { Text("Booking list खोलें") }
             }
         }
 

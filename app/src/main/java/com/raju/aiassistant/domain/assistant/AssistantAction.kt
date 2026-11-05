@@ -8,7 +8,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.raju.aiassistant.domain.booking.Booking
+import com.raju.aiassistant.domain.booking.BookingEdit
+import com.raju.aiassistant.domain.booking.BookingStatus
+import com.raju.aiassistant.domain.booking.Passenger
+import com.raju.aiassistant.domain.booking.buildBooking
+import com.raju.aiassistant.domain.booking.normalizeAge
+import com.raju.aiassistant.domain.booking.normalizeGender
 import com.raju.aiassistant.domain.business.Journey
+import com.raju.aiassistant.domain.model.Personality
 import com.raju.aiassistant.domain.business.Period
 import com.raju.aiassistant.domain.business.formatRupees
 import com.raju.aiassistant.domain.business.normalizeCategory
@@ -135,6 +143,28 @@ sealed interface AssistantAction {
     }
     data class MandiPrice(val commodity: String, val place: String?) : AssistantAction {
         override val label get() = "Mandi price: $commodity" + (place?.let { " ($it)" } ?: "")
+    }
+
+    // ---- Train booking requests (slips). Saving, changing and sending always ask the user first.
+    data class BookingSave(val booking: Booking) : AssistantAction {
+        override val label get() = "New booking: ${booking.from} → ${booking.to}, ${booking.journeyDate}"
+    }
+    /** [id] null = the booking saved or changed last ("नहीं, नाम आनंद है"). */
+    data class BookingUpdate(val id: Long?, val edit: BookingEdit) : AssistantAction {
+        override val label get() = "Correct booking" + (id?.let { " #$it" } ?: "")
+    }
+    data class BookingSetStatus(val id: Long?, val status: BookingStatus) : AssistantAction {
+        override val label get() = "Booking" + (id?.let { " #$it" } ?: "") + ": ${status.label}"
+    }
+    data class BookingList(val status: BookingStatus?, val query: String?) : AssistantAction {
+        override val label get() = "Bookings" + (status?.let { " (${it.label})" } ?: "") + (query?.let { " \"$it\"" } ?: "")
+    }
+    data class BookingSend(val id: Long?) : AssistantAction {
+        override val label get() = "Send booking slip" + (id?.let { " #$it" } ?: "")
+    }
+    /** "टपोरी मोड ऑन करो" / "सीमा वापस आओ": changes how Seema talks (and the Home reactor). */
+    data class SetPersonality(val personality: Personality) : AssistantAction {
+        override val label get() = "Mode: ${personality.label}"
     }
 
     // ---- Advanced tools
@@ -307,6 +337,63 @@ private fun parseAction(json: String): AssistantAction? {
         "pnr_list", "journey_list" -> AssistantAction.JourneyList
         "pnr_remove", "journey_remove" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.JourneyRemove(it) }
         "pnr_status" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.PnrStatus(it) }
+        "booking_add", "booking_save", "booking_new" -> buildBooking(
+            date = str("date")?.let { parseLocalDate(it) },
+            from = str("from"),
+            to = str("to"),
+            trainNo = str("train"),
+            travelClass = str("class"),
+            sender = str("sender"),
+            passengers = passengers(obj["passengers"]).orEmpty(),
+        )?.let { AssistantAction.BookingSave(it) }
+        "booking_update", "booking_edit", "booking_correct" -> {
+            val add = (obj["add_passenger"] as? JsonObject)?.let { passenger(it) }
+            AssistantAction.BookingUpdate(
+                id = num("id")?.toLong(),
+                edit = BookingEdit(
+                    date = str("date")?.let { parseLocalDate(it) },
+                    from = str("from"),
+                    to = str("to"),
+                    trainNo = str("train"),
+                    travelClass = str("class"),
+                    sender = str("sender"),
+                    passengers = passengers(obj["passengers"])?.takeIf { it.isNotEmpty() },
+                    passengerNo = int("passenger_no") ?: int("passenger"),
+                    name = str("name"),
+                    gender = normalizeGender(str("gender")),
+                    age = normalizeAge(str("age")),
+                    removePassengerNo = int("remove_passenger"),
+                    addPassenger = add,
+                ),
+            ).takeUnless { it.edit.isEmpty }
+        }
+        "booking_status", "booking_done", "booking_cancel" -> {
+            val status = when (str("status")?.lowercase() ?: str("type")?.lowercase()) {
+                "completed", "complete", "done", "booked", "booking_done" -> BookingStatus.COMPLETED
+                "cancelled", "canceled", "cancel", "booking_cancel" -> BookingStatus.CANCELLED
+                "pending" -> BookingStatus.PENDING
+                else -> null
+            }
+            status?.let { AssistantAction.BookingSetStatus(num("id")?.toLong(), it) }
+        }
+        "booking_list", "booking_search", "bookings" -> AssistantAction.BookingList(
+            status = when (str("status")?.lowercase()) {
+                "pending" -> BookingStatus.PENDING
+                "completed", "done" -> BookingStatus.COMPLETED
+                "cancelled", "canceled" -> BookingStatus.CANCELLED
+                else -> null
+            },
+            query = str("query"),
+        )
+        "booking_send", "booking_share", "send_slip" -> AssistantAction.BookingSend(num("id")?.toLong())
+        "set_mode", "set_personality", "mode" -> when (str("mode")?.lowercase() ?: str("personality")?.lowercase()) {
+            "tapori", "savage", "shaitani" -> Personality.TAPORI
+            "girlfriend", "companion", "normal", "humsafar", "default" -> Personality.COMPANION
+            "friendly", "dost", "friend" -> Personality.DOST
+            "masti", "fun" -> Personality.MASTI
+            "professional", "pro" -> Personality.PRO
+            else -> null
+        }?.let { AssistantAction.SetPersonality(it) }
         "mandi_price", "mandi" -> str("commodity")?.let { AssistantAction.MandiPrice(it, str("place") ?: str("market") ?: str("state")) }
         "save_file" -> {
             val name = str("name")?.let { safeFileName(it) }
@@ -330,6 +417,16 @@ internal fun safeFileName(value: String): String? {
     if (clean.isEmpty()) return null
     return if ('.' in clean) clean else "$clean.txt"
 }
+
+private fun passenger(o: JsonObject): Passenger? {
+    fun s(k: String) = o[k]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }?.trim()?.takeIf { it.isNotEmpty() }
+    val name = s("name") ?: return null
+    return Passenger(name, normalizeGender(s("gender")), normalizeAge(s("age")))
+}
+
+/** The AI's "passengers":[{"name":..,"gender":"M","age":34}, …]; null when absent. */
+private fun passengers(element: kotlinx.serialization.json.JsonElement?): List<Passenger>? =
+    (element as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let(::passenger) }
 
 /** "2026-11-02", "2026-11-02T08:00" or "02-11-2026" → date. */
 internal fun parseLocalDate(value: String): LocalDate? {
