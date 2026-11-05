@@ -43,6 +43,18 @@ private const val RED = 0xFFFF5C7A
 private const val GREY = 0xFF5D7083
 private const val GREY_LIGHT = 0xFF8FA9BF
 
+private const val DEVIL_RED = 0xFFFF1E3C
+private const val CRIMSON = 0xFFB0102A
+private const val EMBER = 0xFFFF6A2B
+
+/**
+ * Tapori mode: the same reactor and the same per-state motion, in red neon. Offline stays grey,
+ * so "no internet" is still visible.
+ */
+fun ReactorStyle.tapori(state: AssistantState): ReactorStyle =
+    if (state == AssistantState.Offline) this
+    else copy(paletteArgb = listOf(DEVIL_RED, CRIMSON, EMBER, DEVIL_RED, CRIMSON), glow = (glow + 0.1f).coerceAtMost(1f))
+
 fun reactorStyleFor(state: AssistantState): ReactorStyle = when (state) {
     AssistantState.Idle -> ReactorStyle(listOf(CYAN, BLUE, VIOLET, MAGENTA, CYAN), glow = 0.7f, rotationSpeed = 0.06f, bpm = 64f)
     AssistantState.Listening -> ReactorStyle(listOf(CYAN, TEAL, GREEN, BLUE, CYAN), glow = 0.85f, rotationSpeed = 0.09f, bpm = 76f, ripples = true)

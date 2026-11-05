@@ -128,6 +128,7 @@ import com.raju.aiassistant.ui.home.visuals.ArcReactor
 import com.raju.aiassistant.ui.home.visuals.motionProfileFor
 
 import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
+import com.raju.aiassistant.ui.home.visuals.tapori
 
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
 
@@ -219,7 +220,7 @@ fun HomeScreen(
 
     val timeProvider = rememberAnimationTime(running = profile.animate, maxFps = profile.maxFps)
 
-    val style = reactorStyleFor(assistantState)
+    val style = reactorStyleFor(assistantState).let { if (state.tapori) it.tapori(assistantState) else it }
 
 
 
@@ -594,6 +595,17 @@ fun HomeScreen(
                         modifier = Modifier.size(coreSize * 0.84f)
 
                     )
+
+                    // Tapori mode: a cheeky face on the red reactor (eyes and smirk follow her voice).
+                    if (state.tapori) {
+                        com.raju.aiassistant.ui.home.visuals.TaporiFace(
+                            time = { timeProvider.floatValue },
+                            speechLevel = { speechLevel },
+                            listening = isListening,
+                            speaking = isSpeaking,
+                            modifier = Modifier.size(coreSize * 0.84f),
+                        )
+                    }
 
                 }
 

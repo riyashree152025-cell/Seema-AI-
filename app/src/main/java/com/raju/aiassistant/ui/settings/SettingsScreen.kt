@@ -200,7 +200,8 @@ fun SettingsScreen(
                         selectedAiProvider = provider
                         currentScreen = "ai_detail"
                     },
-                    onSelectTavily = { currentScreen = "tavily_detail" }
+                    onSelectTavily = { currentScreen = "tavily_detail" },
+                    personalityPanel = { PersonalityPanel(s, viewModel) }
                 )
             }
             "ai_detail" -> {
@@ -521,6 +522,7 @@ fun BrainAiGridScreen(
     onBack: () -> Unit,
     onSelectProvider: (ProviderId) -> Unit,
     onSelectTavily: () -> Unit,
+    personalityPanel: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -727,6 +729,8 @@ fun BrainAiGridScreen(
                 )
             }
         }
+
+        personalityPanel()
 
         Spacer(Modifier.height(16.dp))
     }
