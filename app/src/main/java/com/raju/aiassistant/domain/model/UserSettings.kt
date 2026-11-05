@@ -23,6 +23,7 @@ enum class Personality(val label: String, val hint: String) {
     MASTI("Masti / Fun", "★ witty, playful, a little filmy — never boring"),
     DOST("Dost / Friendly", "warm and caring, light humour"),
     PRO("Professional", "short, clear and to the point"),
+    TAPORI("Tapori / शैतानी दोस्त", "😈 mazedaar roast karne wala dost — chutki leta hai, gaali nahi"),
 }
 
 /** Speech input (listening) engines. */

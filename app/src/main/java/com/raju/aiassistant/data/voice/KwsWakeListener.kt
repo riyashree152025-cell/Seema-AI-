@@ -189,6 +189,12 @@ class KwsWakeListener(
 class SwitchingWakeListener(
     private val offline: KwsWakeListener,
     private val fallback: WakeListener,
+    /**
+     * Check the name with Deepgram instead (key saved and online). On the real phone the offline
+     * English model heard the voice ("kws hears sound") but never recognised an Indian "Hey Seema";
+     * Deepgram does. Without internet the offline detector is used.
+     */
+    private val preferCloud: () -> Boolean = { false },
     private val wantsName: () -> Boolean,
 ) : WakeListener {
     @Volatile private var current: WakeListener = fallback
@@ -199,7 +205,7 @@ class SwitchingWakeListener(
 
     override fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit) {
         current.stop()
-        current = if (wantsName() && offline.isReady()) offline else fallback
+        current = if (wantsName() && offline.isReady() && !preferCloud()) offline else fallback
         current.start(onUtterance, onError)
     }
 

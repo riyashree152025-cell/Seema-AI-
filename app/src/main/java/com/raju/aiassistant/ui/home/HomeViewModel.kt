@@ -56,6 +56,8 @@ data class HomeUiState(
     /** Hindi or Bengali, as Seema is speaking right now. */
     val language: SeemaLanguage = SeemaLanguage.HINDI,
     val userName: String = "Dinesh Kumar",
+    /** Tapori / savage friend personality: red reactor with a face. */
+    val tapori: Boolean = false,
 )
 
 private data class EngineView(val state: AssistantState, val listening: Boolean, val partial: String, val lastReply: String?, val handsFree: Boolean)
@@ -107,6 +109,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 smartPower = settings.smartPower,
                 thermalProtection = settings.thermalProtection,
                 userName = settings.userName,
+                tapori = settings.personality == com.raju.aiassistant.domain.model.Personality.TAPORI,
             )
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }
             .combine(c.powerMonitor.state) { ui, p -> ui.copy(thermal = p.thermal, systemPowerSave = p.systemPowerSave) }

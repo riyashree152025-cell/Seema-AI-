@@ -43,4 +43,19 @@ class ReactorStyleTest {
     fun everyStateHasAHint() {
         AssistantState.entries.forEach { assertTrue(statusHintFor(it).isNotBlank()) }
     }
+
+    @Test
+    fun taporiModeTurnsEveryStateRedButOfflineStaysGrey() {
+        for (st in AssistantState.entries) {
+            val normal = reactorStyleFor(st)
+            val red = normal.tapori(st)
+            if (st == AssistantState.Offline) {
+                org.junit.Assert.assertEquals(normal, red)
+            } else {
+                org.junit.Assert.assertEquals(0xFFFF1E3C, red.primaryArgb)
+                org.junit.Assert.assertEquals(PALETTE_SIZE, red.paletteArgb.size)
+                org.junit.Assert.assertEquals(normal.bpm, red.bpm, 0f) // same motion, only the colour changes
+            }
+        }
+    }
 }
