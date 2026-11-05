@@ -20,6 +20,29 @@ class EndpointDetectorTest {
     }
 
     @Test
+    fun aNormalVoiceOnAPhoneWithAQuietMicrophoneIsHeard() {
+        // Levels seen on a Samsung phone: room ~60, normal speech 200-400.
+        val d = EndpointDetector(frameMs = 20)
+        d.feed(60.0, 15)
+        assertEquals(EndpointDetector.State.SPEAKING, d.feed(250.0, 5))
+    }
+
+    @Test
+    fun talkingStraightAwayDoesNotRaiseTheBarAboveTheVoice() {
+        val d = EndpointDetector(frameMs = 20)
+        d.feed(60.0, 3) // a moment of quiet
+        d.feed(300.0, 12) // then speech already during calibration
+        assertEquals(EndpointDetector.State.SPEAKING, d.feed(300.0, 5))
+    }
+
+    @Test
+    fun aQuietRoomIsStillNotSpeech() {
+        val d = EndpointDetector(frameMs = 20, noSpeechTimeoutMs = 2_000)
+        d.feed(60.0, 15)
+        assertEquals(EndpointDetector.State.NO_SPEECH, d.feed(120.0, 120)) // fan / hum below the bar
+    }
+
+    @Test
     fun silenceOnlyMeansNoSpeech() {
         val d = EndpointDetector(frameMs = 20, noSpeechTimeoutMs = 2_000)
         assertEquals(EndpointDetector.State.NO_SPEECH, d.feed(100.0, 120))

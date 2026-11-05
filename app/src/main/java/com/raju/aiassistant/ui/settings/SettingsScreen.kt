@@ -2111,11 +2111,11 @@ fun VoiceEngineSecretCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = {
-                        val url = if (secretId == SecretId.SARVAM_API_KEY) "https://dashboard.sarvam.ai" else "https://play.cartesia.ai"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        // Each key's own site (the Deepgram card used to point to Cartesia).
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(secretId.helpUrl)))
                     }) {
                         Text(
-                            if (secretId == SecretId.SARVAM_API_KEY) "Get key: dashboard.sarvam.ai" else "Get key: play.cartesia.ai",
+                            "Get key: " + secretId.helpUrl.removePrefix("https://").removePrefix("http://").substringBefore('/'),
                             color = Color(0xFF00E5FF),
                             fontSize = 11.5.sp
                         )

@@ -11,7 +11,13 @@ class EndpointDetector(
     private val noSpeechTimeoutMs: Int = 7_000,
     private val maxMs: Int = 15_000,
     private val calibrationMs: Int = 300,
-    private val minThreshold: Double = 400.0,
+    /**
+     * Quietest level that counts as a voice. Was 400, which on a real Samsung phone missed normal
+     * speech (its voice-recognition microphone gave 120-400): the wake listener, at 110, heard the
+     * same voice. 150 with 2.5 x the room noise still ignores a quiet room and fans.
+     */
+    private val minThreshold: Double = 150.0,
+    private val noiseFactor: Double = 2.5,
 ) {
     enum class State { LISTENING, SPEAKING, DONE, NO_SPEECH }
 
@@ -29,11 +35,13 @@ class EndpointDetector(
         if (state == State.DONE || state == State.NO_SPEECH) return state
         elapsed += frameMs
         if (elapsed <= calibrationMs) {
-            noise = (noise * noiseFrames + rms) / (noiseFrames + 1)
+            // The quietest frame, not the average: someone who starts talking at once must not
+            // be measured as "room noise" (that raised the bar above their own voice).
+            noise = if (noiseFrames == 0) rms else minOf(noise, rms)
             noiseFrames++
             return state
         }
-        val threshold = maxOf(minThreshold, noise * 3)
+        val threshold = maxOf(minThreshold, noise * noiseFactor)
         val loud = rms > threshold
         when (state) {
             State.LISTENING -> {

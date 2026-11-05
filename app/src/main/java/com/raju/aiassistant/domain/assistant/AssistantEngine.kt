@@ -80,6 +80,8 @@ private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
 private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
+/** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
+private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
@@ -682,21 +684,46 @@ class AssistantEngine(
         turnActive = true
         val streamed: AiResult<String> = try {
             coroutineScope {
+                // A busy provider (e.g. Gemini under high demand) can stay silent for the whole 45 s.
+                // When another AI with a saved key could answer, silence for 15 s is enough to switch.
+                val now = clock()
+                val canFallBack = provider.streams && fallbackProviders().any { it != providerId && (providerCooldown[it] ?: 0L) <= now }
+                var silentTooLong = false
                 val request = async {
-                    val r = withTimeoutOrNull(AI_TIMEOUT_MS) {
-                        provider.chatStream(model, system, turns) { delta ->
-                            firstTextAt.compareAndSet(NOT_YET, clock())
-                            val head = synchronized(buffer) {
-                                buffer.append(delta)
-                                if (speak && provider.streams && !headReady.isCompleted) speakableHead(buffer) else null
+                    val r = coroutineScope {
+                        val call = async {
+                            withTimeoutOrNull(AI_TIMEOUT_MS) {
+                                provider.chatStream(model, system, turns) { delta ->
+                                    firstTextAt.compareAndSet(NOT_YET, clock())
+                                    val head = synchronized(buffer) {
+                                        buffer.append(delta)
+                                        if (speak && provider.streams && !headReady.isCompleted) speakableHead(buffer) else null
+                                    }
+                                    if (head != null) headReady.complete(head)
+                                }
                             }
-                            if (head != null) headReady.complete(head)
                         }
+                        val watchdog = if (canFallBack) launch {
+                            delay(FIRST_TEXT_TIMEOUT_MS)
+                            if (firstTextAt.get() == NOT_YET) {
+                                silentTooLong = true
+                                call.cancel()
+                            }
+                        } else null
+                        val result = try {
+                            call.await()
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            if (!silentTooLong) throw e
+                            null
+                        }
+                        watchdog?.cancel()
+                        result
                     }
                     headReady.complete(null)
                     r ?: synchronized(buffer) {
                         // No full reply in time: keep what arrived, otherwise it is a timeout (Seema never hangs in "Thinking").
                         if (buffer.isNotBlank()) AiResult.Success(buffer.toString().trim() + "\n\n(जवाब पूरा नहीं आया — फिर से पूछें।)")
+                        else if (silentTooLong) AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not start answering within ${FIRST_TEXT_TIMEOUT_MS / 1000} seconds.")
                         else AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not answer within ${AI_TIMEOUT_MS / 1000} seconds.")
                     }
                 }
@@ -1466,11 +1493,33 @@ class AssistantEngine(
     }
 
     private suspend fun whatsApp(action: AssistantAction.WhatsApp, speak: Boolean = false) {
+        if (action.text.isBlank()) {
+            val askText = phrase(lang(), "WhatsApp पर क्या लिखकर भेजूँ?", "হোয়াটসঅ্যাপে কী লিখে পাঠাব?")
+            report(action, ActionStatus.CANCELLED, askText)
+            if (speak) say(askText)
+            return
+        }
         var target: Contact? = null
         if (action.contact != null) {
-            val found = lookup(action.contact)
-            if (found.isNullOrEmpty()) {
-                note(if (found == null) "Contacts permission not granted; WhatsApp will open without a recipient." else "No contact named \"${action.contact}\"; WhatsApp will open without a recipient.")
+            // A phone number said or typed instead of a name ("98765 43210 ko message karo").
+            val digitsOnly = action.contact.filter { it.isDigit() }
+            val found = if (digitsOnly.length >= 7 && digitsOnly.length * 2 >= action.contact.count { !it.isWhitespace() }) {
+                listOf(Contact(action.contact, action.contact))
+            } else {
+                lookup(action.contact)
+            }
+            if (found == null) {
+                note("Contacts permission not granted; WhatsApp will open without a recipient.")
+            } else if (found.isEmpty()) {
+                // A person was named: an empty WhatsApp is not what was asked, so say so instead.
+                val missing = phrase(
+                    lang(),
+                    "Contacts में \"${action.contact}\" नाम का कोई नंबर नहीं मिला। Contacts में जो नाम सेव है वही बोलिए, या नंबर बोलिए।",
+                    "কন্টাক্টে \"${action.contact}\" নামে কোনো নম্বর পাইনি। কন্টাক্টে যে নাম সেভ আছে সেটাই বলুন, বা নম্বর বলুন।",
+                )
+                report(action, ActionStatus.FAILED, missing)
+                if (speak) say(missing)
+                return
             } else {
                 target = if (found.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
                     found[0]
@@ -1487,8 +1536,16 @@ class AssistantEngine(
         val outcome = tools.openWhatsApp(target?.number, action.text)
         report(action, outcome)
         if (speak && outcome is ToolOutcome.Done) {
-            val name = target?.name ?: action.contact ?: "जिओ"
-            say(phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप पर मैसेज भेज दिया है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি!"))
+            // "Sent" only when it really goes out by itself (a known chat + Seema's accessibility service).
+            val name = target?.name
+            val autoSends = name != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+            say(
+                when {
+                    autoSends -> phrase(lang(), "हाँ राजू, $name को व्हाट्सएप पर मैसेज भेज रही हूँ!", "হ্যাঁ রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠাচ্ছি!")
+                    name != null -> phrase(lang(), "$name के लिए व्हाट्सएप में मैसेज तैयार है, बस Send दबा दीजिए।", "$name এর জন্য হোয়াটসঅ্যাপে মেসেজ তৈরি, শুধু Send চাপুন।")
+                    else -> phrase(lang(), "व्हाट्सएप खुल गया है, चैट चुनकर Send दबाइए।", "হোয়াটসঅ্যাপ খুলেছে, চ্যাট বেছে Send চাপুন।")
+                },
+            )
         }
     }
 

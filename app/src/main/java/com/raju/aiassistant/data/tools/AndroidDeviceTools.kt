@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import com.raju.aiassistant.domain.assistant.SettingsPage
 import com.raju.aiassistant.domain.model.MusicService
 import com.raju.aiassistant.domain.tools.Contact
+import com.raju.aiassistant.domain.tools.ContactMatch
 import com.raju.aiassistant.domain.tools.ContactLookup
 import com.raju.aiassistant.domain.tools.DeviceTools
 import com.raju.aiassistant.domain.tools.MediaCommand
@@ -69,13 +70,33 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 }
                 // Prefer exact name matches when there are any.
                 val exact = result.filter { it.name.equals(query.trim(), ignoreCase = true) }
-                ContactLookup.Found(exact.ifEmpty { result })
+                val direct = exact.ifEmpty { result }
+                // Nothing with that exact spelling ("Vodafone 0 1" vs "Vodafone 01", other word order,
+                // a spoken number): compare every contact ignoring spaces, case and punctuation.
+                ContactLookup.Found(direct.ifEmpty { ContactMatch.best(query, allPhoneContacts()).take(20) })
             } catch (e: SecurityException) {
                 ContactLookup.NeedsPermission(Manifest.permission.READ_CONTACTS, "Contacts permission is required.")
             } catch (e: Exception) {
                 ContactLookup.Failed("Could not read contacts: ${e.message}")
             }
         }
+    }
+
+    /** Every contact with a phone number (name + number), at most [limit] rows. Caller holds READ_CONTACTS. */
+    private fun allPhoneContacts(limit: Int = 5_000): List<Contact> {
+        val all = mutableListOf<Contact>()
+        context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext() && all.size < limit) {
+                val name = c.getString(0) ?: continue
+                val number = c.getString(1) ?: continue
+                all += Contact(name, number)
+            }
+        }
+        return all
     }
 
     override fun dial(contact: Contact, direct: Boolean): ToolOutcome {
@@ -191,12 +212,17 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         } else {
             Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text).setPackage(pkg)
         }
-        val autoSendActive = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        // Auto-send only into the chat of a known number; without one WhatsApp shows its chat list and
+        // pressing "send" there could reach the wrong person.
+        val autoSendActive = normalized != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
         if (autoSendActive) {
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend()
         }
-        val msg = if (autoSendActive) "WhatsApp संदेश सीधे भेजा जा रहा है (ऑटो-सेंड सक्रिय)।"
-                  else "WhatsApp खुल गया है। बिना छुए ऑटो-सेंड के लिए सेटिंग्स में Seema Accessibility चालू करें।"
+        val msg = when {
+            autoSendActive -> "WhatsApp संदेश सीधे भेजा जा रहा है (ऑटो-सेंड सक्रिय)।"
+            normalized == null -> "WhatsApp खुल गया है। चैट चुनें और Send दबाएँ — संदेश अभी भेजा नहीं गया है।"
+            else -> "WhatsApp में संदेश तैयार है — Send दबाएँ, अभी भेजा नहीं गया है। बिना छुए भेजने के लिए फ़ोन की Settings → Accessibility में Seema AI चालू करें।"
+        }
         return start(intent, msg, "Could not open WhatsApp.")
     }
 
