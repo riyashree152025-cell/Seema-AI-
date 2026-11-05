@@ -43,6 +43,16 @@ class EndpointDetectorTest {
     }
 
     @Test
+    fun aShortNoiseIsNotATurnAndRealSpeechAfterItIs() {
+        val d = EndpointDetector(frameMs = 20, silenceMs = 1_000)
+        d.feed(60.0, 15)
+        d.feed(800.0, 5) // 100 ms: a cough or a door
+        assertEquals(EndpointDetector.State.LISTENING, d.feed(60.0, 60)) // not sent as a turn
+        assertEquals(EndpointDetector.State.SPEAKING, d.feed(400.0, 20)) // then the user talks
+        assertEquals(EndpointDetector.State.DONE, d.feed(60.0, 60))
+    }
+
+    @Test
     fun silenceOnlyMeansNoSpeech() {
         val d = EndpointDetector(frameMs = 20, noSpeechTimeoutMs = 2_000)
         assertEquals(EndpointDetector.State.NO_SPEECH, d.feed(100.0, 120))

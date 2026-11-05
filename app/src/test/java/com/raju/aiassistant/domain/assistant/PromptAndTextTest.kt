@@ -22,6 +22,23 @@ class PromptAndTextTest {
     }
 
     @Test
+    fun appErrorNoticesAreNotSentBackToTheAi() {
+        val turns = toTurns(
+            listOf(
+                msg(ChatRole.USER, "hi"),
+                msg(ChatRole.SYSTEM, "⚠️ Quota exceeded for this key (HTTP 429): " + "x".repeat(300)),
+                msg(ChatRole.SYSTEM, "↪ Gemini: busy — answered by Groq instead."),
+                msg(ChatRole.ASSISTANT, "Haan ji"),
+                msg(ChatRole.SYSTEM, "✅ " + "y".repeat(500)),
+            ),
+            limit = 10,
+        )
+        assertEquals("hi", turns[0].text)
+        assertEquals("Haan ji", turns[1].text)
+        assertTrue(turns[2].text.startsWith("[App note] ✅") && turns[2].text.length < 230)
+    }
+
+    @Test
     fun turnsRespectLimitAndCharBudget() {
         val many = (1..50).map { msg(if (it % 2 == 1) ChatRole.USER else ChatRole.ASSISTANT, "x".repeat(100)) }
         assertTrue(toTurns(many, limit = 10).size <= 10)

@@ -298,6 +298,17 @@ class AppContainer(context: Context) {
             wakeListener = wakeListener,
             onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
             onModelReplaced = { id, model -> appScope.launch { settingsRepository.setModel(id, model) } },
+            headphones = {
+                val outputs = appContext.getSystemService(android.media.AudioManager::class.java)
+                    ?.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
+                outputs.any {
+                    it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                        it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                        it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                        it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
+                }
+            },
             describeImage = { jpeg, question ->
                 val key = secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY)
                 if (key.isNullOrBlank()) {
