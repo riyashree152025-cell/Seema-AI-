@@ -173,7 +173,7 @@ internal fun SpeechInputSettings(s: UserSettings, viewModel: SettingsViewModel, 
         ) { viewModel.setDeepgramSttModel(it.id) }
         Text(
             if (deepgramKeySaved) "Listens until you pause for about a second, then sends that recording to Deepgram. Free credit: \$200."
-            else "Save a Deepgram key below first. Until then the Android recogniser is used.",
+            else "Save a Deepgram key above first. Until then the Android recogniser is used.",
             style = MaterialTheme.typography.bodyMedium,
             color = if (deepgramKeySaved) TextSecondary else WarningAmber,
         )

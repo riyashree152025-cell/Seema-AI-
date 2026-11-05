@@ -121,7 +121,8 @@ import com.raju.aiassistant.domain.voice.CloudVoice
 import com.raju.aiassistant.domain.voice.VoiceCatalog
 import com.raju.aiassistant.ui.RajuViewModelFactory
 import com.raju.aiassistant.ui.components.SciFiCyanGlow
-import com.raju.aiassistant.ui.components.SciFiListCard
+import com.raju.aiassistant.ui.components.SciFiSettingsPanel
+import com.raju.aiassistant.ui.components.SciFiSettingsRow
 import com.raju.aiassistant.ui.theme.ErrorRed
 import com.raju.aiassistant.ui.theme.NeonCyan
 import com.raju.aiassistant.ui.theme.SuccessGreen
@@ -495,60 +496,15 @@ fun SettingsMenuScreen(
             )
         }
 
-        // 2. The 6 Exact Glassy Category Cards from Reference Image Panel 1
-        SciFiListCard(
-            title = "Brain & AI",
-            subtitle = "Providers, Models, API Keys",
-            icon = Icons.Filled.Psychology,
-            iconTint = Color(0xFF00E5FF),
-            emblemBorder = Color(0xFF00E5FF),
-            onClick = onOpenBrainAi
-        )
-
-        SciFiListCard(
-            title = "Voice & Speech",
-            subtitle = "Engines, Settings, Test",
-            icon = Icons.Filled.GraphicEq,
-            iconTint = Color(0xFF40C4FF),
-            emblemBorder = Color(0xFF40C4FF),
-            onClick = onOpenVoice
-        )
-
-        SciFiListCard(
-            title = "Appearance & Performance",
-            subtitle = "Theme, Animations, UI Style",
-            icon = Icons.Filled.Palette,
-            iconTint = Color(0xFFFFB300),
-            emblemBorder = Color(0xFFFFB300),
-            onClick = onOpenAppearance
-        )
-
-        SciFiListCard(
-            title = "Permissions & Privacy",
-            subtitle = "Permissions, Security, Data",
-            icon = Icons.Filled.Lock,
-            iconTint = Color(0xFF00E676),
-            emblemBorder = Color(0xFF00E676),
-            onClick = onOpenPrivacy
-        )
-
-        SciFiListCard(
-            title = "Automation",
-            subtitle = "Routines, Triggers, Tasks",
-            icon = Icons.Filled.AutoAwesome,
-            iconTint = Color(0xFF00D0FF),
-            emblemBorder = Color(0xFF00D0FF),
-            onClick = onOpenAutomation
-        )
-
-        SciFiListCard(
-            title = "System Integration",
-            subtitle = "Apps, Shortcuts, Windows",
-            icon = Icons.Filled.Extension,
-            iconTint = Color(0xFFB388FF),
-            emblemBorder = Color(0xFFB388FF),
-            onClick = onOpenSystem
-        )
+        // 2. The six categories in one glass panel (reference look); each row opens the same page as before.
+        SciFiSettingsPanel {
+            SciFiSettingsRow(title = "Brain & AI", subtitle = "Providers, Models, API Keys", icon = Icons.Filled.Psychology, iconTint = Color(0xFF00E5FF), onClick = onOpenBrainAi)
+            SciFiSettingsRow(title = "Voice & Speech", subtitle = "Engines, Settings, Test", icon = Icons.Filled.GraphicEq, iconTint = Color(0xFF40C4FF), onClick = onOpenVoice)
+            SciFiSettingsRow(title = "Appearance & Performance", subtitle = "Theme, Animations, UI Style", icon = Icons.Filled.Palette, iconTint = Color(0xFFFFB300), onClick = onOpenAppearance)
+            SciFiSettingsRow(title = "Permissions & Privacy", subtitle = "Permissions, Security, Data", icon = Icons.Filled.Lock, iconTint = Color(0xFF00E676), onClick = onOpenPrivacy)
+            SciFiSettingsRow(title = "Automation", subtitle = "Routines, Triggers, Tasks", icon = Icons.Filled.AutoAwesome, iconTint = Color(0xFF00D0FF), onClick = onOpenAutomation)
+            SciFiSettingsRow(title = "System Integration", subtitle = "Apps, Shortcuts, Windows", icon = Icons.Filled.Extension, iconTint = Color(0xFFB388FF), onClick = onOpenSystem, showDivider = false)
+        }
 
         Spacer(Modifier.height(16.dp))
     }
@@ -1349,6 +1305,15 @@ fun TavilyDetailScreen(
                         enabled = keyInput.isNotBlank()
                     ) { Text("Save") }
                 }
+                // What really happened: saved (masked key), testing, connected or the error.
+                Text(
+                    if (secretStatus.configured) "✓ Key saved ${secretStatus.maskedValue}" else "Key abhi save nahi hai",
+                    color = if (secretStatus.configured) Color(0xFF69F0AE) else Color(0xFFFFC857),
+                    fontSize = 13.sp,
+                )
+                secretStatus.message?.let {
+                    Text(it, color = if (secretStatus.isError) Color(0xFFFF6B8A) else Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                }
             }
         }
     }
@@ -1487,9 +1452,6 @@ fun VoiceSpeechScreen(
             }
         }
 
-        ListeningPanel(s, viewModel)
-        VoiceEngineManager(s, viewModel)
-
         // Engine Cards List Matching Reference Image Panel 4
         val isCartesiaActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
         VoiceEngineCard(
@@ -1558,6 +1520,20 @@ fun VoiceSpeechScreen(
                 }
             }
         }
+
+        // Below your voice choices (which stay where they were): listening / wake word and offline voices.
+        ListeningPanel(s, viewModel)
+        // Deepgram: the key box (save / test / remove) and the choice of listening engine.
+        VoiceEngineSecretCard(
+            secretId = SecretId.DEEPGRAM_API_KEY,
+            title = "Deepgram API Key (सुनने के लिए / listening)",
+            secretStatus = secrets[SecretId.DEEPGRAM_API_KEY] ?: SecretStatus(),
+            viewModel = viewModel
+        )
+        com.raju.aiassistant.ui.components.HudPanel(title = "Speech input (listening engine)") {
+            SpeechInputSettings(s, viewModel, secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true)
+        }
+        VoiceEngineManager(s, viewModel)
 
         Spacer(Modifier.height(16.dp))
     }

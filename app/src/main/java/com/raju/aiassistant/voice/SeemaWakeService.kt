@@ -59,6 +59,16 @@ class SeemaWakeService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * The app was swiped away from Recents: the user closed Seema, so everything stops — no more
+     * listening, speaking or wake word in the background — until the app is opened again.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        runCatching { (application as com.raju.aiassistant.RajuApp).container.stopEverything() }
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         runCatching { wakeLock?.release() }

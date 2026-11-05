@@ -1,5 +1,8 @@
 package com.raju.aiassistant.ui.components
 
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -841,6 +844,79 @@ fun SciFiStateCapsule(
                     )
                 )
             }
+        }
+    }
+}
+
+/**
+ * Settings home (reference look): one glass panel holding compact rows, with a large faint gear
+ * drawn behind them as decoration.
+ */
+@Composable
+fun SciFiSettingsPanel(content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF0C1F42), Color(0xFF050E22))))
+            .border(1.5.dp, Brush.linearGradient(listOf(Color(0xCC00E5FF), Color(0x557C4DFF), Color(0xCC00E5FF))), shape),
+    ) {
+        // Decoration only: a big gear glowing faintly at the right edge.
+        Icon(
+            Icons.Filled.Settings,
+            contentDescription = null,
+            tint = Color(0xFF00E5FF).copy(alpha = 0.07f),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(190.dp)
+                .offset(x = 60.dp),
+        )
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), content = content)
+    }
+}
+
+/** One compact row of [SciFiSettingsPanel]: small glowing icon, title, short subtitle and ">". */
+@Composable
+fun SciFiSettingsRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    onClick: () -> Unit,
+    showDivider: Boolean = true,
+) {
+    Column {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = title, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(iconTint.copy(alpha = 0.16f))
+                    .border(1.dp, iconTint.copy(alpha = 0.8f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp)) }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 15.5.sp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF00E5FF))
+        }
+        if (showDivider) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 66.dp, end = 16.dp)
+                    .height(1.dp)
+                    .background(Brush.horizontalGradient(listOf(Color(0x4400E5FF), Color(0x1100E5FF)))),
+            )
         }
     }
 }

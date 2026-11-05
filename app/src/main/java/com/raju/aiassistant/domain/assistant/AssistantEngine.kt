@@ -86,6 +86,22 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 25_000L
+/** "This model is no longer available" and similar replies: the model was retired, not a passing error. */
+internal fun isModelGone(message: String): Boolean {
+    val m = message.lowercase()
+    return "no longer available" in m || "is not found for api version" in m || "not supported for generatecontent" in m ||
+        ("http 404" in m && "model" in m)
+}
+
+/**
+ * How long a provider rests after a failure before it is asked again. A busy server (503) or a slow
+ * answer is over in a minute; a used-up limit or a bad key is not.
+ */
+internal fun cooldownMsFor(kind: FailureKind): Long = when (kind) {
+    FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.INVALID_KEY -> 15 * 60_000L
+    else -> 60_000L
+}
+
 private const val MAX_LISTEN_FAILURES = 3
 /** Chat messages kept in memory (older ones stay in the database). */
 private const val MAX_TRANSCRIPT_IN_MEMORY = 300
@@ -142,6 +158,8 @@ class AssistantEngine(
     /** Answers a question about a photo (Gemini); used for "dekho kya dikh raha hai". */
     private val describeImage: suspend (jpeg: ByteArray, question: String) -> AiResult<String> =
         { _, _ -> AiResult.Failure(FailureKind.NOT_CONFIGURED, "Image understanding is not available.") },
+    /** A saved model was retired by the provider and replaced by a working one: remember it in Settings. */
+    private val onModelReplaced: (ProviderId, String) -> Unit = { _, _ -> },
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -515,7 +533,7 @@ class AssistantEngine(
             return
         }
         val now = clock()
-        if (now - lastSpokeAt < 2_000L) {
+        if (now - lastSpokeAt < 4_000L) { // the tail of her own voice must not wake her
             armWakeListener()
             return
         }
@@ -539,9 +557,19 @@ class AssistantEngine(
                     submit(request, fromVoice = true)
                 }
             }
+        } else if (settings.value.wakeWord) {
+            // "Wake only by name" is on, but her name cannot be checked (no offline "Hey Seema" model,
+            // no Deepgram key). A random sound — TV, talk, or her own voice — must not wake her: that
+            // made her repeat "हाँ जी, बोलिए?" in a loop. She keeps sleeping; a tap on the reactor wakes her.
+            trace("wake: name cannot be checked, staying asleep")
+            _hint.value = phrase(
+                lang(),
+                "\"Hey Seema\" से जगाने के लिए Settings → Voice & Speech → \"Download\" (offline wake word) दबाइए, या रिएक्टर पर टैप कीजिए।",
+                "\"Hey Seema\" দিয়ে জাগাতে Settings → Voice & Speech → Download চাপুন, বা রিঅ্যাক্টরে ট্যাপ করুন।",
+            )
+            armWakeListener()
         } else {
-            // Offline / on-device fallback:
-            // When user speaks in standby, greet and open the mic immediately
+            // "Wake only by name" is off: any voice wakes her (her own voice is ignored above).
             trace("wake: transcriber unavailable, fallback")
             if (now - lastWakeAttemptAt < 3_000L) {
                 armWakeListener()
@@ -688,7 +716,15 @@ class AssistantEngine(
             is AiResult.Success -> streamed.value
             is AiResult.Failure -> {
                 trace("ai failed: ${streamed.kind} (${streamed.message})")
-                providerCooldown[providerId] = clock() + 15 * 60 * 1000L
+                // The provider retired this model (HTTP 404 "no longer available"): switch to a model it
+                // still lists, on the same provider, before trying other providers.
+                val replaced = if (spokenHead == null && isModelGone(streamed.message)) replaceGoneModel(providerId, key.orEmpty(), provider, model, system, turns) else null
+                if (replaced != null) {
+                    note("↪ ${providerId.shortName} ne model \"$model\" band kar diya hai — ab \"${replaced.model}\" use ho raha hai.")
+                    answeredModel = replaced.model
+                    replaced.text
+                } else {
+                providerCooldown[providerId] = clock() + cooldownMsFor(streamed.kind)
                 recordLatency(providerId, model, firstTextAt.get(), ok = false)
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
                 val backup = if (spokenHead == null) fallbackReply(providerId, system, turns) else null
@@ -701,6 +737,7 @@ class AssistantEngine(
                 answeredBy = backup.provider
                 answeredModel = backup.model
                 backup.text
+                }
             }
         }
         trace("ai reply (${raw.length} chars)")
@@ -792,19 +829,35 @@ class AssistantEngine(
             val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
             if (r is AiResult.Failure) {
-                providerCooldown[id] = now + 15 * 60 * 1000L
+                providerCooldown[id] = now + cooldownMsFor(r.kind)
             }
         }
         return null
     }
 
+    /** Models a provider said are gone (HTTP 404); never asked for again in this run. */
+    private val goneModels = mutableSetOf<Pair<ProviderId, String>>()
+
+    private class Replacement(val model: String, val text: String)
+
+    /** Marks [gone] as retired, picks the best model the provider still lists, and asks it once. */
+    private suspend fun replaceGoneModel(id: ProviderId, key: String, provider: AiProvider, gone: String, system: String, turns: List<Turn>): Replacement? {
+        goneModels += id to gone
+        val next = (resolveModel(id, key, provider) as? AiResult.Success)?.value?.takeIf { it != gone } ?: return null
+        trace("model $gone gone, trying $next")
+        val r = withTimeoutOrNull(AI_TIMEOUT_MS) { provider.chat(next, system, turns) }
+        if (r !is AiResult.Success || r.value.isBlank()) return null
+        onModelReplaced(id, next)
+        return Replacement(next, r.value)
+    }
+
     /** The chosen model, or the best one the provider lists for this key (fetched once per key, not per request). */
     private suspend fun resolveModel(id: ProviderId, key: String, provider: AiProvider): AiResult<String> {
-        settings.value.modelFor(id)?.let { return AiResult.Success(it) }
+        settings.value.modelFor(id)?.takeIf { (id to it) !in goneModels }?.let { return AiResult.Success(it) }
         val cacheKey = id to key.hashCode()
-        discoveredModels[cacheKey]?.let { return AiResult.Success(it) }
+        discoveredModels[cacheKey]?.takeIf { (id to it) !in goneModels }?.let { return AiResult.Success(it) }
         return when (val models = provider.listModels()) {
-            is AiResult.Success -> pickDefaultModel(id, models.value)?.id?.also { discoveredModels[cacheKey] = it }?.let { AiResult.Success(it) }
+            is AiResult.Success -> pickDefaultModel(id, models.value.filter { (id to it.id) !in goneModels })?.id?.also { discoveredModels[cacheKey] = it }?.let { AiResult.Success(it) }
                 ?: AiResult.Failure(FailureKind.UNKNOWN, "No chat model is available for this ${id.shortName} key.")
             is AiResult.Failure -> models
         }

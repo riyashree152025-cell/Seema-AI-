@@ -101,6 +101,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDefaultProvider(v: ProviderId) = edit { it[Keys.DEFAULT_PROVIDER] = v.name }
     suspend fun setModel(provider: ProviderId, model: String) = edit { it[modelKey(provider)] = model }
+    /** Back to "auto": the best model the provider lists is used. */
+    suspend fun clearModel(provider: ProviderId) = edit { it.remove(modelKey(provider)) }
     suspend fun setLastTest(provider: ProviderId, test: ConnectionTest) = edit { it[testKey(provider)] = encodeConnectionTest(test) }
     /** A new or removed key makes the old test result meaningless (never show a stale "Connected"). */
     suspend fun clearLastTest(provider: ProviderId) = edit { it.remove(testKey(provider)) }

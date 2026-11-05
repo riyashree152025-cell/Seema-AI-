@@ -1312,4 +1312,61 @@ class AssistantEngineTest {
         assertEquals(listOf(false to true), tools.photos)
         assertTrue(speaker.spoken.last().contains("फोटो ले ली"))
     }
+
+    @Test
+    fun withWakeByNameButNoWayToCheckTheNameNoiseNeverMakesHerTalk() = runTest {
+        // The loop on the phone: no offline model, no Deepgram key, every sound woke her and she
+        // said "हाँ जी, बोलिए?" again and again.
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS, wakeWord = true)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, null)
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        val spokenBefore = speaker.spoken.size
+        repeat(5) { i ->
+            now = 70_000L + i * 10_000L
+            wake.onUtterance!!(ByteArray(10)) // TV / talk / noise
+            settle()
+        }
+        assertEquals(spokenBefore, speaker.spoken.size) // not a word
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertNotNull(e.hint.value) // tells how to wake her
+        e.wakeUp() // a tap on the reactor still works
+        settle()
+        assertEquals("हाँ जी, बोलिए?", speaker.spoken.last())
+    }
+
+    @Test
+    fun aRetiredModelIsReplacedByTheNewestOneAndRemembered() = runTest {
+        // The phone showed: HTTP 404 "models/gemini-2.0-flash is no longer available".
+        settings.value = settings.value.copy(models = mapOf(ProviderId.GEMINI to "gemini-2.0-flash"))
+        val asked = mutableListOf<String>()
+        val gemini = object : AiProvider {
+            override val id = ProviderId.GEMINI
+            override suspend fun listModels(): AiResult<List<AiModel>> =
+                AiResult.Success(listOf("gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-3.8-flash-lite").map { AiModel(it, it) })
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> {
+                asked += model
+                return if (model == "gemini-2.0-flash") AiResult.Failure(FailureKind.UNKNOWN, "Unexpected error (HTTP 404): This model models/gemini-2.0-flash is no longer available.")
+                else AiResult.Success("Saade paanch baje hain.")
+            }
+        }
+        var remembered: Pair<ProviderId, String>? = null
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> gemini }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            onModelReplaced = { id, m -> remembered = id to m },
+        )
+        e.submit("time kya hua?")
+        settle()
+        assertEquals(listOf("gemini-2.0-flash", "gemini-3.8-flash"), asked)
+        assertEquals("Saade paanch baje hain.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals(ProviderId.GEMINI to "gemini-3.8-flash", remembered)
+        assertNull(e.lastError.value)
+    }
 }

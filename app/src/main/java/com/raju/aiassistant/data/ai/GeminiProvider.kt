@@ -64,7 +64,8 @@ class GeminiProvider(
     private fun request(model: String, method: String, body: JsonObject): Request {
         val cleanModel = model.removePrefix("models/").trim()
         val sanitized = when {
-            cleanModel.isBlank() || cleanModel.contains("omni", ignoreCase = true) -> "gemini-2.0-flash"
+            // Google's moving alias for its current Flash model (fixed names like gemini-2.0-flash get retired).
+            cleanModel.isBlank() || cleanModel.contains("omni", ignoreCase = true) -> "gemini-flash-latest"
             else -> cleanModel
         }
         return Request.Builder()

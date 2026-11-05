@@ -341,6 +341,28 @@ fun HomeScreen(
 
 
 
+            // Greeting card (reference look): a neon panel with a fixed line; it changes nothing.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xCC0B1C3A), Color(0xCC061026))))
+                    .border(1.dp, Brush.horizontalGradient(listOf(Color(0x6638E1FF), Color(0xB300F0FF), Color(0x667000FF))), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "How can I help you today?",
+                        style = MaterialTheme.typography.titleSmall.copy(color = Color.White, fontWeight = FontWeight.SemiBold),
+                    )
+                    Text(
+                        "Bolkar ya likhkar poochhiye",
+                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f)),
+                    )
+                }
+            }
             // Emergency Silent / Mute Quick Switch Bar
 
             val isMuted = state.paused
