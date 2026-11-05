@@ -385,7 +385,40 @@ class AssistantEngineTest {
         val e = engine(AiResult.Success("""Dekhti hoon. <action>{"type":"battery"}</action>"""))
         e.submit("battery kitni hai")
         settle()
-        assertEquals(listOf("Dekhti hoon.", "Battery 80 percent"), speaker.spoken) // "%" is spoken as a word
+        assertEquals(listOf("Battery 80 percent"), speaker.spoken) // "%" is spoken as a word
+        assertTrue(provider.calls.isEmpty()) // answered on the phone, no AI request
+    }
+
+    @Test
+    fun simplePhoneCommandsRunWithoutAiAndWithoutInternet() = runTest {
+        online = false
+        val e = engine(AiResult.Success("unused"))
+        e.submit("5 minute ka timer lagao")
+        settle()
+        assertEquals(listOf(300), tools.timers)
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
+        assertTrue(speaker.spoken.last().contains("5 मिनट का टाइमर"))
+        assertNull(e.lastError.value)
+    }
+
+    @Test
+    fun aCommandThatIsMoreThanAPhoneCommandStillGoesToTheAi() = runTest {
+        val e = engine(AiResult.Success("Theek hai."))
+        e.submit("5 minute ka timer lagao aur gaana bhi chalao")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertTrue(tools.timers.isEmpty())
+    }
+
+    @Test
+    fun aContactNameNotFoundAsWrittenIsLeftToTheAi() = runTest {
+        tools.contacts = ContactLookup.Found(emptyList())
+        val e = engine(AiResult.Success("Kaun se contact? Naam dobara bataiye."))
+        e.submit("मम्मी को कॉल करो")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertTrue(tools.dialed.isEmpty())
     }
 
     @Test

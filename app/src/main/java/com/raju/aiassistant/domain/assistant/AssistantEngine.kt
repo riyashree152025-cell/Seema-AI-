@@ -621,6 +621,12 @@ class AssistantEngine(
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
 
+        // Simple phone commands ("torch on karo", "Mummy ko call karo", "5 minute ka timer") run on
+        // the phone at once: no AI request, no tokens, and they also work without internet.
+        LocalCommands.parse(text)?.let { action ->
+            if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
+        }
+
         if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
             fail("No internet connection. AI replies need internet.", AssistantState.Offline)
             return
@@ -922,6 +928,106 @@ class AssistantEngine(
             }
         }
         return result(model = model, error = error)
+    }
+
+    /**
+     * Runs a command understood without AI ([LocalCommands]). Returns false to leave the message to
+     * the AI after all: an app name the phone does not know, a contact name not found as written
+     * ("मम्मी" saved as "Mummy"), or Safety Mode (the AI path explains what is blocked).
+     */
+    private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean): Boolean {
+        val s = settings.value
+        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp)) return false
+        when (action) {
+            is AssistantAction.OpenApp -> {
+                val outcome = tools.openApp(action.name)
+                if (outcome !is ToolOutcome.Done) return false
+                trace("offline command: open app")
+                report(action, outcome)
+                if (speak) say(phrase(lang(), "${action.name} खोल दिया है।", "${action.name} খুলে দিয়েছি।"))
+            }
+            is AssistantAction.Call -> {
+                val name = action.contact
+                if (name != null) {
+                    val found = tools.findContacts(name)
+                    if (found is ContactLookup.Found && found.contacts.isEmpty()) return false
+                }
+                trace("offline command: call")
+                _state.value = AssistantState.Executing
+                callContact(action, speak)
+            }
+            is AssistantAction.Flashlight -> {
+                trace("offline command: torch")
+                val outcome = tools.setFlashlight(action.on)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) {
+                    say(if (action.on) phrase(lang(), "टॉर्च जला दी है।", "টর্চ জ্বালিয়ে দিয়েছি।") else phrase(lang(), "टॉर्च बंद कर दी है।", "টর্চ বন্ধ করে দিয়েছি।"))
+                }
+            }
+            is AssistantAction.Volume -> {
+                trace("offline command: volume")
+                val outcome = tools.setVolume(action.percent)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "आवाज़ ${action.percent} प्रतिशत कर दी है।", "ভলিউম ${action.percent} শতাংশ করে দিয়েছি।"))
+            }
+            is AssistantAction.SetTimer -> {
+                trace("offline command: timer")
+                val outcome = tools.setTimer(action.seconds, action.note)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) {
+                    val sec = action.seconds
+                    val (hi, bn) = when {
+                        sec % 3600 == 0 -> "${sec / 3600} घंटे" to "${sec / 3600} ঘণ্টা"
+                        sec % 60 == 0 -> "${sec / 60} मिनट" to "${sec / 60} মিনিট"
+                        else -> "$sec सेकंड" to "$sec সেকেন্ড"
+                    }
+                    say(phrase(lang(), "$hi का टाइमर लगा दिया है।", "$bn এর টাইমার দিয়ে দিয়েছি।"))
+                }
+            }
+            is AssistantAction.SetAlarm -> {
+                trace("offline command: alarm")
+                val outcome = tools.setAlarm(action.hour, action.minute, action.note)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) {
+                    val time = "${action.hour}:${action.minute.toString().padStart(2, '0')}"
+                    say(phrase(lang(), "$time बजे का अलार्म लगा दिया है।", "$time এর অ্যালার্ম দিয়ে দিয়েছি।"))
+                }
+            }
+            is AssistantAction.TakePhoto -> {
+                trace("offline command: photo")
+                _state.value = AssistantState.Executing
+                camera(action, action.front, question = null, speak = speak)
+            }
+            is AssistantAction.Battery -> {
+                trace("offline command: battery")
+                val outcome = tools.batteryStatus()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(outcome.message)
+            }
+            is AssistantAction.EndCall -> {
+                trace("offline command: end call")
+                val outcome = tools.endCall()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
+            }
+            is AssistantAction.AnswerCall -> {
+                trace("offline command: answer call")
+                report(action, tools.answerCall())
+            }
+            is AssistantAction.GoHome -> {
+                trace("offline command: home")
+                val outcome = tools.goHome()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "लीजिए राजू, होम स्क्रीन पर आ गए।", "এই যে রাজু, হোম স্ক্রিনে চলে এসেছি।"))
+            }
+            else -> return false
+        }
+        if (_state.value != AssistantState.Error) {
+            _state.value = AssistantState.Success
+            delay(1_200)
+        }
+        finishTurn()
+        return true
     }
 
     private fun finishTurn() {
