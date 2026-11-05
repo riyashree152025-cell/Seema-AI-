@@ -26,8 +26,9 @@ class PromptAndTextTest {
         val p = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.TAPORI)
         assertTrue(p.lineSequence().first().contains("Tapori mode"))
         assertFalse(p.lineSequence().first().contains("girlfriend"))
-        assertTrue(p.contains("never real abuse"))
-        assertTrue(p.contains("stop roasting"))
+        assertTrue(p.contains("no gaali"))
+        assertTrue(p.contains("stop the teasing at once"))
+        assertTrue(p.contains("drop the teasing"))
         assertTrue(p.contains("\"type\":\"call\"")) // phone tools are still there
         val gf = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.COMPANION)
         assertTrue(gf.lineSequence().first().contains("girlfriend"))

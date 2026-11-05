@@ -1667,10 +1667,17 @@ class AssistantEngine(
                 if (speak) say(missing)
                 return
             } else {
-                target = if (found.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+                val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+                // In the phone log: why a confirmation shows instead of sending directly.
+                trace("whatsapp: ${found.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
+                target = if (found.size == 1 && autoSend) {
                     found[0]
                 } else {
-                    confirmContact("Send on WhatsApp?", "Open WhatsApp with this message for you to review and send:\n\n\"${action.text}\"", found)
+                    val why = when {
+                        found.size > 1 -> "\"${action.contact}\" naam se ${found.size} number mile — kis par bhejna hai?"
+                        else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle)."
+                    }
+                    confirmContact("Send on WhatsApp?", "$why\n\nYe message WhatsApp mein khulega, Send aap dabayenge:\n\n\"${action.text}\"", found)
                         ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
                 }
             }

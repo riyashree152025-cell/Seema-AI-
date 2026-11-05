@@ -58,4 +58,14 @@ class ReactorStyleTest {
             }
         }
     }
+
+    @Test
+    fun taporiFaceChangesWithWhatSheIsDoing() {
+        assertEquals(TaporiExpression.LISTEN, taporiExpressionFor(AssistantState.Listening))
+        assertEquals(TaporiExpression.EYE_ROLL, taporiExpressionFor(AssistantState.Thinking))
+        assertEquals(TaporiExpression.TALK, taporiExpressionFor(AssistantState.Speaking))
+        assertEquals(TaporiExpression.WINK, taporiExpressionFor(AssistantState.Success))
+        assertEquals(TaporiExpression.SLEEP, taporiExpressionFor(AssistantState.Sleeping))
+        assertEquals(TaporiExpression.SMIRK, taporiExpressionFor(AssistantState.Idle))
+    }
 }

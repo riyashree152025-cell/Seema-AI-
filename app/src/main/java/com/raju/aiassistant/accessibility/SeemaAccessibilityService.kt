@@ -22,7 +22,7 @@ class SeemaAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg == "com.whatsapp" || pkg == "com.whatsapp.w4b") {
             if (pendingWhatsAppAutoSend) {
-                attemptWhatsAppSend()
+                attemptWhatsAppSend(pkg)
             } else if (pendingWhatsAppCall) {
                 attemptWhatsAppCall()
             }
@@ -33,11 +33,11 @@ class SeemaAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun attemptWhatsAppSend() {
+    private fun attemptWhatsAppSend(pkg: String) {
         val root = rootInActiveWindow ?: return
         try {
-            // 1. By view ID
-            val byId = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send")
+            // 1. By view ID (WhatsApp Business has its own package in the id)
+            val byId = root.findAccessibilityNodeInfosByViewId("$pkg:id/send")
             for (node in byId) {
                 if (clickNode(node)) {
                     finishAutoSend()
