@@ -137,10 +137,23 @@ class KwsWakeListener(
             log("kws listening")
             val buf = ShortArray(FRAME)
             val floats = FloatArray(FRAME)
+            var lastLevelLog = 0L
             while (currentCoroutineContext().isActive) {
                 val n = recorder.read(buf, 0, buf.size)
                 if (n <= 0) return false // microphone taken away (call, another app) or stopped
-                for (i in 0 until n) floats[i] = buf[i] / 32768f
+                var sum = 0.0
+                for (i in 0 until n) {
+                    floats[i] = buf[i] / 32768f
+                    sum += buf[i].toDouble() * buf[i]
+                }
+                // Diagnostics for the phone log: shows whether a voice reaches the spotter at all
+                // (at most every 3 s, only when something louder than a quiet room is heard).
+                val level = kotlin.math.sqrt(sum / n)
+                val now = System.currentTimeMillis()
+                if (level > VOICE_LEVEL && now - lastLevelLog > 3_000) {
+                    lastLevelLog = now
+                    log("kws hears sound, level ${level.toInt()}")
+                }
                 stream.acceptWaveform(if (n == FRAME) floats else floats.copyOf(n), RATE)
                 while (kws.isReady(stream)) {
                     kws.decode(stream)
@@ -164,6 +177,8 @@ class KwsWakeListener(
         const val RATE = 16_000
         /** 100 ms of audio per read. */
         const val FRAME = 1_600
+        /** Microphone level (RMS of 16-bit samples) above a quiet room: someone may be talking. */
+        const val VOICE_LEVEL = 150.0
     }
 }
 

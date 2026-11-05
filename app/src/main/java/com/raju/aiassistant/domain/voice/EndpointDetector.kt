@@ -18,6 +18,12 @@ class EndpointDetector(
      */
     private val minThreshold: Double = 150.0,
     private val noiseFactor: Double = 2.5,
+    /**
+     * Voice shorter than this (a cough, a door, a click) followed by a pause is not a turn: keep
+     * waiting. Such bits were sent to Deepgram and came back as "no words were recognised" again
+     * and again on the phone.
+     */
+    private val minSpeechMs: Int = 200,
 ) {
     enum class State { LISTENING, SPEAKING, DONE, NO_SPEECH }
 
@@ -28,6 +34,7 @@ class EndpointDetector(
     private var noiseFrames = 0
     private var loudRun = 0
     private var quietMs = 0
+    private var loudMs = 0
 
     val heardSpeech: Boolean get() = state == State.SPEAKING || state == State.DONE
 
@@ -46,12 +53,24 @@ class EndpointDetector(
         when (state) {
             State.LISTENING -> {
                 loudRun = if (loud) loudRun + 1 else 0
-                if (loudRun >= 3) state = State.SPEAKING // ~60 ms of voice, not a click
-                else if (elapsed >= noSpeechTimeoutMs) state = State.NO_SPEECH
+                if (loudRun >= 3) { // ~60 ms of voice, not a click
+                    state = State.SPEAKING
+                    loudMs = loudRun * frameMs
+                    quietMs = 0
+                } else if (elapsed >= noSpeechTimeoutMs) state = State.NO_SPEECH
             }
             State.SPEAKING -> {
+                if (loud) loudMs += frameMs
                 quietMs = if (loud) 0 else quietMs + frameMs
-                if (quietMs >= silenceMs) state = State.DONE
+                if (quietMs >= silenceMs) {
+                    if (loudMs >= minSpeechMs) state = State.DONE
+                    else { // only a short noise: wait for real speech
+                        state = State.LISTENING
+                        loudRun = 0
+                        loudMs = 0
+                        if (elapsed >= noSpeechTimeoutMs) state = State.NO_SPEECH
+                    }
+                }
             }
             else -> Unit
         }

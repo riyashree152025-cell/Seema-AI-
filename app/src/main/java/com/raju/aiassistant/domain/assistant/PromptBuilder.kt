@@ -183,11 +183,14 @@ fun buildResearchFollowUp(topic: String, results: List<Pair<String, String>>, sn
  * context, merges consecutive same-role turns, starts with a user turn and respects [limit]/[maxChars].
  */
 fun toTurns(messages: List<ChatMessage>, limit: Int, maxChars: Int = MAX_HISTORY_CHARS): List<Turn> {
-    val recent = messages.filter { it.text.isNotBlank() }.takeLast(limit.coerceAtLeast(1))
+    // The app's own error and fallback notices ("⚠️ Quota exceeded …", "↪ Gemini: …", "🔇 Voice
+    // failed …") are not conversation: sending them back cost hundreds of tokens per request.
+    val recent = messages.filter { it.text.isNotBlank() && !(it.role == ChatRole.SYSTEM && isDiagnosticNote(it.text)) }
+        .takeLast(limit.coerceAtLeast(1))
     val turns = mutableListOf<Turn>()
     for (m in recent) {
         val role = if (m.role == ChatRole.ASSISTANT) TurnRole.ASSISTANT else TurnRole.USER
-        val text = if (m.role == ChatRole.SYSTEM) "[App note] ${m.text}" else m.text
+        val text = if (m.role == ChatRole.SYSTEM) "[App note] ${m.text.take(MAX_APP_NOTE_CHARS)}" else m.text
         val last = turns.lastOrNull()
         if (last != null && last.role == role) turns[turns.lastIndex] = Turn(role, last.text + "\n\n" + text)
         else turns += Turn(role, text)
@@ -198,6 +201,14 @@ fun toTurns(messages: List<ChatMessage>, limit: Int, maxChars: Int = MAX_HISTORY
     if (turns.size == 1 && turns[0].text.length > maxChars) turns[0] = turns[0].copy(text = turns[0].text.takeLast(maxChars))
     return turns
 }
+
+/** An app notice about errors, fallbacks or voice problems (not something said in the conversation). */
+internal fun isDiagnosticNote(text: String): Boolean = text.trimStart().let { t ->
+    t.startsWith("⚠") || t.startsWith("↪") || t.startsWith("🔇")
+}
+
+/** Action results ("✅ Timer set …") are kept short in the history. */
+private const val MAX_APP_NOTE_CHARS = 200
 
 /** Max characters of shared text sent to the AI (keeps requests fast and inside model limits). */
 const val MAX_SHARED_CHARS = 6_000

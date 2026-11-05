@@ -158,5 +158,9 @@ val WAKE_WORD_KEYWORDS: String = listOf(
     "▁O K ▁SEE MA", // OK SEEMA
 ).joinToString("/") { "$it :2.0 @HEY_SEEMA" }
 
-/** How sure the spotter must be (0..1); lower wakes more easily. 0.1 caught 4 of 6 synthetic "Hey Seema" with 0 of 6 false wakes. */
-const val WAKE_WORD_THRESHOLD = 0.1f
+/**
+ * How sure the spotter must be (0..1); lower wakes more easily. 0.1 caught 4 of 6 synthetic
+ * "Hey Seema" with 0 of 6 false wakes, but on the real phone it never woke in a whole session,
+ * so it is a little lower now; the phone log ("kws hears sound" / "kws: wake word") shows the effect.
+ */
+const val WAKE_WORD_THRESHOLD = 0.07f

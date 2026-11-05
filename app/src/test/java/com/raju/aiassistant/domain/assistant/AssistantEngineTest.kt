@@ -175,6 +175,25 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun whenEveryAiIsOutOfQuotaSheSaysPhoneCommandsStillWork() = runTest {
+        val e = engine(AiResult.Failure(FailureKind.QUOTA_EXCEEDED, "Quota exceeded for this key (HTTP 429)"))
+        e.submit("kuch batao", fromVoice = true)
+        settle()
+        assertEquals("Quota exceeded for this key (HTTP 429)", e.lastError.value)
+        assertTrue(speaker.spoken.last().contains("सीमा पूरी"))
+    }
+
+    @Test
+    fun withoutInternetSheSaysWhatStillWorks() = runTest {
+        online = false
+        val e = engine()
+        e.submit("aaj kya khabar hai", fromVoice = true)
+        settle()
+        assertTrue(e.lastError.value!!.contains("still work"))
+        assertTrue(speaker.spoken.last().contains("इंटरनेट नहीं है"))
+    }
+
+    @Test
     fun providerFailureIsShownHonestly() = runTest {
         val e = engine(AiResult.Failure(FailureKind.INVALID_KEY, "API key was rejected (HTTP 401)"))
         e.submit("hello")

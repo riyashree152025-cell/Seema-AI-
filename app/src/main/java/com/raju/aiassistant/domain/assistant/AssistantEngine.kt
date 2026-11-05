@@ -80,6 +80,9 @@ private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
 private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
+/** Exchanges of recent conversation sent with each AI request, and their size limit. */
+private const val RECENT_EXCHANGES = 6
+private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
 private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
@@ -162,6 +165,11 @@ class AssistantEngine(
         { _, _ -> AiResult.Failure(FailureKind.NOT_CONFIGURED, "Image understanding is not available.") },
     /** A saved model was retired by the provider and replaced by a working one: remember it in Settings. */
     private val onModelReplaced: (ProviderId, String) -> Unit = { _, _ -> },
+    /**
+     * Headphones (wired or Bluetooth) are connected. Talking over her (barge-in) is only used then:
+     * on the loudspeaker her own voice reached the microphone and cut her replies after a word.
+     */
+    private val headphones: () -> Boolean = { true },
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -628,7 +636,11 @@ class AssistantEngine(
         }
 
         if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
-            fail("No internet connection. AI replies need internet.", AssistantState.Offline)
+            fail(
+                "No internet connection. AI replies need internet; torch, volume, timer, alarm, calls, photos, battery and opening apps still work.",
+                AssistantState.Offline,
+                spoken = offlineSpoken(),
+            )
             return
         }
         var providerId = s.defaultProvider
@@ -676,7 +688,7 @@ class AssistantEngine(
             language = lang(), languageUnclear = languageUnclear, documents = documents,
         )
         val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context)
-        val turns = toTurns(_transcript.value, s.historyLimit * 2, ModelAdvice.historyCharBudget(model))
+        val turns = historyTurns(model)
 
         trace("ai request ${providerId.shortName}")
         val speak = fromVoice || s.autoSpeakReplies
@@ -763,7 +775,20 @@ class AssistantEngine(
                 val backup = if (spokenHead == null) fallbackReply(providerId, system, turns) else null
                 if (backup == null) {
                     _lastRoute.value = AiRoute(providerId, null, model, clock(), streamed.message)
-                    fail(streamed.message, if (streamed.kind == FailureKind.NETWORK && !isOnline()) AssistantState.Offline else AssistantState.Error)
+                    val offline = streamed.kind == FailureKind.NETWORK && !isOnline()
+                    fail(
+                        streamed.message,
+                        if (offline) AssistantState.Offline else AssistantState.Error,
+                        spoken = when {
+                            offline -> offlineSpoken()
+                            streamed.kind == FailureKind.QUOTA_EXCEEDED || streamed.kind == FailureKind.RATE_LIMITED -> phrase(
+                                lang(),
+                                "अभी सभी AI की सीमा पूरी हो गई है, थोड़ी देर बाद पूछिए। टॉर्च, टाइमर, कॉल और फोटो जैसे फ़ोन के काम अभी भी चलेंगे।",
+                                "এখন সব AI-এর সীমা শেষ, একটু পরে জিজ্ঞেস করুন। টর্চ, টাইমার, কল, ছবির মতো ফোনের কাজ এখনও চলবে।",
+                            )
+                            else -> null
+                        },
+                    )
                     return
                 }
                 note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.provider.shortName} instead.")
@@ -843,6 +868,16 @@ class AssistantEngine(
         _latencies.value = (_latencies.value + entry).takeLast(50)
         trace("latency: text ${entry.firstTextMs ?: "-"} ms, voice ${entry.firstAudioMs ?: "-"} ms, total ${entry.totalMs} ms" + if (ok) "" else " (failed)")
     }
+
+    /**
+     * The recent conversation sent with a request: the last few exchanges only. Free plans limit
+     * tokens per minute (Groq: 8000), and 20 exchanges of history made every request ~5000 tokens.
+     */
+    private fun historyTurns(model: String): List<Turn> = toTurns(
+        _transcript.value,
+        minOf(settings.value.historyLimit, RECENT_EXCHANGES) * 2,
+        minOf(ModelAdvice.historyCharBudget(model), HISTORY_CHARS_PER_REQUEST),
+    )
 
     private class FallbackReply(val provider: ProviderId, val model: String, val text: String)
 
@@ -1064,7 +1099,7 @@ class AssistantEngine(
         // by speech-to-text. Without both, her own voice coming back from the speaker into the mic
         // would stop her after a few words (tested on a phone). Tapping the core always stops her.
         val canBargeIn = allowBargeIn && settings.value.bargeIn && (handsFree || _voiceSession.value) &&
-            conversationMode.active && transcriber?.isAvailable() == true
+            conversationMode.active && transcriber?.isAvailable() == true && headphones()
         val capture = canBargeIn
         val utterance = CompletableDeferred<ByteArray?>()
         // Set from the microphone thread: atomic, so the speaking coroutine always sees it.
@@ -1414,7 +1449,7 @@ class AssistantEngine(
         actionLog.safeLog(action, ActionStatus.SUCCESS, "${action.queries.size} searches, ${merged.size} sources")
         _state.value = AssistantState.Thinking
         val followUp = buildResearchFollowUp(action.topic, merged.map { it.title to it.url }, merged.map { it.snippet })
-        val turns = toTurns(_transcript.value, settings.value.historyLimit * 2, ModelAdvice.historyCharBudget(model)) +
+        val turns = historyTurns(model) +
             com.raju.aiassistant.domain.ai.Turn(com.raju.aiassistant.domain.ai.TurnRole.USER, followUp)
         val sources = merged.mapIndexed { i, r -> "[${i + 1}] ${r.title} — ${r.domain}\n${r.url}" }.joinToString("\n")
         when (val r = provider.chat(model, system, turns)) {
@@ -1750,7 +1785,7 @@ class AssistantEngine(
         actionLog.safeLog(action, ActionStatus.SUCCESS, "${response.results.size} results")
         _state.value = AssistantState.Thinking
         val followUp = buildSearchFollowUp(action.query, response.results.map { it.title to it.url }, response.results.map { it.snippet }, response.answer)
-        val turns = toTurns(_transcript.value, settings.value.historyLimit * 2, ModelAdvice.historyCharBudget(model)) +
+        val turns = historyTurns(model) +
             com.raju.aiassistant.domain.ai.Turn(com.raju.aiassistant.domain.ai.TurnRole.USER, followUp)
         val sources = response.results.mapIndexed { i, r ->
             "[${i + 1}] ${r.title} — ${r.domain}" + (r.publishedDate?.let { " ($it)" } ?: "") + "\n${r.url}"
@@ -1820,14 +1855,14 @@ class AssistantEngine(
         _transcript.value = (_transcript.value + message).takeLast(MAX_TRANSCRIPT_IN_MEMORY)
     }
 
-    private suspend fun fail(message: String, state: AssistantState = AssistantState.Error) {
+    private suspend fun fail(message: String, state: AssistantState = AssistantState.Error, spoken: String? = null) {
         _lastError.value = message
         record(ChatRole.SYSTEM, "⚠️ $message")
         trace("error shown")
         if (voiceTurn) {
             // The user is talking, maybe not looking at the screen: say briefly that it failed.
             voiceTurn = false
-            say(phrase(lang(), "माफ़ कीजिए, अभी जवाब नहीं दे पाई — वजह स्क्रीन पर लिखी है।", "দুঃখিত, এখন উত্তর দিতে পারলাম না — কারণ স্ক্রিনে লেখা আছে।"), allowBargeIn = false)
+            say(spoken ?: phrase(lang(), "माफ़ कीजिए, अभी जवाब नहीं दे पाई — वजह स्क्रीन पर लिखी है।", "দুঃখিত, এখন উত্তর দিতে পারলাম না — কারণ স্ক্রিনে লেখা আছে।"), allowBargeIn = false)
         }
         _state.value = state
         _voiceSession.value = false
@@ -1840,6 +1875,13 @@ class AssistantEngine(
             }
         }
     }
+
+    /** What she says without internet: what still works. */
+    private fun offlineSpoken() = phrase(
+        lang(),
+        "इंटरनेट नहीं है। बिना इंटरनेट के मैं टॉर्च, टाइमर, अलार्म, कॉल, फोटो और ऐप खोलने जैसे काम कर सकती हूँ।",
+        "ইন্টারনেট নেই। ইন্টারনেট ছাড়া আমি টর্চ, টাইমার, অ্যালার্ম, কল, ছবি আর অ্যাপ খোলার মতো কাজ করতে পারি।",
+    )
 
     /** Error is shown briefly, then the reactor returns to Ready. */
     private fun scheduleErrorReset() {
