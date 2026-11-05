@@ -410,15 +410,20 @@ class AssistantEngine(
         }
     }
 
-    private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp()
+    /**
+     * Call-style audio only serves barge-in, which needs headphones: on the loudspeaker a Samsung
+     * phone played her voice from the earpiece in call-style audio, like a normal phone call.
+     */
+    private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp() && headphones()
 
     private fun listen() {
         val gen = ++listenGen
         _state.value = AssistantState.Listening
         _heard.value = null
         _hint.value = null
-        // The system recogniser (another app) gets only silence while call-style audio is on.
-        if (!voice.capturesInApp()) conversationMode.exit()
+        // The system recogniser (another app) gets only silence while call-style audio is on, and
+        // without headphones call-style audio would play her voice from the earpiece.
+        if (!callStyleAllowed()) conversationMode.exit()
         trace("listen ${if (handsFree) "hands-free" else "tap"} ${if (voice.capturesInApp()) "in-app" else "system"} recogniser")
         voice.start(
             lang().tag,

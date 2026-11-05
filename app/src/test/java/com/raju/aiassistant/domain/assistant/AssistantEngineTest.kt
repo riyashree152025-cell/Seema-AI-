@@ -822,15 +822,27 @@ class AssistantEngineTest {
         override fun exit() { active = false }
     }
 
-    private fun TestScope.engineWithMode(mode: ConversationMode, speakerOverride: Speaker = speaker, vararg replies: AiResult<String>): AssistantEngine {
+    private fun TestScope.engineWithMode(mode: ConversationMode, speakerOverride: Speaker = speaker, vararg replies: AiResult<String>, headphones: Boolean = true): AssistantEngine {
         provider = FakeProvider(ArrayDeque(replies.toList()))
         return AssistantEngine(
             scope = backgroundScope, settings = settings, secret = { keys[it] },
             providerFor = { _, _ -> provider }, searchFor = { search },
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speakerOverride, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
-            conversationMode = mode,
+            conversationMode = mode, headphones = { headphones },
         )
+    }
+
+    @Test
+    fun withoutHeadphonesHerVoiceStaysOnTheLoudspeaker() = runTest {
+        // Call-style audio sent her voice to the earpiece on a Samsung phone; it is only for barge-in with headphones.
+        val mode = Mode()
+        val e = engineWithMode(mode, speaker, AiResult.Success("Haan ji."), headphones = false)
+        e.startHandsFree()
+        voice.onResult!!("kaise ho")
+        settle()
+        assertTrue(!mode.everActive)
+        assertEquals("Haan ji.", speaker.spoken.last())
     }
 
     @Test
