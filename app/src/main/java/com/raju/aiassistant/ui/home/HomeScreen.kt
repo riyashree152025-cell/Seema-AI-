@@ -601,8 +601,7 @@ fun HomeScreen(
                         com.raju.aiassistant.ui.home.visuals.TaporiFace(
                             time = { timeProvider.floatValue },
                             speechLevel = { speechLevel },
-                            listening = isListening,
-                            speaking = isSpeaking,
+                            state = assistantState,
                             modifier = Modifier.size(coreSize * 0.84f),
                         )
                     }
