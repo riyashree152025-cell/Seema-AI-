@@ -20,4 +20,5 @@ val RajuViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer { ChatViewModel(container()) }
     initializer { SettingsViewModel(container()) }
     initializer { ToolsViewModel(container()) }
+    initializer { com.raju.aiassistant.ui.bookings.BookingsViewModel(container()) }
 }

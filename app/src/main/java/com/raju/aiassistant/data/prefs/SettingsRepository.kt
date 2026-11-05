@@ -78,6 +78,7 @@ class SettingsRepository(private val context: Context) {
             thermalProtection = this[Keys.THERMAL_PROTECTION] ?: d.thermalProtection,
             coreAppearance = this[Keys.CORE_APPEARANCE]?.let { v -> CoreAppearance.entries.firstOrNull { it.name == v } } ?: d.coreAppearance,
             personality = enumOr(this[Keys.PERSONALITY], d.personality),
+            bookingWhatsApp = this[Keys.BOOKING_WHATSAPP] ?: d.bookingWhatsApp,
             announceNotifications = this[Keys.ANNOUNCE] ?: d.announceNotifications,
             announceApps = this[Keys.ANNOUNCE_APPS] ?: d.announceApps,
             askBeforeReading = this[Keys.ASK_BEFORE_READING] ?: d.askBeforeReading,
@@ -138,6 +139,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
     suspend fun setBusinessReminders(v: Boolean) = edit { it[Keys.BUSINESS_REMINDERS] = v }
     suspend fun setPersonality(v: Personality) = edit { it[Keys.PERSONALITY] = v.name }
+    suspend fun setBookingWhatsApp(v: String) = edit { it[Keys.BOOKING_WHATSAPP] = v.trim().take(20) }
     suspend fun setAnnounce(v: Boolean) = edit { it[Keys.ANNOUNCE] = v }
     suspend fun setAnnounceApp(pkg: String, enabled: Boolean) = edit {
         val current = it[Keys.ANNOUNCE_APPS] ?: UserSettings().announceApps
@@ -200,6 +202,7 @@ class SettingsRepository(private val context: Context) {
         val WAKE_WORD = booleanPreferencesKey("wake_word")
         val BUSINESS_REMINDERS = booleanPreferencesKey("business_reminders")
         val PERSONALITY = stringPreferencesKey("personality")
+        val BOOKING_WHATSAPP = stringPreferencesKey("booking_whatsapp")
         val ANNOUNCE = booleanPreferencesKey("announce_notifications")
         val ANNOUNCE_APPS = stringSetPreferencesKey("announce_apps")
         val DIRECT_CALLING = booleanPreferencesKey("direct_calling")

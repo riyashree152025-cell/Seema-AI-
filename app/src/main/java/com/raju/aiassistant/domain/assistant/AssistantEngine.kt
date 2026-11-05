@@ -59,6 +59,19 @@ import com.raju.aiassistant.domain.business.formatRupees
 import com.raju.aiassistant.domain.business.periodRange
 import com.raju.aiassistant.domain.business.summarizeExpenses
 import com.raju.aiassistant.domain.business.summarizeJourneys
+import com.raju.aiassistant.domain.booking.Booking
+import com.raju.aiassistant.domain.booking.BookingStatus
+import com.raju.aiassistant.domain.booking.BookingStore
+import com.raju.aiassistant.domain.booking.BOOKING_FOLDER
+import com.raju.aiassistant.domain.booking.EditResult
+import com.raju.aiassistant.domain.booking.NoBookingStore
+import com.raju.aiassistant.domain.booking.applyEdit
+import com.raju.aiassistant.domain.booking.bookingContext
+import com.raju.aiassistant.domain.booking.daySlipFileName
+import com.raju.aiassistant.domain.booking.formatSlip
+import com.raju.aiassistant.domain.booking.lastTouched
+import com.raju.aiassistant.domain.booking.summarizeBookings
+import com.raju.aiassistant.domain.model.Personality
 
 /** A question the user must answer before the assistant continues. */
 data class PendingRequest(
@@ -170,6 +183,10 @@ class AssistantEngine(
      * on the loudspeaker her own voice reached the microphone and cut her replies after a word.
      */
     private val headphones: () -> Boolean = { true },
+    /** Train booking requests and their slips (see domain/booking). */
+    private val bookings: BookingStore = NoBookingStore,
+    /** "टपोरी मोड ऑन करो": saves the new personality in Settings. */
+    private val onPersonality: (Personality) -> Unit = {},
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -636,6 +653,9 @@ class AssistantEngine(
 
         // Simple phone commands ("torch on karo", "Mummy ko call karo", "5 minute ka timer") run on
         // the phone at once: no AI request, no tokens, and they also work without internet.
+        LocalCommands.personalitySwitch(text, s.personality)?.let { p ->
+            if (runLocalCommand(AssistantAction.SetPersonality(p), speak = fromVoice || s.autoSpeakReplies)) return
+        }
         LocalCommands.parse(text)?.let { action ->
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
         }
@@ -689,7 +709,7 @@ class AssistantEngine(
         val documents = runCatching { knowledge.search(text) }.getOrDefault(emptyList())
         if (documents.isNotEmpty()) trace("knowledge: ${documents.size} passage(s)")
         val context = PromptContext(
-            voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot(),
+            voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = listOfNotNull(businessSnapshot(), bookingSnapshot()).joinToString("\n").ifEmpty { null },
             language = lang(), languageUnclear = languageUnclear, documents = documents,
         )
         val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context)
@@ -1060,6 +1080,10 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "लीजिए राजू, होम स्क्रीन पर आ गए।", "এই যে রাজু, হোম স্ক্রিনে চলে এসেছি।"))
             }
+            is AssistantAction.SetPersonality -> {
+                trace("offline command: mode")
+                setPersonality(action, speak)
+            }
             else -> return false
         }
         if (_state.value != AssistantState.Error) {
@@ -1406,6 +1430,19 @@ class AssistantEngine(
                 val place = action.place?.let { " $it" }.orEmpty()
                 searchWeb(AssistantAction.SearchWeb("${action.commodity} mandi bhav today$place price per quintal agmarknet"), provider, model, system, speak)
             }
+            is AssistantAction.BookingSave -> saveBooking(action, speak)
+            is AssistantAction.BookingUpdate -> updateBooking(action, speak)
+            is AssistantAction.BookingSetStatus -> setBookingStatus(action, speak)
+            is AssistantAction.BookingList -> {
+                val list = runCatching { bookings.all() }.getOrNull()
+                if (list == null) report(action, ActionStatus.FAILED, "Could not read the bookings.")
+                else informational(action, summarizeBookings(list, action.status, action.query), speak)
+            }
+            is AssistantAction.BookingSend -> {
+                val b = findBooking(action.id)
+                if (b == null) report(action, ActionStatus.FAILED, "वह बुकिंग नहीं मिली।") else sendSlip(action, b, speak)
+            }
+            is AssistantAction.SetPersonality -> setPersonality(action, speak)
             is AssistantAction.SaveFile -> report(action, tools.shareTextFile(action.name, action.content))
             is AssistantAction.Research -> research(action, provider, model, system, speak)
         }
@@ -1427,6 +1464,98 @@ class AssistantEngine(
         val (from, to) = periodRange(Period.TODAY, clock(), zone())
         businessContext(business.expensesBetween(from, to), business.journeysFrom(today()))
     }.getOrNull()
+
+    // ---------------------------------------------------------------- train booking slips
+
+    private suspend fun bookingSnapshot(): String? = runCatching { bookingContext(bookings.all(), today(), clock()) }.getOrNull()
+
+    /** By number, or (no number) the booking saved or changed last. */
+    private suspend fun findBooking(id: Long?): Booking? = runCatching {
+        val all = bookings.all()
+        if (id != null) all.firstOrNull { it.id == id } else lastTouched(all)
+    }.getOrNull()
+
+    private suspend fun saveBooking(action: AssistantAction.BookingSave, speak: Boolean) {
+        val draft = action.booking
+        val d = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "बुकिंग सेव करूँ?", formatSlip(draft) + "\n\nकुछ गलत हो तो Cancel दबाकर बोलिए, जैसे \"नाम आनंद है\"."))
+        if (d !is Decision.Approve) {
+            report(action, ActionStatus.CANCELLED, "बुकिंग सेव नहीं की। सही जानकारी बोलिए, मैं फिर से बना दूँगी।")
+            return
+        }
+        val saved = runCatching { bookings.upsert(draft) }.getOrNull()
+        if (saved == null) {
+            report(action, ActionStatus.FAILED, "बुकिंग सेव नहीं हो पाई।")
+            return
+        }
+        report(action, ActionStatus.SUCCESS, "बुकिंग #${saved.id} सेव हो गई (फ़ाइल: $BOOKING_FOLDER/${daySlipFileName(saved.journeyDate)})\n${formatSlip(saved)}")
+        if (speak) say(phrase(lang(), "बुकिंग नंबर ${saved.id} सेव हो गई, ${saved.passengers.size} यात्री।", "বুকিং নম্বর ${saved.id} সেভ হয়েছে।"))
+        if (settings.value.bookingWhatsApp.isNotBlank()) sendSlip(action, saved, speak)
+    }
+
+    private suspend fun updateBooking(action: AssistantAction.BookingUpdate, speak: Boolean) {
+        val old = findBooking(action.id)
+        if (old == null) {
+            report(action, ActionStatus.FAILED, "कोई बुकिंग नहीं मिली जिसे सुधारूँ।")
+            return
+        }
+        when (val r = applyEdit(old, action.edit)) {
+            is EditResult.Problem -> {
+                report(action, ActionStatus.CANCELLED, r.message)
+                if (speak) say(r.message)
+            }
+            is EditResult.Ok -> {
+                val d = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "बुकिंग #${old.id} ऐसे सुधार दूँ?", formatSlip(r.booking)))
+                if (d !is Decision.Approve) {
+                    report(action, ActionStatus.CANCELLED, "बुकिंग #${old.id} नहीं बदली।")
+                    return
+                }
+                val saved = runCatching { bookings.upsert(r.booking) }.getOrNull()
+                if (saved == null) report(action, ActionStatus.FAILED, "बदलाव सेव नहीं हो पाया।")
+                else {
+                    report(action, ActionStatus.SUCCESS, "बुकिंग #${saved.id} सुधार दी।\n${formatSlip(saved)}")
+                    if (speak) say(phrase(lang(), "ठीक है, बुकिंग नंबर ${saved.id} सुधार दी।", "ঠিক আছে, বুকিং ${saved.id} ঠিক করে দিয়েছি।"))
+                }
+            }
+        }
+    }
+
+    private suspend fun setBookingStatus(action: AssistantAction.BookingSetStatus, speak: Boolean) {
+        val b = findBooking(action.id)
+        if (b == null) {
+            report(action, ActionStatus.FAILED, "वह बुकिंग नहीं मिली।")
+            return
+        }
+        val saved = runCatching { bookings.upsert(b.copy(status = action.status)) }.getOrNull()
+        if (saved == null) report(action, ActionStatus.FAILED, "स्टेटस नहीं बदल पाया।")
+        else {
+            val msg = "बुकिंग #${saved.id} (${saved.from} → ${saved.to}) अब ${saved.status.label} है।"
+            report(action, ActionStatus.SUCCESS, msg)
+            if (speak) say(msg)
+        }
+    }
+
+    /** Opens WhatsApp with the slip for the saved number — only after the user says yes. */
+    private suspend fun sendSlip(action: AssistantAction, b: Booking, speak: Boolean) {
+        val number = settings.value.bookingWhatsApp.takeIf { it.isNotBlank() }
+        val d = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "पर्ची WhatsApp पर भेजूँ?", (number?.let { "नंबर: $it" } ?: "WhatsApp में चैट आप चुनेंगे") + "\n\n" + formatSlip(b)))
+        if (d !is Decision.Approve) {
+            report(action, ActionStatus.CANCELLED, "पर्ची #${b.id} नहीं भेजी।")
+            return
+        }
+        report(action, tools.openWhatsApp(number, formatSlip(b)))
+    }
+
+    private suspend fun setPersonality(action: AssistantAction.SetPersonality, speak: Boolean) {
+        onPersonality(action.personality)
+        val tapori = action.personality == Personality.TAPORI
+        report(action, ActionStatus.SUCCESS, if (tapori) "टपोरी मोड चालू 😎" else "मोड: ${action.personality.label}")
+        if (speak) {
+            say(
+                if (tapori) phrase(lang(), "चल भिड़ू, टपोरी मोड ऑन! अब बोल, क्या सीन है?", "চল বন্ধু, টপোরি মোড অন!")
+                else phrase(lang(), "मैं वापस आ गई राजू, अपनी सीमा।", "আমি ফিরে এসেছি রাজু।"),
+            )
+        }
+    }
 
     /** Deep research: up to three searches, merged and de-duplicated, summarised as a report with sources. */
     private suspend fun research(action: AssistantAction.Research, provider: AiProvider, model: String, system: String, speak: Boolean) {

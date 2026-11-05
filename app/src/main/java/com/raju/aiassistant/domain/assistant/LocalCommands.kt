@@ -18,6 +18,29 @@ object LocalCommands {
             ?: battery(t) ?: home(t) ?: openApp(t)
     }
 
+    // ------------------------------------------------------------------ Tapori mode by voice
+
+    private const val TAPORI = "(?:tapori|tapoori|taporee|टपोरी|ṭapori|shaitani dost|shaitani|शैतानी दोस्त|शैतानी|savage)"
+    private const val MODE = "(?: (?:mode|मोड|wala mode|वाला मोड))?"
+    private const val ON = "(?:on|chalu|chaalu|start|shuru|ऑन|ओन|चालू|शुरू)"
+    private const val OFF = "(?:off|band|बंद|ऑफ)"
+    private val TAPORI_ON = Regex("^$TAPORI$MODE $ON$DO$|^$TAPORI ban ja(?:o)?$|^$TAPORI बन जाओ$")
+    private val TAPORI_OFF = Regex("^$TAPORI$MODE $OFF$DO$|^(?:normal|नॉर्मल|girlfriend|गर्लफ्रेंड)$MODE (?:$ON$DO|pe aao|par aao|पे आओ|पर आओ)$")
+    /** Only while in Tapori mode: "सीमा वापस आओ" brings the normal Seema back (otherwise it means "open Seema"). */
+    private val SEEMA_BACK = Regex("^(?:seema|सीमा) (?:wapas|vapas|vaapas|वापस) (?:aao|aa jao|aaja|आओ|आ जाओ|आजा)(?: na| ना)?$")
+
+    /** The personality a mode command asks for, or null when the text is not one. */
+    fun personalitySwitch(text: String, current: com.raju.aiassistant.domain.model.Personality): com.raju.aiassistant.domain.model.Personality? {
+        val raw = buildString { for (ch in text.lowercase()) append(if (ch in ".,!?।|\"'") ' ' else ch) }.replace(Regex("\\s+"), " ").trim()
+        val t = normalize(text)
+        return when {
+            TAPORI_ON.matches(t) -> com.raju.aiassistant.domain.model.Personality.TAPORI
+            TAPORI_OFF.matches(t) -> com.raju.aiassistant.domain.model.Personality.COMPANION
+            current == com.raju.aiassistant.domain.model.Personality.TAPORI && SEEMA_BACK.matches(raw) -> com.raju.aiassistant.domain.model.Personality.COMPANION
+            else -> null
+        }
+    }
+
     // ------------------------------------------------------------------ text clean-up
 
     private val FILLER_START = Regex("^(please|plz|pls|zara|jara|जरा|ज़रा|seema|सीमा|hey|हे)\\s+")

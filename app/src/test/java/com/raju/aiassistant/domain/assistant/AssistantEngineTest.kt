@@ -139,8 +139,25 @@ class AssistantEngineTest {
             providerFor = { _, _ -> provider }, searchFor = { search },
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            bookings = bookingStore, onPersonality = { modes += it },
         )
     }
+
+    private class MemoryBookings : com.raju.aiassistant.domain.booking.BookingStore {
+        val items = mutableListOf<com.raju.aiassistant.domain.booking.Booking>()
+        private var tick = 0L
+        override suspend fun all() = items.toList()
+        override suspend fun upsert(booking: com.raju.aiassistant.domain.booking.Booking): com.raju.aiassistant.domain.booking.Booking {
+            tick++
+            val stored = if (booking.id == 0L) booking.copy(id = items.size + 1L, updatedAt = tick) else booking.copy(updatedAt = tick)
+            items.removeAll { it.id == stored.id }
+            items += stored
+            return stored
+        }
+        override suspend fun delete(id: Long) = items.removeAll { it.id == id }
+    }
+    private val bookingStore = MemoryBookings()
+    private val modes = mutableListOf<com.raju.aiassistant.domain.model.Personality>()
 
     @Test
     fun replyIsRecordedSpokenAndStateReturnsToIdle() = runTest {
@@ -1479,5 +1496,93 @@ class AssistantEngineTest {
         assertEquals("Saade paanch baje hain.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
         assertEquals(ProviderId.GEMINI to "gemini-3.8-flash", remembered)
         assertNull(e.lastError.value)
+    }
+
+    // ---------------------------------------------------------------- train booking slips
+
+    private val bookingReply = """Theek hai. <action>{"type":"booking_add","date":"2026-11-06","from":"new delhi","to":"PNBE","train":"12309","class":"3ac","sender":"rakesh","passengers":[{"name":"sanjay kumar","gender":"male","age":"34 saal"},{"name":"Sita","gender":"F","age":30}]}</action>"""
+
+    @Test
+    fun bookingIsSavedOnlyAfterTheUserConfirmsTheSlip() = runTest {
+        val e = engine(AiResult.Success(bookingReply))
+        e.submit("kal delhi se patna booking")
+        runCurrent()
+        val ask = e.pending.value!!
+        assertTrue(ask.message.contains("1. Sanjay Kumar | M | 34 Yrs"))
+        assertTrue(bookingStore.items.isEmpty())
+        e.resolve(Decision.Approve())
+        settle()
+        val b = bookingStore.items.single()
+        assertEquals("New Delhi" to "PNBE", b.from to b.to)
+        assertEquals("3A", b.travelClass)
+        assertEquals("Rakesh", b.sender)
+        assertEquals(2, b.passengers.size)
+        assertTrue(e.transcript.value.any { it.role == ChatRole.SYSTEM && "🚆 JOURNEY DETAILS" in it.text })
+    }
+
+    @Test
+    fun cancelledBookingIsNotSaved() = runTest {
+        val e = engine(AiResult.Success(bookingReply))
+        e.submit("booking")
+        runCurrent()
+        e.resolve(Decision.Deny)
+        settle()
+        assertTrue(bookingStore.items.isEmpty())
+    }
+
+    @Test
+    fun spokenCorrectionChangesTheSameBookingInsteadOfAddingOne() = runTest {
+        val e = engine(
+            AiResult.Success(bookingReply),
+            AiResult.Success("""Sorry! <action>{"type":"booking_update","passenger_no":1,"name":"Anand Kumar"}</action>"""),
+        )
+        e.submit("booking")
+        runCurrent()
+        e.resolve(Decision.Approve())
+        settle()
+        e.submit("nahi bhai, naam Anand hai")
+        runCurrent()
+        assertTrue(e.pending.value!!.message.contains("1. Anand Kumar | M | 34 Yrs"))
+        e.resolve(Decision.Approve())
+        settle()
+        val b = bookingStore.items.single()
+        assertEquals(1L, b.id)
+        assertEquals(listOf("Anand Kumar", "Sita"), b.passengers.map { it.name })
+    }
+
+    @Test
+    fun slipGoesToWhatsAppOnlyAfterYes() = runTest {
+        settings.value = settings.value.copy(bookingWhatsApp = "9876543210")
+        val e = engine(AiResult.Success(bookingReply), AiResult.Success(bookingReply))
+        e.submit("booking")
+        runCurrent()
+        e.resolve(Decision.Approve()) // save
+        settle()
+        assertEquals("पर्ची WhatsApp पर भेजूँ?", e.pending.value?.title)
+        e.resolve(Decision.Deny)
+        settle()
+        assertTrue(tools.whatsApps.isEmpty())
+
+        e.submit("ek aur booking")
+        runCurrent()
+        e.resolve(Decision.Approve())
+        settle()
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals("9876543210", tools.whatsApps.single().first)
+        assertTrue(tools.whatsApps.single().second.contains("👥 PASSENGER LIST"))
+    }
+
+    @Test
+    fun taporiModeIsSwitchedByVoiceWithoutAnAiRequest() = runTest {
+        val e = engine()
+        e.submit("टपोरी मोड ऑन करो")
+        settle()
+        assertEquals(listOf(com.raju.aiassistant.domain.model.Personality.TAPORI), modes)
+        settings.value = settings.value.copy(personality = com.raju.aiassistant.domain.model.Personality.TAPORI)
+        e.submit("सीमा वापस आओ")
+        settle()
+        assertEquals(com.raju.aiassistant.domain.model.Personality.COMPANION, modes.last())
+        assertTrue(provider.calls.isEmpty())
     }
 }

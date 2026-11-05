@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Contacts
@@ -77,6 +78,7 @@ private data class AppItem(
 @Composable
 fun AppsScreen(
     onOpenTools: () -> Unit,
+    onOpenBookings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
@@ -228,6 +230,14 @@ fun AppsScreen(
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://google.com")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     }
                 },
+            ),
+            AppItem(
+                id = "bookings",
+                name = "Bookings",
+                icon = Icons.Filled.Train,
+                iconColor = Color(0xFFFF8A65),
+                category = "Tools",
+                action = { onOpenBookings() },
             ),
             AppItem(
                 id = "more",
