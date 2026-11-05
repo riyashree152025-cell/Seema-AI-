@@ -155,7 +155,11 @@ class AppContainer(context: Context) {
     }
     /** Standby: offline "Hey Seema" when downloaded and "wake by name" is on; otherwise the voice detector (+ Deepgram name check). */
     val wakeListener by lazy {
-        com.raju.aiassistant.data.voice.SwitchingWakeListener(kwsWakeListener, MicWakeListener(appContext, appScope)) { currentSettings.value.wakeWord }
+        com.raju.aiassistant.data.voice.SwitchingWakeListener(
+            kwsWakeListener,
+            MicWakeListener(appContext, appScope),
+            preferCloud = { online.value && deepgramTranscriber.isAvailable() },
+        ) { currentSettings.value.wakeWord }
     }
     /** Phone calls and headphone disconnects (started in RajuApp). */
     val audioInterruptions by lazy {
