@@ -1523,6 +1523,16 @@ fun VoiceSpeechScreen(
 
         // Below your voice choices (which stay where they were): listening / wake word and offline voices.
         ListeningPanel(s, viewModel)
+        // Deepgram: the key box (save / test / remove) and the choice of listening engine.
+        VoiceEngineSecretCard(
+            secretId = SecretId.DEEPGRAM_API_KEY,
+            title = "Deepgram API Key (सुनने के लिए / listening)",
+            secretStatus = secrets[SecretId.DEEPGRAM_API_KEY] ?: SecretStatus(),
+            viewModel = viewModel
+        )
+        com.raju.aiassistant.ui.components.HudPanel(title = "Speech input (listening engine)") {
+            SpeechInputSettings(s, viewModel, secrets[SecretId.DEEPGRAM_API_KEY]?.configured == true)
+        }
         VoiceEngineManager(s, viewModel)
 
         Spacer(Modifier.height(16.dp))
