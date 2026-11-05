@@ -20,6 +20,13 @@ class WakeWordTest {
     }
 
     @Test
+    fun heySeemaRunTogetherAsTheRecogniserWroteItOnARealPhoneWakes() {
+        assertEquals("", afterWakeWord("Mesima."))
+        assertEquals("", afterWakeWord("Máxima."))
+        assertEquals("time kya hua?", afterWakeWord("Mesima, time kya hua?"))
+    }
+
+    @Test
     fun otherTalkDoesNotWake() {
         assertNull(afterWakeWord("TV pe news chal rahi hai"))
         assertNull(afterWakeWord("maine kal bazaar mein Seema ko dekha")) // her name buried in other talk

@@ -96,7 +96,8 @@ class AssistantEngineTest {
         override fun openSettings(page: SettingsPage) = ToolOutcome.Done("Opened")
         override fun batteryStatus() = ToolOutcome.Done("Battery 80%")
         override fun playMusic(query: String, service: MusicService): ToolOutcome { music += query to service; return ToolOutcome.Done("Opened ${service.label}") }
-        override fun openWhatsApp(number: String?, text: String) = ToolOutcome.Done("WhatsApp opened")
+        val whatsApps = mutableListOf<Pair<String?, String>>()
+        override fun openWhatsApp(number: String?, text: String): ToolOutcome { whatsApps += number to text; return ToolOutcome.Done("WhatsApp opened") }
     }
 
     private class Store : ChatHistory, MemoryStore, ActionLog {
@@ -181,6 +182,26 @@ class AssistantEngineTest {
         assertEquals(AssistantState.Error, e.state.value)
         assertTrue(e.transcript.value.last().text.contains("rejected"))
         assertTrue(speaker.spoken.isEmpty())
+    }
+
+    @Test
+    fun whatsAppToANameThatIsNotInContactsSaysSoInsteadOfOpeningAnEmptyWhatsApp() = runTest {
+        tools.contacts = ContactLookup.Found(emptyList())
+        val e = engine(AiResult.Success("""Bhej rahi hoon. <action>{"type":"whatsapp","contact":"Vodafone 0 1","text":"Good morning"}</action>"""))
+        e.submit("Vodafone 0 1 ko WhatsApp par good morning bhejo")
+        settle()
+        assertTrue(tools.whatsApps.isEmpty())
+        assertTrue(e.transcript.value.any { it.text.contains("\"Vodafone 0 1\"") && it.text.contains("नहीं मिला") })
+    }
+
+    @Test
+    fun whatsAppToASpokenNumberUsesThatNumber() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"whatsapp","contact":"98765 43210","text":"Good morning"}</action>"""))
+        e.submit("98765 43210 ko good morning bhejo")
+        runCurrent()
+        e.pending.value?.let { e.resolve(Decision.Approve(it.options.firstOrNull())) }
+        settle()
+        assertEquals(listOf<Pair<String?, String>>("98765 43210" to "Good morning"), tools.whatsApps)
     }
 
     @Test
@@ -364,7 +385,40 @@ class AssistantEngineTest {
         val e = engine(AiResult.Success("""Dekhti hoon. <action>{"type":"battery"}</action>"""))
         e.submit("battery kitni hai")
         settle()
-        assertEquals(listOf("Dekhti hoon.", "Battery 80 percent"), speaker.spoken) // "%" is spoken as a word
+        assertEquals(listOf("Battery 80 percent"), speaker.spoken) // "%" is spoken as a word
+        assertTrue(provider.calls.isEmpty()) // answered on the phone, no AI request
+    }
+
+    @Test
+    fun simplePhoneCommandsRunWithoutAiAndWithoutInternet() = runTest {
+        online = false
+        val e = engine(AiResult.Success("unused"))
+        e.submit("5 minute ka timer lagao")
+        settle()
+        assertEquals(listOf(300), tools.timers)
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
+        assertTrue(speaker.spoken.last().contains("5 मिनट का टाइमर"))
+        assertNull(e.lastError.value)
+    }
+
+    @Test
+    fun aCommandThatIsMoreThanAPhoneCommandStillGoesToTheAi() = runTest {
+        val e = engine(AiResult.Success("Theek hai."))
+        e.submit("5 minute ka timer lagao aur gaana bhi chalao")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertTrue(tools.timers.isEmpty())
+    }
+
+    @Test
+    fun aContactNameNotFoundAsWrittenIsLeftToTheAi() = runTest {
+        tools.contacts = ContactLookup.Found(emptyList())
+        val e = engine(AiResult.Success("Kaun se contact? Naam dobara bataiye."))
+        e.submit("मम्मी को कॉल करो")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertTrue(tools.dialed.isEmpty())
     }
 
     @Test
@@ -1212,6 +1266,32 @@ class AssistantEngineTest {
         assertTrue(e.latencies.value.single().let { !it.ok })
         settle()
         assertEquals(AssistantState.Idle, e.state.value)
+    }
+
+    @Test
+    fun aBusyProviderThatStaysSilentIsReplacedAfter15SecondsWhenAnotherAiCanAnswer() = runTest {
+        keys[SecretId.GROQ_API_KEY] = "groq"
+        val silentGemini = object : AiProvider {
+            override val id = ProviderId.GEMINI
+            override val streams = true
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("gemini-2.5-flash", "Flash")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = kotlinx.coroutines.awaitCancellation()
+            override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> =
+                kotlinx.coroutines.awaitCancellation()
+        }
+        val groq = object : AiProvider {
+            override val id = ProviderId.GROQ
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("llama-3.3-70b-versatile", "Llama")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>) = AiResult.Success("Groq ka jawab")
+        }
+        val e = engineFor(silentGemini, listOf(ProviderId.GEMINI, ProviderId.GROQ)) { id -> if (id == ProviderId.GROQ) groq else silentGemini }
+        e.submit("hello")
+        advanceTimeBy(16_000)
+        runCurrent()
+        assertEquals("Groq ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertTrue(e.transcript.value.any { it.text.contains("did not start answering within 15 seconds") })
+        assertNull(e.lastError.value)
+        settle()
     }
 
     @Test

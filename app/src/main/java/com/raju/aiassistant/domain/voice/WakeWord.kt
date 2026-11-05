@@ -26,6 +26,8 @@ private val WAKE_WORDS = listOf(
     "\u0938\u0940\u0924\u093e", // सीता (frequent STT mishear)
     // English / transliterated single words
     "seema ji", "seemaji", "seema", "sima", "shima", "seemaa", "sema", "sheema", "seem", "simran",
+    // "Hey Seema" run together, as the phone's recogniser wrote it in real use ("Mesima.", "Máxima.")
+    "mesima", "meseema", "hesima", "heseema", "maxima",
     // Bengali single words
     "\u09b8\u09c0\u09ae\u09be \u09a6\u09bf", // সীমা দি
     "\u09b8\u09c0\u09ae\u09be\u0997\u09cb", // সীমাগো
@@ -71,13 +73,25 @@ private val CALLER_FILLERS = Regex(
 )
 
 /**
+ * Latin letters without accents ("máxima" -> "maxima"), one character for one so positions stay
+ * the same. Hindi and Bengali vowel signs are left alone (they are combining marks too).
+ */
+private fun plainLatin(text: String): String = buildString(text.length) {
+    for (ch in text) {
+        append(
+            if (ch in '\u00C0'..'\u024F') java.text.Normalizer.normalize(ch.toString(), java.text.Normalizer.Form.NFD).first() else ch,
+        )
+    }
+}
+
+/**
  * In sleep mode Seema only reacts when called by name. Returns what was said after "Seema"
  * ("" if only her name was said), or null if her name was not in [heard] at all.
  * Examples: "Seema, time kya hua?" -> "time kya hua?"; "hey सीमा" -> ""; "TV ki awaaz" -> null.
  */
 fun afterWakeWord(heard: String): String? {
     val text = heard.trim()
-    val lower = text.lowercase()
+    val lower = plainLatin(text.lowercase())
     var best: IntRange? = null
     for (w in WAKE_WORDS) {
         val m = Regex("(^|[^\\p{L}\\p{M}])" + Regex.escape(w.lowercase()) + "(?=$|[^\\p{L}\\p{M}])").find(lower) ?: continue
