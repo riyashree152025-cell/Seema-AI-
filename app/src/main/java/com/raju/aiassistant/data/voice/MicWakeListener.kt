@@ -9,6 +9,8 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
 import com.raju.aiassistant.domain.assistant.WakeListener
+import com.raju.aiassistant.domain.voice.WakeEndpointer
+import com.raju.aiassistant.domain.voice.normalizePcm16
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,9 +23,10 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Sleep mode: a light, on-device voice detector. It follows the room's noise level, notices when
- * someone starts talking (louder than the noise for ~0.1 s), records until they pause, and hands
- * over that utterance including half a second from before the start. Runs only while the app is on
+ * Sleep mode: a light, on-device voice detector ([WakeEndpointer]). It follows the room's noise
+ * level (an AC is learnt within seconds), notices when someone starts talking, records until they
+ * pause, drops steady noise, and hands over the utterance (made louder when quiet) including half a
+ * second from before the start. Runs only while the app is on
  * screen in hands-free mode; no audio leaves the phone unless the engine sends that utterance on.
  */
 class MicWakeListener(private val context: Context, private val scope: CoroutineScope) : WakeListener {
@@ -81,53 +84,45 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
             return null
         }
         val preRoll = ArrayDeque<ByteArray>()
-        var noise = -1.0
-        var loudFrames = 0
+        // AC and fan noise: the phone's own noise suppressor, where it has one (most do on MIC).
+        val suppressor = attachNoiseSuppressor(recorder.audioSessionId)
+        val gate = WakeEndpointer(frameMs = FRAME_MS, maxMs = MAX_UTTERANCE_MS)
         try {
             recorder.startRecording()
             activeRecorder = recorder
-            android.util.Log.d("SeemaWake", "MicWakeListener started recording, awaiting wake word...")
+            android.util.Log.d("SeemaWake", "MicWakeListener started recording, awaiting wake word... (noise suppressor ${if (suppressor != null) "on" else "n/a"})")
+            var out: ByteArrayOutputStream? = null
             while (true) {
                 if (!coroutineContext.isActive) return null
-                // 1) Wait for a voice.
                 val frame = readFrame(recorder) ?: return null
-                preRoll.addLast(frame)
-                if (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst()
                 val level = rms(frame)
-                noise = when {
-                    noise < 0 -> level
-                    level < noise -> noise * 0.9 + level * 0.1
-                    else -> noise * 0.998 + level * 0.002
+                when (gate.onFrame(level)) {
+                    WakeEndpointer.Event.WAITING -> {
+                        preRoll.addLast(frame)
+                        if (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst()
+                    }
+                    WakeEndpointer.Event.STARTED -> {
+                        android.util.Log.d("SeemaWake", "Voice detected! Level=${level.toInt()} noise=${gate.noise.toInt()}, recording utterance...")
+                        out = ByteArrayOutputStream().also { o -> preRoll.forEach { o.write(it) }; o.write(frame) }
+                        preRoll.clear()
+                    }
+                    WakeEndpointer.Event.RECORDING -> out?.write(frame)
+                    WakeEndpointer.Event.DONE -> {
+                        val pcm = out?.toByteArray() ?: continue
+                        android.util.Log.d("SeemaWake", "Utterance captured: ${pcm.size} bytes (${gate.utteranceMs}ms)")
+                        // Quiet phone microphones (speech at RMS 120-400) made the recogniser return nothing.
+                        return normalizePcm16(pcm)
+                    }
+                    WakeEndpointer.Event.DISCARDED -> {
+                        // A knock, or a steady sound like the AC: not sent anywhere, keep waiting.
+                        android.util.Log.d("SeemaWake", "Not a voice (${gate.utteranceMs}ms, noise now ${gate.noise.toInt()}), still waiting")
+                        out = null
+                    }
                 }
-                loudFrames = if (level > max(noise * 2.2, MIN_SPEECH)) loudFrames + 1 else 0
-                if (loudFrames < START_FRAMES) continue
-
-                // 2) Record until a pause.
-                android.util.Log.d("SeemaWake", "Voice detected! Level=$level, recording utterance...")
-                val out = ByteArrayOutputStream()
-                preRoll.forEach { out.write(it) }
-                var quietMs = 0
-                var speechMs = START_FRAMES * FRAME_MS
-                var totalMs = 0
-                val pauseThreshold = max(noise * 1.6, MIN_SPEECH * 1.1)
-                while (coroutineContext.isActive && totalMs < MAX_UTTERANCE_MS) {
-                    val f = readFrame(recorder) ?: break
-                    out.write(f)
-                    totalMs += FRAME_MS
-                    val fRms = rms(f)
-                    if (fRms < pauseThreshold) quietMs += FRAME_MS else { quietMs = 0; speechMs += FRAME_MS }
-                    if (quietMs >= END_SILENCE_MS) break
-                }
-                if (speechMs >= MIN_SPEECH_MS) {
-                    android.util.Log.d("SeemaWake", "Utterance captured: ${out.size()} bytes (${totalMs}ms)")
-                    return out.toByteArray()
-                }
-                // Too short (a knock, a cough): keep waiting.
-                preRoll.clear()
-                loudFrames = 0
             }
         } finally {
             if (activeRecorder === recorder) activeRecorder = null
+            runCatching { suppressor?.release() }
             runCatching { recorder.stop() }
             recorder.release()
         }
@@ -160,10 +155,13 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val FRAME_MS = 20
         const val FRAME_BYTES = RATE / 1000 * FRAME_MS * 2
         const val PRE_ROLL_FRAMES = 25 // 0.5 s
-        const val START_FRAMES = 3 // ~60 ms of voice
-        const val MIN_SPEECH = 110.0
-        const val MIN_SPEECH_MS = 200
-        const val END_SILENCE_MS = 650
-        const val MAX_UTTERANCE_MS = 7_500
+        /** Long enough for "सीमा, Rizwan Travels को मैसेज भेजो कि …"; pauses end it much sooner. */
+        const val MAX_UTTERANCE_MS = 8_000
     }
 }
+
+/** The phone's noise suppressor on [sessionId], or null when it has none. Release it with the recorder. */
+internal fun attachNoiseSuppressor(sessionId: Int): android.media.audiofx.NoiseSuppressor? = runCatching {
+    if (!android.media.audiofx.NoiseSuppressor.isAvailable()) return@runCatching null
+    android.media.audiofx.NoiseSuppressor.create(sessionId)?.also { it.enabled = true }
+}.getOrNull()

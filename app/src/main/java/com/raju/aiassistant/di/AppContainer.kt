@@ -231,7 +231,7 @@ class AppContainer(context: Context) {
     private suspend fun keyterms(): List<String> {
         val now = System.currentTimeMillis()
         cachedKeyterms?.let { (at, terms) -> if (now - at < 10 * 60_000L) return terms }
-        val terms = listOf("Seema", "सीमा") + withContext(Dispatchers.IO) { starredContactNames(appContext) }
+        val terms = listOf("Seema", "सीमा", "WhatsApp") + withContext(Dispatchers.IO) { starredContactNames(appContext) }
         cachedKeyterms = now to terms
         return terms
     }
@@ -242,10 +242,24 @@ class AppContainer(context: Context) {
         override suspend fun transcribe(pcm16k: ByteArray): String? {
             val key = secureKeyStore.get(SecretId.DEEPGRAM_API_KEY) ?: return null
             val option = VoiceCatalog.sttOption(currentSettings.value.deepgramSttModel)
-            return when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(pcm16k, 16_000), option.model, option.language, keyterms())) {
+            val client = DeepgramClient(http, key)
+            // Phone microphones record speech very quietly (RMS 120-400): louder first, or the
+            // recogniser often answered with nothing at all.
+            val wav = pcm16ToWav(com.raju.aiassistant.domain.voice.normalizePcm16(pcm16k), 16_000)
+            val text = when (val r = client.transcribeDetailed(wav, option.model, option.language, keyterms())) {
                 is AiResult.Success -> r.value.text
-                is AiResult.Failure -> null
+                is AiResult.Failure -> return null
             }
+            val bengali = currentSettings.value.speechLanguage.startsWith("bn")
+            // Telugu or Hebrew letters for "सीमा …": the language was guessed from noise. Ask again pinned to Hindi.
+            if (option.language != "hi" && com.raju.aiassistant.domain.voice.isUnexpectedScript(text, bengali)) {
+                android.util.Log.i("SeemaVoice", "stt: unexpected script, asking again in Hindi")
+                return when (val r = client.transcribeDetailed(wav, option.model, "hi", keyterms())) {
+                    is AiResult.Success -> r.value.text.takeUnless { com.raju.aiassistant.domain.voice.isUnexpectedScript(it, bengali) }.orEmpty()
+                    is AiResult.Failure -> null
+                }
+            }
+            return text
         }
     }
 

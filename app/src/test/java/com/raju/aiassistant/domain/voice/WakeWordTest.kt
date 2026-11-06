@@ -33,3 +33,21 @@ class WakeWordTest {
         assertNull(afterWakeWord("seemant aaya")) // a different word that starts the same
     }
 }
+
+class WakeWordNearMissTest {
+    @Test
+    fun misspellingsOfHerNameInNoiseStillWake() {
+        assertEquals("", afterWakeWord("सिम्मा"))
+        assertEquals("मैसेज भेजो", afterWakeWord("Seemaa, मैसेज भेजो"))
+        assertEquals("time batao", afterWakeWord("Cima time batao"))
+        assertEquals("", afterWakeWord("शिमा"))
+    }
+
+    @Test
+    fun similarOrdinaryWordsDoNotWake() {
+        assertNull(afterWakeWord("cinema chalein"))
+        assertNull(afterWakeWord("same to same"))
+        assertNull(afterWakeWord("सीना दर्द कर रहा है"))
+        assertNull(afterWakeWord("kal shaam ko milte hain"))
+    }
+}

@@ -42,3 +42,44 @@ class ContactMatchTest {
         assertTrue(ContactMatch.best("   ", book).isEmpty())
     }
 }
+
+class ContactMatchFuzzyTest {
+    private val book = listOf(
+        Contact("Rizwan Travels", "98300 11111"),
+        Contact("Rizwan Khan", "98300 22222"),
+        Contact("Rajesh Cycle Store", "98300 33333"),
+        Contact("Anand Patel", "98300 44444"),
+        Contact("Jalal Bhai", "98300 55555"),
+        Contact("Mom", "99887 76655"),
+        Contact("राहुल शर्मा", "91234 56789"),
+    )
+
+    @Test
+    fun aNameSaidInHindiFindsTheEnglishContact() {
+        val ranked = ContactMatch.rank("रिजवान Travels", book)
+        assertEquals("Rizwan Travels", ranked.first().contact.name)
+        assertTrue(ContactMatch.isClearWinner(ranked))
+        assertEquals("Rizwan Travels", ContactMatch.best("रिजवान ट्रैवल्स", book).first().name)
+    }
+
+    @Test
+    fun smallSpellingDifferencesStillFindTheContact() {
+        assertEquals("Rizwan Travels", ContactMatch.best("rizvan travel", book).first().name)
+        assertEquals("Anand Patel", ContactMatch.best("आनंद पटेल", book).first().name)
+        assertEquals("Jalal Bhai", ContactMatch.best("जलाल भाई", book).first().name)
+        assertEquals("राहुल शर्मा", ContactMatch.best("Rahul Sharma", book).first().name)
+    }
+
+    @Test
+    fun onlyTheFirstNameGivesSeveralCandidates() {
+        val ranked = ContactMatch.rank("रिजवान", book).filter { it.score >= ContactMatch.FUZZY_MIN }
+        assertEquals(setOf("Rizwan Travels", "Rizwan Khan"), ranked.take(2).map { it.contact.name }.toSet())
+        assertTrue(!ContactMatch.isClearWinner(ranked))
+    }
+
+    @Test
+    fun unrelatedNamesAreNotMatched() {
+        assertTrue(ContactMatch.best("Pintu Electricals", book).isEmpty())
+        assertTrue(ContactMatch.best("सुरेश", book).isEmpty())
+    }
+}

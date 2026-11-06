@@ -100,7 +100,7 @@ fun afterWakeWord(heard: String): String? {
             best = range
         }
     }
-    val hit = best ?: return null
+    val hit = best ?: nearMiss(text) ?: return null
     // The name should open the sentence (allowing fillers/conversational prefixes before it).
     var before = text.substring(0, hit.first).trim()
     while (LEADING_FILLERS.containsMatchIn(before)) {
@@ -115,6 +115,19 @@ fun afterWakeWord(heard: String): String? {
     after = after.replace(CALLER_FILLERS, "").trim().trimStart(',', '!', '.', '?', ' ', '-')
     return after
 }
+/**
+ * Spellings of "सीमा" the recogniser invents in noise ("सिम्मा", "Seemaa", "Cima", "हेसीमा"), in any
+ * script: written in Latin letters, s/sh/c/z + i/e + m + a.
+ */
+private val NEAR_SEEMA = Regex("^(?:hey|he|hai|hi|ai|e)?(?:s|sh|c|z)(?:i|ee|ii|ie|ea|e|y)m{1,2}(?:a|aa|ah|an|e|ae)$")
+private val WORD = Regex("[\\p{L}\\p{M}]+")
+
+/** Where a near-miss of her name is among the first few words of [text], or null. */
+private fun nearMiss(text: String): IntRange? =
+    WORD.findAll(text).take(4).firstOrNull { m ->
+        NEAR_SEEMA.matches(plainLatin(com.raju.aiassistant.domain.language.Transliterate.toLatin(m.value).lowercase()))
+    }?.range
+
 /** The offline "Hey Seema" detector's model (sherpa-onnx keyword spotting, English GigaSpeech, int8). */
 data class WakeWordModel(
     override val id: String,

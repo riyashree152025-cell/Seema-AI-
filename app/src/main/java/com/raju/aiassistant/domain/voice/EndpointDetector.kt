@@ -7,7 +7,7 @@ package com.raju.aiassistant.domain.voice
  */
 class EndpointDetector(
     private val frameMs: Int = 20,
-    private val silenceMs: Int = 1_200,
+    private val silenceMs: Int = 1_000,
     private val noSpeechTimeoutMs: Int = 7_000,
     private val maxMs: Int = 15_000,
     private val calibrationMs: Int = 300,
@@ -35,6 +35,9 @@ class EndpointDetector(
     private var loudRun = 0
     private var quietMs = 0
     private var loudMs = 0
+    /** The last five frames, and the loudest 100 ms of this turn: a pause is measured against the voice too. */
+    private val recent = ArrayDeque<Double>()
+    private var peak = 0.0
 
     val heardSpeech: Boolean get() = state == State.SPEAKING || state == State.DONE
 
@@ -55,13 +58,23 @@ class EndpointDetector(
                 loudRun = if (loud) loudRun + 1 else 0
                 if (loudRun >= 3) { // ~60 ms of voice, not a click
                     state = State.SPEAKING
+                    recent.clear()
+                    peak = 0.0
                     loudMs = loudRun * frameMs
                     quietMs = 0
                 } else if (elapsed >= noSpeechTimeoutMs) state = State.NO_SPEECH
             }
             State.SPEAKING -> {
                 if (loud) loudMs += frameMs
-                quietMs = if (loud) 0 else quietMs + frameMs
+                // With an AC or a fan the room noise rises and falls above the calibrated level, and
+                // that counted as "still talking" until the 15 s limit. The average of the last 100 ms
+                // well below this voice's own peak is a pause too.
+                recent.addLast(rms)
+                if (recent.size > 5) recent.removeFirst()
+                val smooth = recent.average()
+                if (smooth > peak) peak = smooth
+                val talking = loud && smooth >= peak * 0.2
+                quietMs = if (talking) 0 else quietMs + frameMs
                 if (quietMs >= silenceMs) {
                     if (loudMs >= minSpeechMs) state = State.DONE
                     else { // only a short noise: wait for real speech
