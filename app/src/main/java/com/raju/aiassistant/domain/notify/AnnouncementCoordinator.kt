@@ -1,7 +1,6 @@
 package com.raju.aiassistant.domain.notify
 
 import com.raju.aiassistant.domain.assistant.Speaker
-import com.raju.aiassistant.domain.assistant.announcementText
 import com.raju.aiassistant.domain.model.UserSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -26,6 +25,8 @@ class AnnouncementCoordinator(
     private val settings: StateFlow<UserSettings>,
     private val consentTimeoutMs: Long = 30_000,
     private val maxQueue: Int = 10,
+    /** After "Padh ke sunau kya?": opens a short listening window for "haan / rehne do". */
+    private val onAsked: (PendingAnnouncement) -> Unit = {},
 ) {
     private val _pending = MutableStateFlow<PendingAnnouncement?>(null)
     val pending: StateFlow<PendingAnnouncement?> = _pending.asStateFlow()
@@ -122,17 +123,18 @@ class AnnouncementCoordinator(
         worker = scope.launch {
             // Don't talk over the assistant; give up waiting after a while.
             withTimeoutOrNull(20_000) { while (speaker.speaking.value) delay(300) }
+            // Only who sent it is said, never the text on its own: the content is read after a "haan".
             when {
-                item.preview == null -> speaker.speak(hiddenPreviewText(item))
-                !s.askBeforeReading -> speaker.speak(announcementText(item.appLabel, whoText(item), item.preview))
+                item.preview == null -> speaker.speak(hiddenPreviewText(item, s.userName))
                 else -> {
                     val p = PendingAnnouncement(nextId++, item)
                     _pending.value = p
-                    speaker.speak(askToReadText(item))
+                    speaker.speak(askToReadText(item, s.userName))
                     timeout = scope.launch {
                         delay(consentTimeoutMs)
                         if (_pending.value?.id == p.id) clearPending()
                     }
+                    if (_pending.value?.id == p.id) onAsked(p)
                 }
             }
             worker = null

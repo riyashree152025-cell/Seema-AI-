@@ -57,7 +57,7 @@ class RajuNotificationListener : NotificationListenerService() {
         if (!c.announcementDeduper.shouldAnnounce(item.packageName, item.sender.orEmpty() + item.group.orEmpty(), (item.preview ?: "") + item.isCall, now)) return
 
         if (item.isCall) {
-            if (settings.announceAppCalls) c.appScope.launch { c.speaker.speak(voipCallText(item)) }
+            if (settings.announceAppCalls) c.appScope.launch { c.speaker.speak(voipCallText(item, settings.userName)) }
         } else {
             c.announcements.onMessage(item)
         }

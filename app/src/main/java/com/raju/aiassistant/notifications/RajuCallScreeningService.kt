@@ -37,8 +37,8 @@ class RajuCallScreeningService : CallScreeningService() {
 
         c.appScope.launch {
             val name = number?.let { lookupContactName(it) }
-            // "Mummy ka call aa raha hai. Utha lun?" — then "haan / utha lo" answers, "nahi / kaat do" rejects.
-            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber) + " " + ASK_TO_ANSWER)
+            // "Raju, Mummy ka call aa raha hai. Uthau ya cut karu?" — "utha lo" answers, "cut karo" rejects.
+            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber, s.userName) + " " + ASK_TO_ANSWER)
             c.engine.listenForCallCommand()
         }
     }

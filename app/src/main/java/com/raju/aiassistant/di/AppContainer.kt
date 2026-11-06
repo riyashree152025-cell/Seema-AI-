@@ -288,8 +288,19 @@ class AppContainer(context: Context) {
     val listenerConnected = MutableStateFlow(false)
 
     val consentNotifier by lazy { ConsentNotifier(appContext) }
-    val announcements by lazy {
-        AnnouncementCoordinator(appScope, speaker, currentSettings).also { coordinator ->
+    val announcements: AnnouncementCoordinator by lazy {
+        AnnouncementCoordinator(
+            appScope, speaker, currentSettings,
+            // "Padh ke sunau kya?" → listen ~5 s: "haan" reads it, "rehne do" / silence drops it quietly.
+            onAsked = { p ->
+                engine.listenForReadReply { yes ->
+                    when (yes) {
+                        true -> announcements.read(p.id)
+                        else -> { announcements.skip(p.id); speaker.stop() }
+                    }
+                }
+            },
+        ).also { coordinator ->
             appScope.launch { coordinator.pending.collect { consentNotifier.show(it) } }
         }
     }

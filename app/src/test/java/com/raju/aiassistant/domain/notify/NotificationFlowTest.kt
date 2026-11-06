@@ -64,7 +64,7 @@ class NotificationFlowTest {
         val item = parseNotification(NotificationFields("com.whatsapp", "k", title = "Mom", text = "Incoming voice call", category = "call", isOngoing = true), "WhatsApp")!!
         assertTrue(item.isCall)
         assertNull(item.preview)
-        assertEquals("WhatsApp par Mom ka call aa raha hai.", voipCallText(item))
+        assertEquals("Mom ka WhatsApp call aa raha hai.", voipCallText(item))
     }
 
     @Test
@@ -77,7 +77,8 @@ class NotificationFlowTest {
     @Test
     fun announcementTexts() {
         val item = IncomingItem("k", "com.whatsapp", "WhatsApp", "Mom", null, "Khana kha liya?")
-        assertEquals("WhatsApp par Mom ka message aaya hai. Kya main padhkar sunaun?", askToReadText(item))
+        assertEquals("Mom ka notification aaya hai. Padh ke sunau kya?", askToReadText(item))
+        assertEquals("Raju, Mom ka notification aaya hai. Padh ke sunau kya?", askToReadText(item, "Raju"))
         assertFalse(askToReadText(item).contains("Khana")) // the question never contains the content
         assertEquals("Mom ne likha: Khana kha liya?", readPreviewText(item))
         assertTrue(readPreviewText(item.copy(preview = "x".repeat(1000))).length < 330)
@@ -89,7 +90,8 @@ class NotificationFlowTest {
     @Test
     fun callTextsNeverInventIdentity() {
         assertEquals("Mom ka call aa raha hai.", callAnnouncementText("Mom", "9876543210", speakNumber = false))
-        assertEquals("Unknown number se call aa raha hai.", callAnnouncementText(null, "9876543210", speakNumber = false))
+        assertEquals("Unknown number ka call aa raha hai.", callAnnouncementText(null, "9876543210", speakNumber = false))
+        assertEquals("Raju, Mom ka call aa raha hai.", callAnnouncementText("Mom", "9876543210", speakNumber = false, nickname = "Raju"))
         assertEquals("Number 9 8 7 6 5 se call aa raha hai.", callAnnouncementText(null, "98765", speakNumber = true))
         assertEquals("Ek call aa raha hai. Number chhupa hua hai.", callAnnouncementText(null, null, speakNumber = true))
     }
@@ -122,7 +124,7 @@ class NotificationFlowTest {
         val c = coordinator()
         c.onMessage(msg("Mom", "Khana kha liya?"))
         runCurrent()
-        assertEquals(listOf("WhatsApp par Mom ka message aaya hai. Kya main padhkar sunaun?"), speaker.spoken)
+        assertEquals(listOf("Raju, Mom ka notification aaya hai. Padh ke sunau kya?"), speaker.spoken)
         val p = c.pending.value
         assertNotNull(p)
         c.read(p!!.id)
@@ -195,16 +197,42 @@ class NotificationFlowTest {
     }
 
     @Test
-    fun askOffReadsDirectlyAndPausedSaysNothing() = runTest {
+    fun messageTextIsNeverReadWithoutAskingEvenWithAskOffAndPausedSaysNothing() = runTest {
         settings.value = UserSettings(announceNotifications = true, askBeforeReading = false)
         val c = coordinator()
         c.onMessage(msg("Mom", "Hi"))
         runCurrent()
-        assertTrue(speaker.spoken.single().endsWith("Hi"))
+        assertTrue(speaker.spoken.single().endsWith("Padh ke sunau kya?"))
+        assertTrue(speaker.spoken.none { it.contains("Hi") })
         settings.value = UserSettings(announceNotifications = true, assistantPaused = true)
         c.onMessage(msg("Papa", "Hello"))
         runCurrent()
         assertEquals(1, speaker.spoken.size)
+    }
+
+    @Test
+    fun theAppNameIsNotTheSenderAndRawNumbersAreNotRead() {
+        val own = parseNotification(f(title = "WhatsApp", text = "Pehla message"), "WhatsApp")!!
+        assertEquals(null, own.sender)
+        assertFalse(askToReadText(own).contains("WhatsApp"))
+        val num = IncomingItem("k", "com.whatsapp", "WhatsApp", "+91 98765 43210", null, "Hi")
+        assertEquals("ek anjaan number ka notification aaya hai. Padh ke sunau kya?", askToReadText(num))
+    }
+
+    @Test
+    fun spokenRepliesToPadhKeSunau() {
+        listOf("haan", "haan padho", "suno", "sunao", "हाँ पढ़ो").forEach { assertEquals(it, true, readReply(it)) }
+        listOf("rehne do", "nahi", "chup", "मत सुनाओ", "nahi padho").forEach { assertEquals(it, false, readReply(it)) }
+        assertNull(readReply("kal milte hain"))
+    }
+
+    @Test
+    fun afterAskingTheReplyWindowIsOpened() = runTest {
+        var asked = 0
+        val c = AnnouncementCoordinator(backgroundScope, speaker, settings, consentTimeoutMs = 30_000, onAsked = { asked++ })
+        c.onMessage(msg("Mom", "Hi"))
+        runCurrent()
+        assertEquals(1, asked)
     }
 
     @Test

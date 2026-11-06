@@ -41,6 +41,25 @@ class ContactMatchTest {
         assertTrue(ContactMatch.best("Airtel 02", book).isEmpty())
         assertTrue(ContactMatch.best("   ", book).isEmpty())
     }
+
+    @Test
+    fun aHindiNameFindsTheEnglishSavedContact() {
+        val rizwan = listOf(
+            Contact("Rizwan Travels", "99999 11111"),
+            Contact("Rahul Sharma", "91234 56789"),
+            Contact("Rizwan Barsoi Forman", "98888 22222"),
+        )
+        assertEquals(listOf(Contact("Rizwan Travels", "99999 11111")), ContactMatch.best("रिजवान ट्रैवल्स", rizwan))
+        assertEquals(listOf(Contact("Rizwan Travels", "99999 11111")), ContactMatch.best("रिज़वान ट्रेवल्स", rizwan))
+        // A short first name matches every Rizwan, so the app asks which one.
+        assertEquals(2, ContactMatch.best("Rizwan", rizwan).size)
+    }
+
+    @Test
+    fun skeletonIsTheSameForHindiAndEnglish() {
+        assertEquals(ContactMatch.skeleton("Rizwan Travels"), ContactMatch.skeleton("रिजवान ट्रैवल्स"))
+        assertEquals(ContactMatch.skeleton("Vodafone 01"), ContactMatch.skeleton("वोडाफोन"))
+    }
 }
 
 class ContactMatchFuzzyTest {
