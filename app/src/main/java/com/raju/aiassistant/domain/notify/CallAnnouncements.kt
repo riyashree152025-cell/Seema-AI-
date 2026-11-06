@@ -5,13 +5,14 @@ package com.raju.aiassistant.domain.notify
  * user's Contacts; the number is spoken only if the user enabled that; otherwise no identity is
  * invented ("unknown number" / "ek call").
  */
-fun callAnnouncementText(contactName: String?, number: String?, speakNumber: Boolean): String {
+fun callAnnouncementText(contactName: String?, number: String?, speakNumber: Boolean, nickname: String? = null): String {
     val digits = number?.filter { it.isDigit() || it == '+' }.orEmpty()
+    val prefix = nickPrefix(nickname)
     return when {
-        !contactName.isNullOrBlank() -> "$contactName ka call aa raha hai."
-        digits.length >= 3 && speakNumber -> "Number ${digits.toList().joinToString(" ")} se call aa raha hai."
-        digits.isEmpty() -> "Ek call aa raha hai. Number chhupa hua hai."
-        else -> "Unknown number se call aa raha hai."
+        !contactName.isNullOrBlank() -> "$prefix$contactName ka call aa raha hai."
+        digits.length >= 3 && speakNumber -> "${prefix}Number ${digits.toList().joinToString(" ")} se call aa raha hai."
+        digits.isEmpty() -> "${prefix}Ek call aa raha hai. Number chhupa hua hai."
+        else -> "${prefix}Unknown number ka call aa raha hai."
     }
 }
 
@@ -55,4 +56,4 @@ fun callCommand(heard: String): CallCommand? {
 }
 
 /** What Seema asks after naming the caller, so "haan" / "nahi" can be answered by voice. */
-const val ASK_TO_ANSWER = "Utha lun?"
+const val ASK_TO_ANSWER = "Uthau ya cut karu?"

@@ -1355,6 +1355,51 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun somethingElseWhileACallRingsStopsListeningInsteadOfLooping() = runTest {
+        val e = engine()
+        e.listenForCallCommand()
+        runCurrent()
+        val starts = voice.starts
+        voice.onResult!!("kal milte hain")
+        settle()
+        assertEquals(starts, voice.starts) // no new listening
+        assertEquals(0, tools.answered + tools.ended)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun haanAfterPadhKeSunauReadsAndRehneDoDoesNot() = runTest {
+        val e = engine()
+        var got: Boolean? = null
+        assertTrue(e.listenForReadReply { got = it })
+        runCurrent()
+        voice.onResult!!("haan padho")
+        settle()
+        assertEquals(true, got)
+        assertEquals(0, provider.calls.size) // not sent to the AI
+
+        got = null
+        assertTrue(e.listenForReadReply { got = it })
+        runCurrent()
+        voice.onResult!!("rehne do")
+        settle()
+        assertEquals(false, got)
+    }
+
+    @Test
+    fun silenceAfterPadhKeSunauGoesQuiet() = runTest {
+        val e = engine()
+        var called = false
+        var got: Boolean? = true
+        e.listenForReadReply { called = true; got = it }
+        runCurrent()
+        advanceTimeBy(6_000)
+        runCurrent()
+        assertTrue(called)
+        assertNull(got)
+    }
+
+    @Test
     fun sayingNoWhileACallRingsRejectsIt() = runTest {
         val e = engine()
         e.listenForCallCommand()

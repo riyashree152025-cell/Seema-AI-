@@ -67,34 +67,75 @@ fun parseNotification(f: NotificationFields, appLabel: String): IncomingItem? {
         }
     }
     if (group != null && sender == group) sender = null
+    // "WhatsApp" as the title of WhatsApp's own notice ("WhatsApp par WhatsApp ka message"): no sender.
+    if (sender != null && isAppName(sender, appLabel, f.packageName)) sender = null
+    if (group != null && isAppName(group, appLabel, f.packageName)) group = null
     if (preview != null && HIDDEN_PREVIEW.containsMatchIn(preview)) preview = null
     if (sender == null && preview == null && group == null) return null
 
     return IncomingItem(f.key, f.packageName, appLabel, sender, group, if (isCall) null else preview, isCall)
 }
 
-/** "Mom", "Mom (Family group)", or "kisi" when unknown. */
-fun whoText(item: IncomingItem): String = when {
-    item.sender != null && item.group != null -> "${item.sender} (${item.group} group)"
-    item.sender != null -> item.sender
-    item.group != null -> "${item.group} group"
-    else -> "kisi"
+private fun isAppName(name: String, appLabel: String, packageName: String): Boolean {
+    val n = name.lowercase().filter { it.isLetterOrDigit() }
+    return n.isNotEmpty() && (n == appLabel.lowercase().filter { it.isLetterOrDigit() } || n == packageName.lowercase().substringAfterLast('.'))
 }
 
-/** Spoken first, before any content: asks permission to read. */
-fun askToReadText(item: IncomingItem): String =
-    if (item.count > 1) "${item.appLabel} par ${whoText(item)} ke ${item.count} messages aaye hain. Kya main padhkar sunaun?"
-    else "${item.appLabel} par ${whoText(item)} ka message aaya hai. Kya main padhkar sunaun?"
+/** A sender that is only a phone number is not read out digit by digit. */
+private fun isJustANumber(s: String): Boolean = s.count { it.isDigit() } >= 7 && s.none { it.isLetter() }
+
+/** "Mom", "Mom (Family group)", "ek anjaan number" or "kisi" when unknown. */
+fun whoText(item: IncomingItem): String {
+    val sender = item.sender?.let { if (isJustANumber(it)) "ek anjaan number" else it }
+    return when {
+        sender != null && item.group != null -> "$sender (${item.group} group)"
+        sender != null -> sender
+        item.group != null -> "${item.group} group"
+        else -> "kisi"
+    }
+}
+
+/** "Raju, " — how Seema addresses the user at the start of an announcement ("" without a name). */
+fun nickPrefix(nickname: String?): String = nickname?.trim()?.takeIf { it.isNotEmpty() }?.let { "$it, " } ?: ""
+
+/** Spoken first, before any content: only who sent it, then asks permission to read. No app name, no text. */
+fun askToReadText(item: IncomingItem, nickname: String? = null): String =
+    if (item.count > 1) "${nickPrefix(nickname)}${whoText(item)} ke ${item.count} notification aaye hain. Padh ke sunau kya?"
+    else "${nickPrefix(nickname)}${whoText(item)} ka notification aaya hai. Padh ke sunau kya?"
 
 /** When the notification hides the content, only the source can be announced. */
-fun hiddenPreviewText(item: IncomingItem): String =
-    "${item.appLabel} par ${whoText(item)} ka message aaya hai. Preview chhupa hua hai, isliye main use padh nahi sakti."
+fun hiddenPreviewText(item: IncomingItem, nickname: String? = null): String =
+    "${nickPrefix(nickname)}${whoText(item)} ka notification aaya hai. Preview chhupa hua hai, isliye main use padh nahi sakti."
 
-/** Read only after the user said yes. Long previews are shortened. */
+/** Read only after the user said yes. Long previews are shortened; links are not read out. */
 fun readPreviewText(item: IncomingItem): String {
-    val p = item.preview.orEmpty().let { if (it.length > 300) it.take(300) + "…" else it }
+    val p = item.preview.orEmpty()
+        .replace(Regex("https?://\\S+"), "link")
+        .let { if (it.length > 300) it.take(300) + "…" else it }
     return "${whoText(item).replaceFirstChar { it.uppercase() }} ne likha: $p"
 }
 
 /** Best-effort announcement for app (VoIP) calls taken from the call notification. */
-fun voipCallText(item: IncomingItem): String = "${item.appLabel} par ${whoText(item)} ka call aa raha hai."
+fun voipCallText(item: IncomingItem, nickname: String? = null): String =
+    "${nickPrefix(nickname)}${whoText(item)} ka ${item.appLabel} call aa raha hai."
+
+/** The user's spoken answer to "Padh ke sunau kya?": true = read, false = no, null = not an answer. */
+fun readReply(heard: String): Boolean? {
+    val t = heard.trim()
+    if (t.isEmpty()) return null
+    return when {
+        READ_NO.containsMatchIn(t) -> false
+        READ_YES.containsMatchIn(t) -> true
+        else -> null
+    }
+}
+
+// "No" first: "nahi, mat sunao" must never read the message.
+private val READ_NO = Regex(
+    "\\b(nahi|nahin|nai|no|mat|rehne do|rahne do|chup|chhodo|chodo|baad me|baad mein|band karo|skip|cancel)\\b|नहीं|नही|मत|रहने दो|चुप|छोड़ो|बाद में|না|থাক|পরে",
+    RegexOption.IGNORE_CASE,
+)
+private val READ_YES = Regex(
+    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|suno|sunao|suna do|padho|padh do|padhkar|padh ke|bolo|batao|read)\\b|हाँ|हां|सुनाओ|सुना दो|सुनो|पढ़ो|पढ़ दो|पढ़|बोलो|बताओ|হ্যাঁ|পড়ো|শোনাও",
+    RegexOption.IGNORE_CASE,
+)
