@@ -19,8 +19,10 @@ import kotlin.coroutines.coroutineContext
  */
 class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { false }) : PcmSink {
     private val audioManager = context.getSystemService(AudioManager::class.java)
+    // Media usage: follows the phone's main (media) volume. "Assistant" usage played softer on a
+    // Samsung phone.
     private val mediaAttributes = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+        .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
     /** In a hands-free conversation the voice goes through the call path, so the echo canceller can remove it. */
@@ -58,39 +60,41 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
     }
 
     override suspend fun play(audio: PcmAudio, onLevel: (Float) -> Unit): Unit = withContext(Dispatchers.IO) {
-        val channelMask = if (audio.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+        // Quiet voices are raised to near full scale (never clipped).
+        val pcm = louder(audio)
+        val channelMask = if (pcm.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-            .setSampleRate(audio.sampleRate)
+            .setSampleRate(pcm.sampleRate)
             .setChannelMask(channelMask)
             .build()
-        val minBuffer = AudioTrack.getMinBufferSize(audio.sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
+        val minBuffer = AudioTrack.getMinBufferSize(pcm.sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
         val track = AudioTrack.Builder()
             .setAudioAttributes(if (callStyle()) callAttributes else mediaAttributes)
             .setAudioFormat(format)
             .setBufferSizeInBytes(maxOf(minBuffer, 8192))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        val bytesPerFrame = 2 * audio.channels
-        val chunk = (audio.sampleRate / 20) * bytesPerFrame // ~50 ms
+        val bytesPerFrame = 2 * pcm.channels
+        val chunk = (pcm.sampleRate / 20) * bytesPerFrame // ~50 ms
         try {
-            current = track to audio
+            current = track to pcm
             track.play()
             var offset = 0
             var stalls = 0
-            while (offset < audio.data.size) {
+            while (offset < pcm.data.size) {
                 coroutineContext.ensureActive()
-                val len = minOf(chunk, audio.data.size - offset)
-                onLevel(pcmLevel(audio.data, offset, len))
-                val written = track.write(audio.data, offset, len)
-                if (written < 0) throw IllegalStateException("audio output error ($written)")
-                if (written == 0 && ++stalls > 50) throw IllegalStateException("audio output is not accepting data")
+                val len = minOf(chunk, pcm.data.size - offset)
+                onLevel(pcmLevel(pcm.data, offset, len))
+                val written = track.write(pcm.data, offset, len)
+                if (written < 0) throw IllegalStateException("pcm output error ($written)")
+                if (written == 0 && ++stalls > 50) throw IllegalStateException("pcm output is not accepting data")
                 offset += written
             }
-            // Wait for the buffered tail to finish playing — but never longer than the audio itself
+            // Wait for the buffered tail to finish playing — but never longer than the pcm itself
             // plus a second (a stuck output must not leave Seema "speaking" forever).
-            val totalFrames = audio.frameCount
-            val deadline = System.nanoTime() + (totalFrames * 1_000_000_000L / audio.sampleRate) + 1_000_000_000L
+            val totalFrames = pcm.frameCount
+            val deadline = System.nanoTime() + (totalFrames * 1_000_000_000L / pcm.sampleRate) + 1_000_000_000L
             while (track.playbackHeadPosition < totalFrames && track.playState == AudioTrack.PLAYSTATE_PLAYING && System.nanoTime() < deadline) {
                 coroutineContext.ensureActive()
                 delay(20)
