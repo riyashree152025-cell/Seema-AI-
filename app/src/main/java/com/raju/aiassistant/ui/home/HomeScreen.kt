@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.Arrangement
 
 import androidx.compose.foundation.layout.Box
 
-import androidx.compose.foundation.layout.BoxWithConstraints
 
 import androidx.compose.foundation.layout.Column
 
@@ -443,7 +442,7 @@ fun HomeScreen(
 
                 // Majestic Living Arc Reactor scaled dynamically to fill the upper viewport
 
-                BoxWithConstraints(
+                Box(
 
                     modifier = Modifier
 
