@@ -2,6 +2,7 @@ package com.raju.aiassistant.core.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -57,6 +58,20 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
         return pcmLevel(audio.data, start, (audio.sampleRate / 50) * bytesPerFrame)
     }
 
+    /**
+     * Her voice on the loudspeaker unless earphones or Bluetooth are connected. A phone left in
+     * call mode (after a call placed on speaker, or a call app) played it from the earpiece,
+     * where it could only be heard with the phone at the ear.
+     */
+    private fun preferLoudspeaker(track: AudioTrack) {
+        runCatching {
+            val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            val external = outputs.any { it.type in EXTERNAL_OUTPUTS }
+            if (external) return
+            outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { track.setPreferredDevice(it) }
+        }
+    }
+
     override suspend fun play(audio: PcmAudio, onLevel: (Float) -> Unit): Unit = withContext(Dispatchers.IO) {
         val channelMask = if (audio.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
         val format = AudioFormat.Builder()
@@ -71,6 +86,7 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
             .setBufferSizeInBytes(maxOf(minBuffer, 8192))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        if (!callStyle()) preferLoudspeaker(track)
         val bytesPerFrame = 2 * audio.channels
         val chunk = (audio.sampleRate / 20) * bytesPerFrame // ~50 ms
         try {
@@ -101,5 +117,12 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
             runCatching { track.pause(); track.flush(); track.stop() }
             track.release()
         }
+    }
+
+    private companion object {
+        val EXTERNAL_OUTPUTS = setOf(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        )
     }
 }

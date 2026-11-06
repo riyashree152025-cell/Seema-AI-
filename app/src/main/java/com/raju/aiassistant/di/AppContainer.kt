@@ -177,7 +177,21 @@ class AppContainer(context: Context) {
                 when (phase) {
                     com.raju.aiassistant.core.audio.CallPhase.RINGING -> engine.onCallRinging()
                     com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> engine.pauseForCall()
-                    com.raju.aiassistant.core.audio.CallPhase.NONE -> engine.resumeAfterCall()
+                    com.raju.aiassistant.core.audio.CallPhase.NONE -> {
+                        // A call Seema placed on the loudspeaker left the phone in call mode, and her
+                        // voice then came from the earpiece. The call is over: normal audio again.
+                        if (com.raju.aiassistant.data.tools.AndroidDeviceTools.speakerCallPlaced && !conversationAudio.active) {
+                            com.raju.aiassistant.data.tools.AndroidDeviceTools.speakerCallPlaced = false
+                            appContext.getSystemService(android.media.AudioManager::class.java)?.let { am ->
+                                runCatching {
+                                    if (am.mode == android.media.AudioManager.MODE_IN_COMMUNICATION) am.mode = android.media.AudioManager.MODE_NORMAL
+                                    @Suppress("DEPRECATION")
+                                    if (am.isSpeakerphoneOn) am.isSpeakerphoneOn = false
+                                }
+                            }
+                        }
+                        engine.resumeAfterCall()
+                    }
                 }
             },
             onBecomingNoisy = { engine.interrupt() },

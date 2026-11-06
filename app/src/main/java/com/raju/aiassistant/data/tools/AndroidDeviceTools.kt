@@ -108,6 +108,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             am?.let {
                 it.mode = AudioManager.MODE_IN_COMMUNICATION
                 it.isSpeakerphoneOn = true
+                speakerCallPlaced = true // undone when the call ends (AppContainer)
             }
         }
         val intent = Intent(if (useDirect) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri)
@@ -591,7 +592,9 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         }
     }
 
-    private companion object {
-        const val MAPS_PKG = "com.google.android.apps.maps"
+    companion object {
+        /** Seema put the phone in call mode with the loudspeaker on for a call she placed. */
+        @Volatile var speakerCallPlaced = false
+        private const val MAPS_PKG = "com.google.android.apps.maps"
     }
 }

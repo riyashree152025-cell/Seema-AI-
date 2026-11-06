@@ -1144,6 +1144,8 @@ class AssistantEngine(
         // "Speaking" is shown only once audio really plays; while the voice is being prepared she is thinking.
         if (_state.value != AssistantState.Thinking && _state.value != AssistantState.Executing) _state.value = AssistantState.Thinking
         val spoken = speakableText(text)
+        // Earphones taken out during a conversation: call-style audio would now go to the earpiece.
+        if (conversationMode.active && !headphones()) conversationMode.exit()
         val showSpeaking = scope.launch {
             speaker.playing.first { it }
             if (turnActive && turnFirstAudioAt == null) turnFirstAudioAt = clock()
