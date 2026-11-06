@@ -67,7 +67,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Background standby for "Hey Seema" (started while the app is on screen, as Android requires;
         // needs the microphone permission, so it also starts right after that is granted).
-        SeemaWakeService.start(this)
+        // Switched OFF on Home: nothing listens in the background either.
+        if (!(application as RajuApp).container.currentSettings.value.assistantPaused) SeemaWakeService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {

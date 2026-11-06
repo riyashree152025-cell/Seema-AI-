@@ -210,10 +210,15 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Emergency Mute / Silent switch: immediately silences speech and stops announcements while keeping app open. */
     fun toggleMute() {
         val next = !uiState.value.paused
-        if (next) c.stopEverything()
+        if (next) {
+            // OFF: stop speech, listening, "Hey Seema" and the background microphone service.
+            c.stopEverything()
+            com.raju.aiassistant.voice.SeemaWakeService.stop(c.appContext)
+        }
         viewModelScope.launch {
             c.settingsRepository.setAssistantPaused(next)
             if (!next && hasMicPermission()) {
+                com.raju.aiassistant.voice.SeemaWakeService.start(c.appContext)
                 val s = c.currentSettings.first { !it.assistantPaused }
                 if (s.autoListen) engine.startHandsFree()
                 else if (s.wakeWord) engine.startStandby()

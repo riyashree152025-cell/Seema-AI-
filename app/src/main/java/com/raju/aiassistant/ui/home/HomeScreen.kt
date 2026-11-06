@@ -410,7 +410,8 @@ fun HomeScreen(
 
                     Text(
 
-                        text = if (isMuted) "🔇 SILENT MODE (म्यूट - शांत)" else "🔊 SPEECH ON (आवाज़ चालू)",
+                        // OFF = Seema neither listens nor speaks ("Hey Seema", notifications, calls too); tap again for ON.
+                        text = if (isMuted) "⛔ SEEMA OFF — कुछ नहीं सुनेगी (दबाकर चालू करें)" else "🟢 SEEMA ON — दबाकर बंद करें",
 
                         fontSize = 11.5.sp,
 
@@ -590,6 +591,7 @@ fun HomeScreen(
                             speechLevel = { speechLevel },
                             state = assistantState,
                             modifier = Modifier.fillMaxSize(),
+                            mood = com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply),
                         )
                     } else {
                         ArcReactor(

@@ -24,6 +24,38 @@ private val HOT_WHITE = Color(0xFFFFF4F6)
 private val FACE_BASE = Color(0xFF0A0F1D)
 private const val DOTS = 460
 
+/** The tone of her last reply, shown by the colour of the glowing rim. */
+enum class TaporiMood { CALM, NORMAL, FUNNY, SHARP }
+
+private val FUNNY_MARKS = Regex("haha|hehe|hihi|lol|😂|🤣|😜|😆|😄|😁|हाहा|हेहे|हीही|mazaa|maza aa|मज़ा|मजा", RegexOption.IGNORE_CASE)
+private val SHARP_MARKS = Regex(
+    "\\b(arre|are|abe|bhai|bhidu|naatak|natak|nautanki|hawabaazi|hawabazi|bakwaas|bakwas|scene mat|seriously)\\b|" +
+        "अरे|अबे|भाई|भिड़ू|नाटक|नौटंकी|हवाबाजी|हवाबाज़ी|बकवास|सीन मत",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Funny (laughs, 😂) or sharp (a roast: "arre bhai", "kya nautanki") reply; NORMAL otherwise, CALM without one. */
+fun taporiMoodFor(reply: String?): TaporiMood = when {
+    reply.isNullOrBlank() -> TaporiMood.CALM
+    FUNNY_MARKS.containsMatchIn(reply) -> TaporiMood.FUNNY
+    SHARP_MARKS.containsMatchIn(reply) || reply.count { it == '!' } >= 2 -> TaporiMood.SHARP
+    else -> TaporiMood.NORMAL
+}
+
+/**
+ * Colour of the glowing rim: cyan listening, purple thinking; while speaking it follows the
+ * reply's tone (hot orange for a sharp roast, pink for a joke, red otherwise); calm cyan when quiet.
+ */
+fun taporiRimArgb(state: AssistantState, mood: TaporiMood): Long = when (state) {
+    AssistantState.Listening, AssistantState.Thinking -> taporiAccentArgb(state)
+    AssistantState.Speaking -> when (mood) {
+        TaporiMood.SHARP -> 0xFFFF6A00
+        TaporiMood.FUNNY -> 0xFFFF4FD8
+        else -> taporiAccentArgb(state)
+    }
+    else -> taporiAccentArgb(state)
+}
+
 /** What the Tapori face shows for an assistant state (pure, unit-testable). */
 enum class TaporiExpression { SMIRK, LISTEN, EYE_ROLL, TALK, WINK, SLEEP, OOPS }
 
@@ -50,8 +82,10 @@ fun TaporiFace(
     speechLevel: () -> Float,
     state: AssistantState,
     modifier: Modifier = Modifier,
+    mood: TaporiMood = TaporiMood.CALM,
 ) {
     val expression = taporiExpressionFor(state)
+    val rim by animateColorAsState(Color(taporiRimArgb(state, mood)), tween(400), label = "taporiRim")
     // Cyan listening, purple thinking, red speaking/default; the colour changes smoothly.
     val accent by animateColorAsState(Color(taporiAccentArgb(state)), tween(400), label = "taporiAccent")
     Canvas(modifier.clearAndSetSemantics {}) {
@@ -69,30 +103,36 @@ fun TaporiFace(
             rx * 1.15f, c,
         )
 
-        // Dotted sphere, turning slowly and tilted a little.
-        val spin = t * 0.45f
+        // Dotted sphere: every dot stays in its place and twinkles — it swells and shrinks and
+        // brightens on its own rhythm, so the ball shimmers without turning.
         val tilt = 0.28f
         val golden = PI * (3 - sqrt(5.0))
         for (i in 0 until DOTS) {
             val y0 = 1.0 - 2.0 * (i + 0.5) / DOTS
             val r0 = sqrt(1.0 - y0 * y0)
             val a = golden * i
-            val x0 = cos(a) * r0
-            val z0 = sin(a) * r0
-            // rotate around Y (spin), then tilt around X
-            val x1 = x0 * cos(spin) + z0 * sin(spin)
-            val z1 = -x0 * sin(spin) + z0 * cos(spin)
+            val x1 = cos(a) * r0
+            val z1 = sin(a) * r0
             val y2 = y0 * cos(tilt) - z1 * sin(tilt)
             val z2 = y0 * sin(tilt) + z1 * cos(tilt)
             val depth = ((z2 + 1.0) / 2.0).toFloat() // 0 back .. 1 front
             val px = c.x + (x1 * rx).toFloat()
             val py = c.y + (y2 * ry).toFloat()
+            val pulse = 0.5f + 0.5f * sin(t * (2.2f + (i % 7) * 0.35f) + i * 2.399f) // 0..1, own rhythm
             drawCircle(
-                color = accent.copy(alpha = 0.18f + 0.75f * depth),
-                radius = unit * (0.012f + 0.016f * depth),
+                color = accent.copy(alpha = (0.25f + 0.55f * depth) * (0.55f + 0.45f * pulse)),
+                radius = unit * (0.008f + 0.014f * depth) * (0.6f + 0.9f * pulse),
                 center = Offset(px, py),
             )
         }
+
+        // Glowing rim around the ball; its colour shows the mood of her reply.
+        val breathe = 0.75f + 0.25f * sin(t * 2.4f)
+        val rimSize = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f)
+        val rimTopLeft = Offset(c.x - rx, c.y - ry)
+        drawOval(rim.copy(alpha = 0.18f * breathe), rimTopLeft, rimSize, style = Stroke(unit * 0.16f))
+        drawOval(rim.copy(alpha = 0.35f * breathe), rimTopLeft, rimSize, style = Stroke(unit * 0.07f))
+        drawOval(rim.copy(alpha = 0.95f), rimTopLeft, rimSize, style = Stroke(unit * 0.018f))
 
         // Sparkles around the sphere, twinkling at different times.
         for (i in 0 until 14) {

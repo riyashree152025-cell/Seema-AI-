@@ -77,4 +77,16 @@ class ReactorStyleTest {
         assertEquals(0x9900E5FF, taporiAccentArgb(AssistantState.Idle)) // calm cyan, 60 %
         assertEquals(0x9900E5FF, taporiAccentArgb(AssistantState.Sleeping))
     }
+
+    @Test
+    fun theRimShowsTheMoodOfHerReply() {
+        assertEquals(TaporiMood.FUNNY, taporiMoodFor("Haha bhai, kya baat hai 😂"))
+        assertEquals(TaporiMood.SHARP, taporiMoodFor("Arre bhai, hawabaazi band kar"))
+        assertEquals(TaporiMood.NORMAL, taporiMoodFor("Dilli Bharat ki rajdhani hai."))
+        assertEquals(TaporiMood.CALM, taporiMoodFor(null))
+        assertEquals(0xFFFF6A00, taporiRimArgb(AssistantState.Speaking, TaporiMood.SHARP))
+        assertEquals(0xFFFF4FD8, taporiRimArgb(AssistantState.Speaking, TaporiMood.FUNNY))
+        assertEquals(0xFF00E5FF, taporiRimArgb(AssistantState.Listening, TaporiMood.SHARP))
+        assertEquals(taporiAccentArgb(AssistantState.Idle), taporiRimArgb(AssistantState.Idle, TaporiMood.FUNNY))
+    }
 }
