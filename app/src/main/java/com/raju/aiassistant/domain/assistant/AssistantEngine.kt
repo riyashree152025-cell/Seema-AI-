@@ -577,7 +577,9 @@ class AssistantEngine(
             return
         }
         val now = clock()
-        if (now - lastSpokeAt < 4_000L) { // the tail of her own voice must not wake her
+        // Her own voice (still speaking, or its tail) must not wake her: the phone once sent her
+        // "Contacts में … नहीं मिला" sentence back to the recogniser as a wake request.
+        if (speaker.playing.value || now - lastSpokeAt < 4_000L) {
             armWakeListener()
             return
         }
@@ -670,6 +672,18 @@ class AssistantEngine(
         }
         LocalCommands.parse(text)?.let { action ->
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
+        }
+        // "Rizwan Travels को WhatsApp करो कि …" / "किसी को WhatsApp करना है": handled on the phone, with
+        // the name matched against Contacts however it was spelled, and sent only after "हाँ".
+        WhatsAppRequest.parse(text)?.let { request ->
+            trace("offline command: whatsapp")
+            whatsAppFlow(request, byVoice = fromVoice, speak = fromVoice || s.autoSpeakReplies)
+            if (_state.value != AssistantState.Error) {
+                _state.value = AssistantState.Success
+                delay(800)
+            }
+            finishTurn()
+            return
         }
 
         if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
@@ -1833,72 +1847,258 @@ class AssistantEngine(
     }
 
     private suspend fun whatsApp(action: AssistantAction.WhatsApp, speak: Boolean = false) {
-        if (action.text.isBlank()) {
-            val askText = phrase(lang(), "WhatsApp पर क्या लिखकर भेजूँ?", "হোয়াটসঅ্যাপে কী লিখে পাঠাব?")
-            report(action, ActionStatus.CANCELLED, askText)
-            if (speak) say(askText)
+        // The AI understood a WhatsApp request: the same who / what / "भेज दूँ?" conversation as the
+        // request understood on the phone. Nothing is sent before the user says yes.
+        whatsAppFlow(WhatsAppRequest(action.contact?.takeIf { it.isNotBlank() }, action.text.takeIf { it.isNotBlank() }), byVoice = voiceTurn, speak = speak)
+    }
+
+    /** What the user answered to a question Seema asked during a task. */
+    private sealed interface Reply {
+        data class Said(val text: String) : Reply
+        data class Tapped(val decision: Decision) : Reply
+        data object Silent : Reply
+    }
+
+    /**
+     * Asks [question] and waits for the answer: spoken (when [byVoice]) or a tap on [dialog]. One
+     * retry when nothing understandable was heard. The answer is shown in the chat.
+     */
+    private suspend fun hearReply(question: String, dialog: PendingRequest?, byVoice: Boolean, speak: Boolean): Reply {
+        val tap = CompletableDeferred<Decision>()
+        if (dialog != null) {
+            decision = tap
+            _pending.value = dialog
+        }
+        try {
+            record(ChatRole.ASSISTANT, question)
+            if (speak || byVoice) say(question, allowBargeIn = false)
+            if (!byVoice || !voice.isAvailable()) {
+                return if (dialog != null) Reply.Tapped(tap.await()) else Reply.Silent
+            }
+            repeat(2) { attempt ->
+                if (tap.isCompleted) return Reply.Tapped(tap.getCompleted())
+                val heard = CompletableDeferred<String?>()
+                val gen = ++listenGen
+                _state.value = AssistantState.Listening
+                _heard.value = null
+                trace("listen for answer")
+                voice.start(
+                    lang().tag,
+                    onResult = { if (gen == listenGen) heard.complete(it) },
+                    onError = { if (gen == listenGen) { trace("answer: ${it.message}"); heard.complete(null) } },
+                )
+                val reply = kotlinx.coroutines.selects.select<Reply?> {
+                    heard.onAwait { text -> text?.trim()?.takeIf { it.isNotEmpty() }?.let { Reply.Said(it) } }
+                    if (dialog != null) tap.onAwait { Reply.Tapped(it) }
+                }
+                if (reply != null) {
+                    voice.stop()
+                    if (reply is Reply.Said) {
+                        _heard.value = reply.text
+                        record(ChatRole.USER, reply.text)
+                        trace("answer heard (${reply.text.length} chars)")
+                    }
+                    lastActivityAt = clock()
+                    _state.value = AssistantState.Executing
+                    return reply
+                }
+                if (attempt == 0) say(phrase(lang(), "माफ़ कीजिए, सुनाई नहीं दिया। फिर से बोलिए।", "দুঃখিত, শুনতে পাইনি। আবার বলুন।"), allowBargeIn = false)
+            }
+            _state.value = AssistantState.Executing
+            return if (tap.isCompleted) Reply.Tapped(tap.getCompleted()) else Reply.Silent
+        } finally {
+            voice.stop()
+            if (decision === tap) {
+                decision = null
+                _pending.value = null
+            }
+        }
+    }
+
+    /**
+     * WhatsApp by voice: who (asked if not said; several matching names are read out to choose from),
+     * what (asked if not said), then the message is read back and goes out only after "हाँ".
+     * "नहीं" cancels; any other answer at that point is taken as the corrected message.
+     */
+    private suspend fun whatsAppFlow(request: WhatsAppRequest, byVoice: Boolean, speak: Boolean) {
+        val action = AssistantAction.WhatsApp(request.contact, request.message.orEmpty())
+        if (settings.value.safetyMode) {
+            report(action, ActionStatus.BLOCKED, "Safety Mode is on, so the WhatsApp message was not sent. Turn it off with \"Turn off\" on the Home screen (or Settings → Safety Mode) to allow it.")
             return
         }
+        _state.value = AssistantState.Executing
+        suspend fun cancel(why: String = phrase(lang(), "ठीक है, मैसेज नहीं भेजा।", "ঠিক আছে, মেসেজ পাঠাইনি।")) {
+            report(action, ActionStatus.CANCELLED, why)
+            if (speak || byVoice) say(why, allowBargeIn = false)
+        }
+        if (byVoice && voice.isAvailable()) {
+            // Answers are heard in this app; the normal listening loop waits until the task is done.
+            listenGen++
+            voice.stop()
+        }
+
+        var name = request.contact
         var target: Contact? = null
-        if (action.contact != null) {
-            // A phone number said or typed instead of a name ("98765 43210 ko message karo").
-            val digitsOnly = action.contact.filter { it.isDigit() }
-            val found = if (digitsOnly.length >= 7 && digitsOnly.length * 2 >= action.contact.count { !it.isWhitespace() }) {
-                listOf(Contact(action.contact, action.contact))
-            } else {
-                lookup(action.contact)
-            }
-            if (found == null) {
-                note("Contacts permission not granted; WhatsApp will open without a recipient.")
-            } else if (found.isEmpty()) {
-                // A person was named: an empty WhatsApp is not what was asked, so say so instead.
-                val missing = phrase(
-                    lang(),
-                    "Contacts में \"${action.contact}\" नाम का कोई नंबर नहीं मिला। Contacts में जो नाम सेव है वही बोलिए, या नंबर बोलिए।",
-                    "কন্টাক্টে \"${action.contact}\" নামে কোনো নম্বর পাইনি। কন্টাক্টে যে নাম সেভ আছে সেটাই বলুন, বা নম্বর বলুন।",
-                )
-                report(action, ActionStatus.FAILED, missing)
-                if (speak) say(missing)
-                return
-            } else {
-                val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
-                // Several people with that name: ask out loud as well as on the screen.
-                if (found.size > 1 && speak) {
-                    val names = found.take(4).mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
-                    say(phrase(lang(), "\"${action.contact}\" नाम के ${found.size} लोग मिले हैं: $names। किसको भेजना है?", "\"${action.contact}\" নামে ${found.size} জন পেয়েছি: $names। কাকে পাঠাবো?"))
+        var text = request.message
+        var style = request.style
+        var notFoundBefore: String? = null
+        var rounds = 0
+        // ---- who
+        while (target == null) {
+            if (++rounds > 4) return cancel()
+            if (name == null) {
+                if (!byVoice) {
+                    report(action, ActionStatus.FAILED, phrase(lang(), "किसको भेजना है? नाम के साथ लिखिए, जैसे \"Rizwan Travels को WhatsApp करो कि पेमेंट भेजो\"।", "কাকে পাঠাব? নাম সহ লিখুন।"))
+                    return
                 }
-                // In the phone log: why a confirmation shows instead of sending directly.
-                trace("whatsapp: ${found.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
-                target = if (found.size == 1 && autoSend) {
-                    found[0]
-                } else {
-                    val why = when {
-                        found.size > 1 -> "\"${action.contact}\" naam se ${found.size} number mile — kis par bhejna hai?"
-                        else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle)."
+                val q = notFoundBefore?.let { phrase(lang(), "\"$it\" नाम Contacts में नहीं मिला। नाम फिर से बोलिए, जैसे phone में save है।", "\"$it\" নামে কাউকে পাইনি। নামটা আবার বলুন।") }
+                    ?: phrase(lang(), "किसको WhatsApp करना है? नाम बोलिए।", "কাকে হোয়াটসঅ্যাপ করবেন? নাম বলুন।")
+                when (val r = hearReply(q, null, byVoice = true, speak = speak)) {
+                    is Reply.Said -> {
+                        if (VoiceReply.yesNo(r.text) == false) return cancel()
+                        // "Rizwan Travels को" / "Rizwan Travels को मैसेज भेजो कि …" as the answer
+                        val parsed = WhatsAppRequest.parse(r.text)
+                        name = parsed?.contact ?: r.text.trim().replace(Regex("[\\s,.!?।]+(?:को|ko)[\\s,.!?।]*$", RegexOption.IGNORE_CASE), "").trim(',', '.', '!', '?', '।', ' ')
+                        if (text == null && parsed?.message != null) { text = parsed.message; style = parsed.style ?: style }
                     }
-                    confirmContact("Send on WhatsApp?", "$why\n\nYe message WhatsApp mein khulega, Send aap dabayenge:\n\n\"${action.text}\"", found)
-                        ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+                    else -> return cancel()
+                }
+            }
+            val said = name ?: continue
+            // A phone number said instead of a name ("98765 43210 को मैसेज करो").
+            val digitsOnly = said.filter { it.isDigit() }
+            if (digitsOnly.length >= 7 && digitsOnly.length * 2 >= said.count { !it.isWhitespace() }) {
+                target = Contact(said, said)
+                break
+            }
+            val found = lookup(said) ?: run {
+                report(action, ActionStatus.CANCELLED, "Contacts permission was not granted, so \"$said\" could not be found.")
+                return
+            }
+            val ranked = com.raju.aiassistant.domain.tools.ContactMatch.rank(said, found, limit = 6)
+                .ifEmpty { found.take(6).map { com.raju.aiassistant.domain.tools.ContactMatch.Scored(it, 0.5) } }
+            trace("whatsapp: ${ranked.size} contact(s) for the name")
+            when {
+                ranked.isEmpty() -> {
+                    if (!byVoice) {
+                        val missing = phrase(lang(), "Contacts में \"$said\" नाम का कोई नंबर नहीं मिला। Contacts में जो नाम सेव है वही लिखिए, या नंबर लिखिए।", "কন্টাক্টে \"$said\" নামে কোনো নম্বর পাইনি।")
+                        report(action, ActionStatus.FAILED, missing)
+                        if (speak) say(missing)
+                        return
+                    }
+                    notFoundBefore = said
+                    name = null
+                }
+                ranked.size == 1 || com.raju.aiassistant.domain.tools.ContactMatch.isClearWinner(ranked) -> target = ranked[0].contact
+                else -> {
+                    val options = ranked.take(4).map { it.contact }
+                    val list = options.mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
+                    val q = phrase(lang(), "\"$said\" से ${options.size} नाम मिले: $list. किसको भेजूँ?", "\"$said\" নামে ${options.size}টি নাম পেয়েছি: $list. কাকে পাঠাব?")
+                    val dialog = PendingRequest(PendingRequest.Kind.CONFIRM, "किसको भेजें?", q, options = options)
+                    when (val r = hearReply(q, dialog, byVoice, speak)) {
+                        is Reply.Tapped -> {
+                            val d = r.decision
+                            target = (if (d is Decision.Approve) d.option else null) ?: return cancel()
+                        }
+                        is Reply.Said -> {
+                            val pick = VoiceReply.choice(r.text, options.size)
+                            when {
+                                pick != null -> target = options[pick]
+                                VoiceReply.yesNo(r.text) == false -> return cancel()
+                                else -> {
+                                    val again = com.raju.aiassistant.domain.tools.ContactMatch.rank(r.text, options)
+                                    if (again.isNotEmpty() && again[0].score >= com.raju.aiassistant.domain.tools.ContactMatch.FUZZY_MIN) target = again[0].contact
+                                    else name = r.text.trim() // another name: search again
+                                }
+                            }
+                        }
+                        Reply.Silent -> return cancel()
+                    }
                 }
             }
         }
-        if (target == null && !com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
-            val ok = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "Open WhatsApp?", "Open WhatsApp with this message? You choose the chat and tap send yourself.\n\n\"${action.text}\""))
-            if (ok !is Decision.Approve) { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+        val to = target ?: return cancel()
+        // ---- what
+        if (text == null) {
+            val q = phrase(lang(), "${to.name} को। क्या मैसेज भेजूँ?", "${to.name} কে। কী মেসেজ পাঠাব?")
+            if (!byVoice) {
+                report(action, ActionStatus.FAILED, phrase(lang(), "${to.name} को क्या लिखना है? पूरा लिखिए, जैसे \"${to.name} को WhatsApp करो कि …\"।", "${to.name} কে কী লিখব?"))
+                return
+            }
+            when (val r = hearReply(q, null, byVoice = true, speak = speak)) {
+                is Reply.Said -> {
+                    // "नहीं" here: the name was wrong.
+                    if (VoiceReply.yesNo(r.text) == false) {
+                        return whatsAppFlow(WhatsAppRequest(null, null, style), byVoice, speak)
+                    }
+                    val (m, st) = WhatsAppRequest.message(r.text)
+                    text = m ?: return cancel()
+                    style = st ?: style
+                }
+                else -> return cancel()
+            }
         }
-        val outcome = tools.openWhatsApp(target?.number, action.text)
-        report(action, outcome)
-        if (speak && outcome is ToolOutcome.Done) {
-            // "Sent" only when it really goes out by itself (a known chat + Seema's accessibility service).
-            val name = target?.name
-            val autoSends = name != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        var message = text ?: return cancel()
+        style?.let { message = restyle(message, it) }
+        // ---- "भेज दूँ?"
+        repeat(3) {
+            val q = phrase(lang(), "${to.name} को WhatsApp पर यह भेजूँगी: \"$message\"। भेज दूँ?", "${to.name} কে হোয়াটসঅ্যাপে পাঠাব: \"$message\"। পাঠিয়ে দিই?")
+            val dialog = PendingRequest(PendingRequest.Kind.CONFIRM, "WhatsApp पर भेजें?", "${to.name} (${to.number})\n\n\"$message\"\n\n\"हाँ\" बोलिए या Send दबाइए, \"नहीं\" बोलिए तो नहीं जाएगा।")
+            when (val r = hearReply(q, dialog, byVoice, speak)) {
+                is Reply.Tapped -> return if (r.decision is Decision.Approve) sendWhatsApp(action, to, message, speak || byVoice) else cancel()
+                is Reply.Said -> when (VoiceReply.yesNo(r.text)) {
+                    true -> return sendWhatsApp(action, to, message, speak || byVoice)
+                    false -> return cancel()
+                    null -> {
+                        // "नहीं, लिखो कि …" or a new message: read the corrected one back.
+                        val corrected = WhatsAppRequest.message(VoiceReply.afterNo(r.text) ?: r.text)
+                        if (r.text.trim().split(Regex("\\s+")).size >= 2 && corrected.first != null) {
+                            message = corrected.second?.let { st -> restyle(corrected.first!!, st) } ?: corrected.first!!
+                        }
+                    }
+                }
+                Reply.Silent -> return cancel()
+            }
+        }
+        cancel()
+    }
+
+    private suspend fun sendWhatsApp(action: AssistantAction.WhatsApp, to: Contact, message: String, speak: Boolean) {
+        val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        trace("whatsapp: confirmed, auto-send ${if (autoSend) "on" else "off"}")
+        val outcome = tools.openWhatsApp(to.number, message)
+        report(AssistantAction.WhatsApp(to.name, message), outcome)
+        if (speak) {
             say(
                 when {
-                    autoSends -> phrase(lang(), "हाँ राजू, $name को व्हाट्सएप पर मैसेज भेज रही हूँ!", "হ্যাঁ রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠাচ্ছি!")
-                    name != null -> phrase(lang(), "$name के लिए व्हाट्सएप में मैसेज तैयार है, बस Send दबा दीजिए।", "$name এর জন্য হোয়াটসঅ্যাপে মেসেজ তৈরি, শুধু Send চাপুন।")
-                    else -> phrase(lang(), "व्हाट्सएप खुल गया है, चैट चुनकर Send दबाइए।", "হোয়াটসঅ্যাপ খুলেছে, চ্যাট বেছে Send চাপুন।")
+                    outcome !is ToolOutcome.Done -> phrase(lang(), "WhatsApp नहीं खुल पाया।", "হোয়াটসঅ্যাপ খুলতে পারলাম না।")
+                    autoSend -> phrase(lang(), "ठीक है, ${to.name} को मैसेज भेज रही हूँ।", "ঠিক আছে, ${to.name} কে মেসেজ পাঠাচ্ছি।")
+                    else -> phrase(lang(), "${to.name} के लिए WhatsApp में मैसेज तैयार है, बस Send दबा दीजिए।", "${to.name} এর জন্য মেসেজ তৈরি, শুধু Send চাপুন।")
                 },
+                allowBargeIn = false,
             )
         }
+    }
+
+    /** "Hinglish में" / "English में": rewritten by the AI when it answers quickly, else spelled in Latin letters. */
+    private suspend fun restyle(text: String, style: MessageStyle): String {
+        if (style == MessageStyle.HINDI) return text
+        val hasIndic = com.raju.aiassistant.domain.language.Transliterate.hasIndic(text)
+        if (style == MessageStyle.HINGLISH && !hasIndic) return text
+        val local = com.raju.aiassistant.domain.language.Transliterate.toLatin(text)
+        if (!isOnline()) return local
+        val id = settings.value.defaultProvider
+        val key = keyFor(id) ?: return local
+        val provider = providerFor(id, key)
+        val model = (resolveModel(id, key, provider) as? AiResult.Success)?.value ?: return local
+        val instruction = if (style == MessageStyle.HINGLISH) {
+            "Rewrite this WhatsApp message in Hinglish: Hindi words written in Roman (Latin) letters, the way Indians type on WhatsApp. Keep the meaning, tone and names. Reply with only the message."
+        } else {
+            "Translate this WhatsApp message to short, simple English. Keep names as they are. Reply with only the message."
+        }
+        val r = withTimeoutOrNull(8_000) { provider.chat(model, instruction, listOf(Turn(TurnRole.USER, text))) }
+        val out = (r as? AiResult.Success)?.value?.trim()?.trim('"', '“', '”')?.trim()
+        return out?.takeIf { it.isNotBlank() && it.length <= text.length * 3 + 40 && !com.raju.aiassistant.domain.language.Transliterate.hasIndic(it) } ?: local
     }
 
     private suspend fun whatsAppCall(action: AssistantAction.WhatsAppCall, speak: Boolean = false) {

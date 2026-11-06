@@ -15,6 +15,8 @@ import com.raju.aiassistant.domain.assistant.VoiceError
 import com.raju.aiassistant.domain.assistant.VoiceInput
 import com.raju.aiassistant.domain.voice.EndpointDetector
 import com.raju.aiassistant.domain.voice.SttModelOption
+import com.raju.aiassistant.domain.voice.isUnexpectedScript
+import com.raju.aiassistant.domain.voice.normalizePcm16
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -85,13 +87,24 @@ class DeepgramVoiceInput(
                 return@launch
             }
             val option = model()
-            when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(pcm, SAMPLE_RATE), option.model, option.language, keyterms())) {
+            val client = DeepgramClient(http, key)
+            // Quiet microphones: speech made louder first (the recogniser often heard "no words" before).
+            val wav = pcm16ToWav(normalizePcm16(pcm), SAMPLE_RATE)
+            var result = client.transcribeDetailed(wav, option.model, option.language, keyterms())
+            val first = result
+            if (first is AiResult.Success && option.language != "hi" && isUnexpectedScript(first.value.text, bengali = languageTag.startsWith("bn"))) {
+                // Telugu / Hebrew letters for Hindi speech: the language was guessed wrong. Ask again in Hindi.
+                android.util.Log.i("SeemaVoice", "stt: unexpected script, asking again in Hindi")
+                result = client.transcribeDetailed(wav, option.model, "hi", keyterms())
+            }
+            when (val r = result) {
                 is AiResult.Success -> {
                     val heard = r.value
                     _partial.value = heard.text
                     when {
                         // Speech was recorded but no words came back: ask again rather than act on nothing.
                         heard.text.isBlank() -> onError(VoiceError("Speech was heard but no words were recognised.", unclear = true))
+                        isUnexpectedScript(heard.text, bengali = languageTag.startsWith("bn")) -> onError(VoiceError("I didn't hear that clearly.", unclear = true))
                         // Very unsure: better to ask again than to act on a wrong word.
                         heard.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true))
                         else -> onResult(heard.text)
@@ -130,6 +143,8 @@ class DeepgramVoiceInput(
             throw MicrophoneException("recorder not initialised")
         }
         val detector = EndpointDetector(frameMs = FRAME_MS)
+        // AC and fan noise: the phone's own noise suppressor, where it has one.
+        val suppressor = attachNoiseSuppressor(recorder.audioSessionId)
         val out = ByteArrayOutputStream()
         val frame = ByteArray(FRAME_BYTES)
         try {
@@ -157,6 +172,7 @@ class DeepgramVoiceInput(
             }
         } finally {
             if (activeRecorder === recorder) activeRecorder = null
+            runCatching { suppressor?.release() }
             runCatching { recorder.stop() }
             recorder.release()
         }

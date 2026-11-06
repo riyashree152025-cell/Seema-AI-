@@ -1630,4 +1630,74 @@ class AssistantEngineTest {
         assertEquals(com.raju.aiassistant.domain.model.Personality.COMPANION, modes.last())
         assertTrue(provider.calls.isEmpty())
     }
+
+    // ---------------------------------------------------------------- WhatsApp by voice
+
+    private val rizwans = ContactLookup.Found(listOf(Contact("Rizwan Travels", "98300 11111"), Contact("Rizwan Khan", "98300 22222")))
+
+    @Test
+    fun oneShotWhatsAppByVoiceIsReadBackAndSentOnlyAfterYes() = runTest {
+        tools.contacts = rizwans
+        val e = engine()
+        e.startVoice()
+        voice.onResult!!("रिजवान ट्रैवल्स को WhatsApp में मैसेज भेजो कि दादा पेमेंट नहीं आया")
+        runCurrent()
+        assertTrue(tools.whatsApps.isEmpty())
+        assertEquals("WhatsApp पर भेजें?", e.pending.value?.title)
+        assertTrue(speaker.spoken.last().contains("Rizwan Travels") && speaker.spoken.last().contains("दादा पेमेंट नहीं आया"))
+        voice.onResult!!("हाँ")
+        runCurrent()
+        assertEquals(listOf<Pair<String?, String>>("98300 11111" to "दादा पेमेंट नहीं आया"), tools.whatsApps)
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun conversationalWhatsAppAsksWhoWhichAndWhatAndNoCancels() = runTest {
+        tools.contacts = rizwans
+        val e = engine()
+        e.startVoice()
+        voice.onResult!!("सीमा, किसी को WhatsApp करना है")
+        runCurrent()
+        assertTrue(speaker.spoken.last().contains("किसको WhatsApp करना है"))
+        voice.onResult!!("रिजवान")
+        runCurrent()
+        assertEquals(listOf("Rizwan Travels", "Rizwan Khan"), e.pending.value?.options?.map { it.name })
+        voice.onResult!!("पहला")
+        runCurrent()
+        assertTrue(speaker.spoken.last().contains("Rizwan Travels को"))
+        voice.onResult!!("ठीक है, उसको बोलो कि कल का बुकिंग का पैसा नहीं आया है")
+        runCurrent()
+        assertTrue(speaker.spoken.last().contains("कल का बुकिंग का पैसा नहीं आया है"))
+        voice.onResult!!("नहीं")
+        settle()
+        assertTrue(tools.whatsApps.isEmpty())
+        assertTrue(speaker.spoken.last().contains("नहीं भेजा"))
+    }
+
+    @Test
+    fun aCorrectionBeforeYesChangesTheMessage() = runTest {
+        tools.contacts = rizwans
+        val e = engine()
+        e.startVoice()
+        voice.onResult!!("Rizwan Travels ko whatsapp karo ki kal aaunga")
+        runCurrent()
+        voice.onResult!!("नहीं, लिखो कि परसों आऊँगा")
+        runCurrent()
+        assertTrue(speaker.spoken.last().contains("परसों आऊँगा"))
+        voice.onResult!!("हाँ भेज दो")
+        runCurrent()
+        assertEquals("परसों आऊँगा", tools.whatsApps.single().second)
+    }
+
+    @Test
+    fun typedWhatsAppIsSentAfterTheTap() = runTest {
+        tools.contacts = rizwans
+        val e = engine()
+        e.submit("Rizwan Travels ko whatsapp karo ki kal aaunga")
+        runCurrent()
+        assertTrue(tools.whatsApps.isEmpty())
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(listOf<Pair<String?, String>>("98300 11111" to "kal aaunga"), tools.whatsApps)
+    }
 }

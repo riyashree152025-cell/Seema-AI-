@@ -263,7 +263,7 @@ private fun parseAction(json: String): AssistantAction? {
         "go_home", "home", "home_screen" -> AssistantAction.GoHome
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
-        "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact") ?: str("name"), it) }
+        "whatsapp" -> AssistantAction.WhatsApp((str("contact") ?: str("name"))?.takeIf { it.isNotBlank() }, str("text").orEmpty())
         "whatsapp_call", "wa_call", "whatsapp_audio_call", "whatsapp_voice_call" -> {
             AssistantAction.WhatsAppCall(str("contact") ?: str("name"), str("number"), video = false)
         }

@@ -72,7 +72,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 val exact = result.filter { it.name.equals(query.trim(), ignoreCase = true) }
                 val direct = exact.ifEmpty { result }
                 // Nothing with that exact spelling ("Vodafone 0 1" vs "Vodafone 01", other word order,
-                // a spoken number): compare every contact ignoring spaces, case and punctuation.
+                // a spoken number, "रिजवान Travels" for "Rizwan Travels"): compare every contact by how
+                // the name sounds, in Hindi or English letters.
                 ContactLookup.Found(direct.ifEmpty { ContactMatch.best(query, allPhoneContacts()).take(20) })
             } catch (e: SecurityException) {
                 ContactLookup.NeedsPermission(Manifest.permission.READ_CONTACTS, "Contacts permission is required.")
@@ -83,7 +84,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     /** Every contact with a phone number (name + number), at most [limit] rows. Caller holds READ_CONTACTS. */
-    private fun allPhoneContacts(limit: Int = 5_000): List<Contact> {
+    private fun allPhoneContacts(limit: Int = 20_000): List<Contact> {
         val all = mutableListOf<Contact>()
         context.contentResolver.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
