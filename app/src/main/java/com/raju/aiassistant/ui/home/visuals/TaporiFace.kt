@@ -1,7 +1,10 @@
 package com.raju.aiassistant.ui.home.visuals
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -15,9 +18,9 @@ import com.raju.aiassistant.domain.model.AssistantState
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val NEON_RED = Color(0xFFFF2D4A)
 private val HOT_WHITE = Color(0xFFFFE3E8)
-private val PUPIL = Color(0xFF5A0010)
+private val PUPIL = Color(0xFF1A0008)
+private val FACE_BASE = Color(0xFF0A0F1D)
 
 /** What the Tapori face shows for an assistant state (pure, unit-testable). */
 enum class TaporiExpression { SMIRK, LISTEN, EYE_ROLL, TALK, WINK, SLEEP, OOPS }
@@ -47,12 +50,18 @@ fun TaporiFace(
     modifier: Modifier = Modifier,
 ) {
     val expression = taporiExpressionFor(state)
+    // Cyan listening, purple thinking, red speaking/default; animates only when the state changes.
+    val accent by animateColorAsState(Color(taporiAccentArgb(state)), tween(500), label = "taporiAccent")
     Canvas(modifier.clearAndSetSemantics {}) {
         val t = time()
         val level = if (expression == TaporiExpression.TALK) speechLevel().coerceIn(0f, 1f) else 0f
         val r = size.minDimension / 2f
         val c = center
         val stroke = r * 0.035f
+
+        // Dark face disc so the eyes and smirk stand out; the reactor's rings stay visible around it.
+        drawCircle(FACE_BASE.copy(alpha = 0.88f), r * 0.6f, c)
+        drawCircle(accent.copy(alpha = 0.8f), r * 0.6f, c, style = Stroke(stroke * 0.7f))
 
         // Blink for ~0.15 s every 4 s; wider eyes while listening.
         val phase = t % 4f
@@ -72,7 +81,7 @@ fun TaporiFace(
             val w = r * 0.28f
             val closed = expression == TaporiExpression.SLEEP || (expression == TaporiExpression.WINK && side > 0f)
             drawCircle(
-                Brush.radialGradient(listOf(NEON_RED.copy(alpha = if (closed) 0.25f else 0.5f), Color.Transparent), Offset(ex, eyeY), w),
+                Brush.radialGradient(listOf(accent.copy(alpha = if (closed) 0.25f else 0.5f), Color.Transparent), Offset(ex, eyeY), w),
                 w, Offset(ex, eyeY),
             )
             if (closed) {
@@ -96,24 +105,24 @@ fun TaporiFace(
                 if (blink > 0.5f) {
                     drawCircle(PUPIL, h * 0.75f, Offset(ex + look.x * w * 0.35f, eyeY - h * 0.25f + look.y * h))
                 }
-                drawPath(eye, NEON_RED, style = Stroke(stroke * 0.6f))
+                drawPath(eye, accent, style = Stroke(stroke * 0.6f))
             }
-            drawBrow(expression, side, ex, eyeY, w, r, stroke)
+            drawBrow(expression, side, ex, eyeY, w, r, stroke, accent)
         }
 
-        drawMouth(expression, t, level, c, r, stroke)
+        drawMouth(expression, t, level, c, r, stroke, accent)
     }
 }
 
 /** Brows slant down to the middle (devilish); raised on an error. */
-private fun DrawScope.drawBrow(expression: TaporiExpression, side: Float, ex: Float, eyeY: Float, w: Float, r: Float, stroke: Float) {
+private fun DrawScope.drawBrow(expression: TaporiExpression, side: Float, ex: Float, eyeY: Float, w: Float, r: Float, stroke: Float, accent: Color) {
     val (outerY, innerY) = when (expression) {
         TaporiExpression.OOPS -> eyeY - r * 0.14f to eyeY - r * 0.22f
         TaporiExpression.LISTEN -> eyeY - r * 0.23f to eyeY - r * 0.17f
         else -> eyeY - r * 0.2f to eyeY - r * 0.12f
     }
     drawLine(
-        NEON_RED,
+        accent,
         Offset(ex + side * w * 0.6f, outerY),
         Offset(ex - side * w * 0.5f, innerY),
         strokeWidth = stroke,
@@ -122,7 +131,7 @@ private fun DrawScope.drawBrow(expression: TaporiExpression, side: Float, ex: Fl
 }
 
 /** One-sided smirk; it opens with her voice, grins on a wink, goes small when asleep or on an error. */
-private fun DrawScope.drawMouth(expression: TaporiExpression, t: Float, level: Float, c: Offset, r: Float, stroke: Float) {
+private fun DrawScope.drawMouth(expression: TaporiExpression, t: Float, level: Float, c: Offset, r: Float, stroke: Float, accent: Color) {
     val mouthY = c.y + r * 0.22f
     val left = Offset(c.x - r * 0.26f, mouthY + r * 0.02f)
     val right = Offset(c.x + r * 0.3f, mouthY - r * 0.08f)
@@ -144,7 +153,7 @@ private fun DrawScope.drawMouth(expression: TaporiExpression, t: Float, level: F
         quadraticBezierTo(c.x, mouthY + curve + openBy * 2f, left.x, left.y)
         close()
     }
-    drawPath(mouth, NEON_RED.copy(alpha = 0.35f + 0.4f * level))
+    drawPath(mouth, accent.copy(alpha = 0.35f + 0.4f * level))
     drawPath(mouth, HOT_WHITE, style = Stroke(stroke * 0.7f, cap = StrokeCap.Round))
     if (expression != TaporiExpression.SLEEP && expression != TaporiExpression.OOPS) {
         // A little dimple at the raised end of the smirk.

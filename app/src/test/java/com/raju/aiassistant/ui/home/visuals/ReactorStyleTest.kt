@@ -52,7 +52,7 @@ class ReactorStyleTest {
             if (st == AssistantState.Offline) {
                 org.junit.Assert.assertEquals(normal, red)
             } else {
-                org.junit.Assert.assertEquals(0xFFFF1E3C, red.primaryArgb)
+                org.junit.Assert.assertEquals(taporiAccentArgb(st), red.primaryArgb)
                 org.junit.Assert.assertEquals(PALETTE_SIZE, red.paletteArgb.size)
                 org.junit.Assert.assertEquals(normal.bpm, red.bpm, 0f) // same motion, only the colour changes
             }
@@ -67,5 +67,14 @@ class ReactorStyleTest {
         assertEquals(TaporiExpression.WINK, taporiExpressionFor(AssistantState.Success))
         assertEquals(TaporiExpression.SLEEP, taporiExpressionFor(AssistantState.Sleeping))
         assertEquals(TaporiExpression.SMIRK, taporiExpressionFor(AssistantState.Idle))
+    }
+
+    @Test
+    fun taporiColoursFollowWhatSheIsDoing() {
+        assertEquals(0xFF00E5FF, taporiAccentArgb(AssistantState.Listening)) // cyan
+        assertEquals(0xFF7C1FFF, taporiAccentArgb(AssistantState.Thinking)) // deep purple
+        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Speaking)) // red
+        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Idle)) // default glow
+        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Sleeping))
     }
 }
