@@ -263,4 +263,32 @@ class NotificationFlowTest {
         runCurrent()
         assertEquals(2, done)
     }
+
+    @Test
+    fun ownOutgoingWhatsAppCallIsNotAnnouncedAsIncoming() {
+        listOf("Calling…", "Ringing…", "Ongoing voice call", "Ongoing video call").forEach {
+            assertNull(it, parseNotification(NotificationFields("com.whatsapp", "k", title = "Mom", text = it, category = "call", isOngoing = true), "WhatsApp"))
+        }
+        assertNotNull(parseNotification(NotificationFields("com.whatsapp", "k", title = "Mom", text = "Incoming voice call", category = "call", isOngoing = true), "WhatsApp"))
+    }
+
+    @Test
+    fun aLaterBataoStillReadsAMessageAfterSilenceButNotAfterNo() = runTest {
+        var clock = 0L
+        val c = AnnouncementCoordinator(backgroundScope, speaker, settings, consentTimeoutMs = 30_000, now = { clock })
+        c.onMessage(msg("Mom", "Khana kha liya?"))
+        runCurrent()
+        assertTrue(c.followUpPending())
+        clock = 60_000 // a minute later, after the question timed out on screen
+        advanceTimeBy(31_000)
+        runCurrent()
+        assertTrue(c.followUpPending())
+        assertEquals("WhatsApp par Mom ne likha: Khana kha liya?", c.getLatestMessageSummary())
+        assertFalse(c.followUpPending())
+
+        c.onMessage(msg("Papa", "Kahan ho?"))
+        runCurrent()
+        c.skip(c.pending.value!!.id) // "rehne do"
+        assertFalse(c.followUpPending())
+    }
 }

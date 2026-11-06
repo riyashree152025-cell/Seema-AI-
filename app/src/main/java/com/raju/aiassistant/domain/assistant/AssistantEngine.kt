@@ -161,6 +161,8 @@ class AssistantEngine(
     /** Other AI providers to try when the chosen one fails (auto fallback). */
     private val fallbackProviders: () -> List<ProviderId> = { emptyList() },
     private val latestNotification: () -> String? = { null },
+    /** She asked "Padh ke sunau kya?" a short while ago and the message is still unread. */
+    private val notificationFollowUp: () -> Boolean = { false },
     /** Called when she really wakes up (her name was recognised): the app turns the screen on. */
     private val onWake: () -> Unit = {},
     /** Answers a question about a photo (Gemini); used for "dekho kya dikh raha hai". */
@@ -648,6 +650,10 @@ class AssistantEngine(
 
         // Simple phone commands ("torch on karo", "Mummy ko call karo", "5 minute ka timer") run on
         // the phone at once: no AI request, no tokens, and they also work without internet.
+        // "Batao" / "haan padho" a little after "Padh ke sunau kya?": read that message.
+        if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
+            if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
+        }
         LocalCommands.parse(text)?.let { action ->
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
         }
@@ -1065,6 +1071,10 @@ class AssistantEngine(
             is AssistantAction.AnswerCall -> {
                 trace("offline command: answer call")
                 report(action, tools.answerCall())
+            }
+            is AssistantAction.ReadNotification -> {
+                trace("offline command: read notification")
+                readNotification(action, speak)
             }
             is AssistantAction.GoHome -> {
                 trace("offline command: home")

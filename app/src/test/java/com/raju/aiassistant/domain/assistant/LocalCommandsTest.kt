@@ -86,4 +86,13 @@ class LocalCommandsTest {
         assertNull(p("आज मौसम कैसा है"))
         assertNull(p(""))
     }
+
+    @Test
+    fun readingMessages() {
+        assertEquals(AssistantAction.ReadNotification, p("message padho"))
+        assertEquals(AssistantAction.ReadNotification, p("notification sunao"))
+        assertEquals(AssistantAction.ReadNotification, p("kiska message aaya"))
+        assertEquals(AssistantAction.ReadNotification, p("मैसेज पढ़ो"))
+        assertNull(p("mummy ko message bhejo"))
+    }
 }

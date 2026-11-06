@@ -40,6 +40,8 @@ private val HIDDEN_PREVIEW = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+private val INCOMING_CALL = Regex("incoming|इनकमिंग|आने वाली|आ रही|ইনকামিং|আসছে", RegexOption.IGNORE_CASE)
+
 private fun clean(s: String?): String? = s?.replace(INVISIBLE, "")?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
 
 /**
@@ -51,6 +53,9 @@ fun parseNotification(f: NotificationFields, appLabel: String): IncomingItem? {
     if (f.isGroupSummary) return null
     val isCall = f.category.equals("call", ignoreCase = true)
     if (f.isOngoing && !isCall) return null
+    // Only a call that is coming in: the user's own WhatsApp call ("Calling…", "Ringing…",
+    // "Ongoing voice call") also has the "call" category and must not be announced as incoming.
+    if (isCall && !INCOMING_CALL.containsMatchIn(listOfNotNull(f.title, f.text, f.bigText).joinToString(" "))) return null
 
     val conversation = clean(f.conversationTitle)
     val latest = f.messages.lastOrNull { !clean(it.second).isNullOrEmpty() }

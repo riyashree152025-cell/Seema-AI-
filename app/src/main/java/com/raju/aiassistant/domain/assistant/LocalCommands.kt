@@ -14,7 +14,7 @@ object LocalCommands {
     fun parse(text: String): AssistantAction? {
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
-        return torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
+        return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
             ?: battery(t) ?: home(t) ?: openApp(t)
     }
 
@@ -46,6 +46,16 @@ object LocalCommands {
 
     /** "karo", "kar do", "करो", "कर दीजिए" … at the end of a command. */
     private const val DO = "(?: (?:karo|kar do|kar de|kardo|karde|kar dijiye|kar dijie|kijiye|kijie|do|de|dijiye|dijie|करो|कर दो|कर दे|करदो|करदे|कर दीजिए|कीजिए|दो|दे|दीजिए))?"
+
+    // ------------------------------------------------------------------ messages
+
+    private const val MSG = "(?:message|messages|msg|notification|notifications|मैसेज|मेसेज|संदेश|नोटिफिकेशन)"
+    private val READ_MSG = Regex(
+        "^(?:(?:wo|vo|woh|naya|nayi|last|latest|वो|नया|आखिरी) )?$MSG(?: (?:ko|को))? (?:padho|padh do|padhke sunao|padh ke sunao|sunao|suna do|batao|bata do|पढ़ो|पढ़ दो|पढ़के सुनाओ|पढ़ के सुनाओ|सुनाओ|सुना दो|बताओ|बता दो)$|" +
+            "^(?:kiska|kis ka|kya|किसका|किस का|क्या) $MSG (?:aaya|aya|aaya hai|aya hai|आया|आया है)$",
+    )
+
+    private fun readMessage(t: String): AssistantAction? = if (READ_MSG.matches(t)) AssistantAction.ReadNotification else null
 
     // ------------------------------------------------------------------ torch
 

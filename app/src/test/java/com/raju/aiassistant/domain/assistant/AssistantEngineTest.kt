@@ -1387,6 +1387,22 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun bataoAfterTheNotificationQuestionReadsItWithoutTheAi() = runTest {
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            latestNotification = { "WhatsApp par Mom ne likha: Khana kha liya?" },
+            notificationFollowUp = { true },
+        ).also { provider = FakeProvider(ArrayDeque()) }
+        e.submit("batao", fromVoice = true)
+        settle()
+        assertEquals("WhatsApp par Mom ne likha: Khana kha liya?", speaker.spoken.last())
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
     fun silenceAfterPadhKeSunauGoesQuiet() = runTest {
         val e = engine()
         var called = false

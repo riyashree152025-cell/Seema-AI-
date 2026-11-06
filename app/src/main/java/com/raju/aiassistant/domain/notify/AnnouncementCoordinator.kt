@@ -27,7 +27,15 @@ class AnnouncementCoordinator(
     private val maxQueue: Int = 10,
     /** After "Padh ke sunau kya?": opens a short listening window for "haan / rehne do". */
     private val onAsked: (PendingAnnouncement) -> Unit = {},
+    private val now: () -> Long = { System.currentTimeMillis() },
+    /** How long after "Padh ke sunau kya?" a later "batao / padho" still reads that message. */
+    private val followUpMs: Long = 120_000,
 ) {
+    /** The message she last asked about, until it is read or declined (silence keeps it). */
+    private var followUp: Pair<Long, IncomingItem>? = null
+
+    /** True when she asked about a message a short while ago and it was neither read nor declined. */
+    fun followUpPending(): Boolean = followUp?.let { now() - it.first < followUpMs } == true
     private val _pending = MutableStateFlow<PendingAnnouncement?>(null)
     val pending: StateFlow<PendingAnnouncement?> = _pending.asStateFlow()
 
@@ -68,6 +76,7 @@ class AnnouncementCoordinator(
         val p = _pending.value
         if (p == null || p.id != id) { onDone(); return }
         clearPending(resume = false)
+        followUp = null
         worker = scope.launch {
             try {
                 speaker.speak(readPreviewText(p.item))
@@ -84,6 +93,11 @@ class AnnouncementCoordinator(
         if (p != null) {
             val item = p.item
             clearPending(resume = false)
+            followUp = null
+            return "${item.appLabel} par ${readPreviewText(item)}"
+        }
+        followUp?.let { (_, item) ->
+            followUp = null
             return "${item.appLabel} par ${readPreviewText(item)}"
         }
         val last = recentMessages.lastOrNull()
@@ -93,12 +107,17 @@ class AnnouncementCoordinator(
         return null
     }
 
+    /** The user said no (or tapped Skip): the message is not read, also not on a later "batao". */
     fun skip(id: Long) {
-        if (_pending.value?.id == id) clearPending()
+        if (_pending.value?.id == id) {
+            followUp = null
+            clearPending()
+        }
     }
 
     /** Stop button / Pause / Safety Mode: nothing queued or pending is read. */
     fun stopAll() {
+        followUp = null
         queue.clear()
         worker?.cancel()
         worker = null
@@ -129,6 +148,7 @@ class AnnouncementCoordinator(
                 else -> {
                     val p = PendingAnnouncement(nextId++, item)
                     _pending.value = p
+                    followUp = now() to item
                     speaker.speak(askToReadText(item, s.userName))
                     timeout = scope.launch {
                         delay(consentTimeoutMs)
