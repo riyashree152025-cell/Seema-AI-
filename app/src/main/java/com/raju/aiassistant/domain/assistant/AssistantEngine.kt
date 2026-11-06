@@ -3,6 +3,7 @@ package com.raju.aiassistant.domain.assistant
 import com.raju.aiassistant.domain.tools.PhotoResult
 import com.raju.aiassistant.domain.notify.callCommand
 import com.raju.aiassistant.domain.notify.CallCommand
+import com.raju.aiassistant.domain.notify.readReply
 import com.raju.aiassistant.data.search.WebSearch
 import com.raju.aiassistant.domain.ai.AiProvider
 import com.raju.aiassistant.domain.ai.Turn
@@ -104,6 +105,8 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 25_000L
+/** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
+private const val READ_REPLY_WINDOW_MS = 5_000L
 /** "This model is no longer available" and similar replies: the model was retired, not a passing error. */
 internal fun isModelGone(message: String): Boolean {
     val m = message.lowercase()
@@ -305,6 +308,7 @@ class AssistantEngine(
      */
     private fun onHeard(heard: String) {
         trace("recognized (${heard.length} chars)")
+        if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
         val text = heldVoiceText?.let { "$it $heard" } ?: heard
         _heard.value = text
@@ -448,6 +452,14 @@ class AssistantEngine(
             onError = { err ->
                 if (gen != listenGen) { trace("stale error dropped"); return@start }
                 trace("listen error: ${err.message}")
+                // A short yes/no window (message or call) ends quietly on silence: no loop.
+                if (replyHandler != null) { finishReadReply(null); return@start }
+                if (clock() < callCommandUntil) {
+                    callCommandUntil = 0
+                    trace("call: no answer heard, stop listening")
+                    returnToStandby()
+                    return@start
+                }
                 val keepGoing = handsFree && _voiceSession.value && !settings.value.assistantPaused && !err.permissionDenied
                 val held = heldVoiceText
                 if (held != null && (err.noSpeech || err.unclear)) {
@@ -1272,9 +1284,62 @@ class AssistantEngine(
                 val outcome = tools.endCall()
                 scope.launch { report(AssistantAction.EndCall, outcome) }
             }
-            null -> listen() // ringtone or other talk: keep listening for a yes / no while it rings
+            null -> { // not a yes / no: she asked once, so she stops instead of listening in a loop
+                callCommandUntil = 0
+                trace("call: not an answer, stop listening")
+                returnToStandby()
+            }
         }
         return true
+    }
+
+    @Volatile private var replyUntil = 0L
+    private var replyHandler: ((Boolean?) -> Unit)? = null
+    private var replyTimeout: Job? = null
+
+    /**
+     * After "Padh ke sunau kya?": listens a few seconds for "haan / padho" (true) or "rehne do /
+     * nahi" (false); silence or anything else gives null. Returns false when she is busy (a
+     * conversation, a call, a question on screen): the question then stays on the screen.
+     */
+    fun listenForReadReply(windowMs: Long = READ_REPLY_WINDOW_MS, onReply: (Boolean?) -> Unit): Boolean {
+        if (settings.value.assistantPaused || !voice.isAvailable() || pausedForCall || clock() < callCommandUntil) return false
+        if (_voiceSession.value || job?.isActive == true || _pending.value != null || replyHandler != null) return false
+        replyHandler = onReply
+        replyUntil = clock() + windowMs
+        replyTimeout?.cancel()
+        replyTimeout = scope.launch {
+            delay(windowMs)
+            if (replyHandler != null) {
+                trace("read reply: no answer")
+                finishReadReply(null)
+            }
+        }
+        if (asleep) leaveSleep()
+        _voiceSession.value = true
+        trace("read reply: listening")
+        listen()
+        return true
+    }
+
+    private fun handleReadReply(text: String): Boolean {
+        if (replyHandler == null || clock() >= replyUntil) return false
+        val answer = readReply(text)
+        trace("read reply: ${answer ?: "unclear"}")
+        finishReadReply(answer)
+        return true
+    }
+
+    private fun finishReadReply(answer: Boolean?) {
+        val handler = replyHandler ?: return
+        replyHandler = null
+        replyUntil = 0
+        replyTimeout?.cancel()
+        replyTimeout = null
+        listenGen++
+        voice.stop()
+        returnToStandby()
+        handler(answer)
     }
 
     /**
