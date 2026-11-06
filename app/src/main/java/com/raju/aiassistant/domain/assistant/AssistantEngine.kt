@@ -1797,6 +1797,11 @@ class AssistantEngine(
                 return
             } else {
                 val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+                // Several people with that name: ask out loud as well as on the screen.
+                if (found.size > 1 && speak) {
+                    val names = found.take(4).mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
+                    say(phrase(lang(), "\"${action.contact}\" नाम के ${found.size} लोग मिले हैं: $names। किसको भेजना है?", "\"${action.contact}\" নামে ${found.size} জন পেয়েছি: $names। কাকে পাঠাবো?"))
+                }
                 // In the phone log: why a confirmation shows instead of sending directly.
                 trace("whatsapp: ${found.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
                 target = if (found.size == 1 && autoSend) {
