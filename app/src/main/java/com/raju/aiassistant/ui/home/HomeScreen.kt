@@ -123,12 +123,9 @@ import com.raju.aiassistant.ui.components.SciFiVoiceOrb
 
 import com.raju.aiassistant.ui.components.SciFiWaveform
 
-import com.raju.aiassistant.ui.home.visuals.ArcReactor
 
 import com.raju.aiassistant.ui.home.visuals.motionProfileFor
 
-import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
-import com.raju.aiassistant.ui.home.visuals.tapori
 
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
 
@@ -220,7 +217,6 @@ fun HomeScreen(
 
     val timeProvider = rememberAnimationTime(running = profile.animate, maxFps = profile.maxFps)
 
-    val style = reactorStyleFor(assistantState).let { if (state.tapori) it.tapori(assistantState) else it }
 
 
 
@@ -489,129 +485,17 @@ fun HomeScreen(
 
                 ) {
 
-                    val coreSize = minOf(maxWidth, maxHeight) * 0.98f
 
 
 
-                    if (!state.tapori) {
-                    // Outer Concentric Cybernetic Tech Ring Frame
-
-                    Canvas(Modifier.size(coreSize)) {
-
-                        val cx = size.width / 2f
-
-                        val cy = size.height / 2f
-
-                        val r = size.width / 2f
-
-
-
-                        // Outer Hex/Segmented Ring
-
-                        drawCircle(
-
-                            color = Color(0x3300E5FF),
-
-                            radius = r - 4f,
-
-                            style = Stroke(width = 2.4f)
-
-                        )
-
-                        // Inner Concentric Cyan Track
-
-                        drawCircle(
-
-                            brush = Brush.sweepGradient(
-
-                                listOf(SciFiCyanGlow.copy(alpha = 0.25f), SciFiCyanGlow.copy(alpha = 0.95f), SciFiCyanGlow.copy(alpha = 0.25f))
-
-                            ),
-
-                            radius = r - 14f,
-
-                            style = Stroke(width = 1.8f)
-
-                        )
-
-                        // Core Reticle Tick Marks
-
-                        val tickCount = 28
-
-                        for (i in 0 until tickCount) {
-
-                            val angle = (i * (360f / tickCount)) * (Math.PI / 180.0)
-
-                            val innerR = r - 26f
-
-                            val outerR = r - 18f
-
-                            val start = androidx.compose.ui.geometry.Offset(
-
-                                (cx + innerR * kotlin.math.cos(angle)).toFloat(),
-
-                                (cy + innerR * kotlin.math.sin(angle)).toFloat()
-
-                            )
-
-                            val end = androidx.compose.ui.geometry.Offset(
-
-                                (cx + outerR * kotlin.math.cos(angle)).toFloat(),
-
-                                (cy + outerR * kotlin.math.sin(angle)).toFloat()
-
-                            )
-
-                            drawLine(
-
-                                color = if (i % 7 == 0) SciFiCyanGlow else SciFiCyanGlow.copy(alpha = 0.4f),
-
-                                start = start,
-
-                                end = end,
-
-                                strokeWidth = if (i % 7 == 0) 2.4f else 1.2f
-
-                            )
-
-                        }
-
-                    }
-
-
-
-                    }
-
-                    // Centered Living Arc Reactor with Smooth 3D Mechanics
-
-                    // Tapori mode: the dotted face fills the whole area above the buttons.
-                    if (state.tapori) {
-                        com.raju.aiassistant.ui.home.visuals.TaporiFace(
-                            time = { timeProvider.floatValue },
-                            speechLevel = { speechLevel },
-                            state = assistantState,
-                            modifier = Modifier.fillMaxSize(),
-                            mood = com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply),
-                        )
-                    } else {
-                        ArcReactor(
-
-                            style = style,
-
-                            particleCount = profile.particleCount,
-
-                            richEffects = profile.richEffects,
-
-                            time = { timeProvider.floatValue },
-
-                            speechLevel = { speechLevel },
-
-                            modifier = Modifier.size(coreSize * 0.84f)
-
-                        )
-
-                    
-                    }
+                    // Seema's face (all modes): the dotted ball with eyes and mouth fills the whole area above the buttons.
+                    com.raju.aiassistant.ui.home.visuals.TaporiFace(
+                        time = { timeProvider.floatValue },
+                        speechLevel = { speechLevel },
+                        state = assistantState,
+                        modifier = Modifier.fillMaxSize(),
+                        mood = if (state.tapori) com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply) else com.raju.aiassistant.ui.home.visuals.TaporiMood.NORMAL,
+                    )
 
                 }
 

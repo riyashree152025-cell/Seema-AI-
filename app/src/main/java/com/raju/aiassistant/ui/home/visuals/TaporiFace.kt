@@ -22,7 +22,8 @@ import kotlin.math.sqrt
 
 private val HOT_WHITE = Color(0xFFFFF4F6)
 private val FACE_BASE = Color(0xFF0A0F1D)
-private const val DOTS = 460
+private const val DOTS = 720
+private val PUPIL_DARK = Color(0xFF0A1423)
 
 /** The tone of her last reply, shown by the colour of the glowing rim. */
 enum class TaporiMood { CALM, NORMAL, FUNNY, SHARP }
@@ -107,6 +108,8 @@ fun TaporiFace(
         // brightens on its own rhythm, so the ball shimmers without turning.
         val tilt = 0.28f
         val golden = PI * (3 - sqrt(5.0))
+        // The ball swells a little with her voice (and breathes slightly at rest).
+        val swell = 1f + 0.06f * level + 0.012f * sin(t * 1.6f)
         for (i in 0 until DOTS) {
             val y0 = 1.0 - 2.0 * (i + 0.5) / DOTS
             val r0 = sqrt(1.0 - y0 * y0)
@@ -116,8 +119,8 @@ fun TaporiFace(
             val y2 = y0 * cos(tilt) - z1 * sin(tilt)
             val z2 = y0 * sin(tilt) + z1 * cos(tilt)
             val depth = ((z2 + 1.0) / 2.0).toFloat() // 0 back .. 1 front
-            val px = c.x + (x1 * rx).toFloat()
-            val py = c.y + (y2 * ry).toFloat()
+            val px = c.x + (x1 * rx * swell).toFloat()
+            val py = c.y + (y2 * ry * swell).toFloat()
             val pulse = 0.5f + 0.5f * sin(t * (2.2f + (i % 7) * 0.35f) + i * 2.399f) // 0..1, own rhythm
             drawCircle(
                 color = accent.copy(alpha = (0.25f + 0.55f * depth) * (0.55f + 0.45f * pulse)),
@@ -134,14 +137,15 @@ fun TaporiFace(
         drawOval(rim.copy(alpha = 0.35f * breathe), rimTopLeft, rimSize, style = Stroke(unit * 0.07f))
         drawOval(rim.copy(alpha = 0.95f), rimTopLeft, rimSize, style = Stroke(unit * 0.018f))
 
-        // Sparkles around the sphere, twinkling at different times.
-        for (i in 0 until 14) {
-            val ang = i * 2.399f + t * 0.15f
-            val dist = 1.02f + 0.08f * sin(t * 1.3f + i)
+        // Sparks that drift out from the edge of the ball and fade away, each on its own cycle.
+        for (i in 0 until 24) {
+            val life = ((t * 0.35f + i * 0.137f) % 1f) // 0 born at the edge .. 1 gone
+            val ang = i * 2.399f
+            val dist = 1.0f + 0.22f * life
             val sx = c.x + cos(ang) * rx * dist
             val sy = c.y + sin(ang) * ry * dist
-            val twinkle = 0.4f + 0.6f * (0.5f + 0.5f * sin(t * 3f + i * 1.7f))
-            drawCircle(HOT_WHITE.copy(alpha = twinkle), unit * 0.02f, Offset(sx, sy))
+            val fade = (1f - life) * (0.6f + 0.4f * sin(t * 4f + i))
+            drawCircle(HOT_WHITE.copy(alpha = fade.coerceIn(0f, 1f)), unit * (0.012f + 0.012f * (1f - life)), Offset(sx, sy))
         }
 
         // The face on the front of the sphere.
@@ -159,63 +163,71 @@ private fun DrawScope.drawFace(
     unit: Float,
     accent: Color,
 ) {
+    // The face keeps friendly proportions on a tall ball: its height scale is capped.
+    val fy = minOf(ry, rx * 1.2f)
     // Blink for ~0.15 s every 4 s; wider eyes while listening.
     val phase = t % 4f
     val blink = if (phase > 3.85f) ((4f - phase) / 0.15f).coerceIn(0.12f, 1f) else 1f
     val open = blink * (if (expression == TaporiExpression.LISTEN) 1.12f else 1f)
 
-    val eyeY = c.y - ry * 0.16f
+    val eyeY = c.y - fy * 0.16f
     val eyeGap = rx * 0.36f
     val eyeW = rx * 0.26f
-    val eyeH = ry * 0.26f * open
+    val eyeH = fy * 0.26f * open
     val pupilR = unit * 0.075f
 
     // Where the pupils look: a slow circle while thinking, a small drift otherwise.
     val look = when (expression) {
         TaporiExpression.EYE_ROLL -> Offset(cos(t * 3f) * 0.45f, sin(t * 3f) * 0.3f)
         TaporiExpression.LISTEN -> Offset(0f, 0f)
-        else -> Offset(sin(t * 0.7f) * 0.25f, 0f)
+        // Quick glances: hold a direction, then dart to the next one (every ~1.7 s).
+        else -> {
+            val step = (t / 1.7f).toInt()
+            Offset(sin(step * 2.3f) * 0.35f, cos(step * 1.7f) * 0.15f)
+        }
     }
 
     for (side in floatArrayOf(-1f, 1f)) {
         val ex = c.x + side * eyeGap
         val closed = expression == TaporiExpression.SLEEP || (expression == TaporiExpression.WINK && side > 0f)
         if (closed) {
-            val bend = if (expression == TaporiExpression.WINK) ry * 0.08f else ry * 0.02f
+            val bend = if (expression == TaporiExpression.WINK) fy * 0.08f else fy * 0.02f
             val lid = Path().apply {
                 moveTo(ex - eyeW / 2f, eyeY)
                 quadraticBezierTo(ex, eyeY + bend, ex + eyeW / 2f, eyeY)
             }
             drawPath(lid, HOT_WHITE, style = Stroke(unit * 0.035f, cap = StrokeCap.Round))
         } else {
-            // Big round white eye with a red pupil.
+            // Eye white, a coloured iris, a dark pupil and two glossy highlights.
             drawOval(
                 color = HOT_WHITE,
                 topLeft = Offset(ex - eyeW / 2f, eyeY - eyeH / 2f),
                 size = androidx.compose.ui.geometry.Size(eyeW, eyeH),
             )
-            drawOval(
-                color = accent,
-                topLeft = Offset(ex - pupilR + look.x * eyeW * 0.25f, eyeY - pupilR + look.y * eyeH * 0.25f),
-                size = androidx.compose.ui.geometry.Size(pupilR * 2f, pupilR * 2f),
-            )
-            // Little shine in the eye.
-            drawCircle(HOT_WHITE, pupilR * 0.35f, Offset(ex - pupilR * 0.5f + look.x * eyeW * 0.25f, eyeY - pupilR * 0.6f + look.y * eyeH * 0.25f))
+            if (blink > 0.5f) { // hidden while the lid is down
+                val ix = ex + look.x * eyeW * 0.25f
+                val iy = eyeY + look.y * eyeH * 0.25f
+                val irisR = minOf(pupilR * 1.35f, eyeH * 0.45f)
+                drawCircle(accent, irisR, Offset(ix, iy))
+                drawCircle(PUPIL_DARK, irisR * 0.55f, Offset(ix, iy))
+                drawCircle(HOT_WHITE, irisR * 0.28f, Offset(ix - irisR * 0.32f, iy - irisR * 0.32f))
+                drawCircle(HOT_WHITE.copy(alpha = 0.8f), irisR * 0.14f, Offset(ix + irisR * 0.3f, iy + irisR * 0.28f))
+            }
         }
     }
 
     // Wide grin; it opens with her voice while speaking.
-    val mouthY = c.y + ry * 0.28f
+    val mouthY = c.y + fy * 0.28f
     val half = rx * 0.42f
     val grin = when (expression) {
-        TaporiExpression.SLEEP -> ry * 0.02f
-        TaporiExpression.OOPS -> -ry * 0.02f
-        TaporiExpression.EYE_ROLL -> ry * 0.05f
-        else -> ry * 0.14f
+        TaporiExpression.SLEEP -> fy * 0.02f
+        TaporiExpression.OOPS -> -fy * 0.02f
+        TaporiExpression.EYE_ROLL -> fy * 0.05f
+        else -> fy * 0.14f
     }
     val openBy = when (expression) {
-        TaporiExpression.TALK -> ry * (0.02f + 0.20f * level)
-        TaporiExpression.WINK -> ry * 0.05f
+        TaporiExpression.TALK -> fy * (0.02f + 0.20f * level)
+        TaporiExpression.WINK -> fy * 0.05f
         else -> 0f
     }
     val mouth = Path().apply {
