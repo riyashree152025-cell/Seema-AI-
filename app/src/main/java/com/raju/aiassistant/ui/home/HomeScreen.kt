@@ -492,6 +492,7 @@ fun HomeScreen(
 
 
 
+                    if (!state.tapori) {
                     // Outer Concentric Cybernetic Tech Ring Frame
 
                     Canvas(Modifier.size(coreSize)) {
@@ -578,32 +579,36 @@ fun HomeScreen(
 
 
 
+                    }
+
                     // Centered Living Arc Reactor with Smooth 3D Mechanics
 
-                    ArcReactor(
-
-                        style = style,
-
-                        particleCount = profile.particleCount,
-
-                        richEffects = profile.richEffects,
-
-                        time = { timeProvider.floatValue },
-
-                        speechLevel = { speechLevel },
-
-                        modifier = Modifier.size(coreSize * 0.84f)
-
-                    )
-
-                    // Tapori mode: a cheeky face on the red reactor (eyes and smirk follow her voice).
+                    // Tapori mode: the dotted face fills the whole area above the buttons.
                     if (state.tapori) {
                         com.raju.aiassistant.ui.home.visuals.TaporiFace(
                             time = { timeProvider.floatValue },
                             speechLevel = { speechLevel },
                             state = assistantState,
-                            modifier = Modifier.size(coreSize * 0.84f),
+                            modifier = Modifier.fillMaxSize(),
                         )
+                    } else {
+                        ArcReactor(
+
+                            style = style,
+
+                            particleCount = profile.particleCount,
+
+                            richEffects = profile.richEffects,
+
+                            time = { timeProvider.floatValue },
+
+                            speechLevel = { speechLevel },
+
+                            modifier = Modifier.size(coreSize * 0.84f)
+
+                        )
+
+                    
                     }
 
                 }
