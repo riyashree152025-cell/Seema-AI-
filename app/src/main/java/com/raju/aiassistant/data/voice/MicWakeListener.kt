@@ -109,7 +109,10 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
                 var quietMs = 0
                 var speechMs = START_FRAMES * FRAME_MS
                 var totalMs = 0
-                val pauseThreshold = max(noise * 1.6, MIN_SPEECH * 1.1)
+                // A pause is quieter than the voice that started the recording. With the old bar
+                // (1.6 x noise, at least 121) a soft voice at 118-196 counted as "quiet" between its
+                // own syllables, so "Hey Seema" was thrown away as too short (seen on the phone).
+                val pauseThreshold = max(noise * 1.3, MIN_SPEECH * 0.8)
                 while (coroutineContext.isActive && totalMs < MAX_UTTERANCE_MS) {
                     val f = readFrame(recorder) ?: break
                     out.write(f)
@@ -123,6 +126,7 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
                     return out.toByteArray()
                 }
                 // Too short (a knock, a cough): keep waiting.
+                android.util.Log.d("SeemaWake", "Too short, ignored (${speechMs} ms of voice in ${totalMs} ms)")
                 preRoll.clear()
                 loudFrames = 0
             }
@@ -162,7 +166,7 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val PRE_ROLL_FRAMES = 25 // 0.5 s
         const val START_FRAMES = 3 // ~60 ms of voice
         const val MIN_SPEECH = 110.0
-        const val MIN_SPEECH_MS = 200
+        const val MIN_SPEECH_MS = 160
         const val END_SILENCE_MS = 650
         const val MAX_UTTERANCE_MS = 7_500
     }
