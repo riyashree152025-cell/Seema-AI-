@@ -53,7 +53,7 @@ fun TaporiFace(
 ) {
     val expression = taporiExpressionFor(state)
     // Cyan listening, purple thinking, red speaking/default; the colour changes smoothly.
-    val accent by animateColorAsState(Color(taporiAccentArgb(state)), tween(500), label = "taporiAccent")
+    val accent by animateColorAsState(Color(taporiAccentArgb(state)), tween(400), label = "taporiAccent")
     Canvas(modifier.clearAndSetSemantics {}) {
         val t = time()
         val level = if (expression == TaporiExpression.TALK) speechLevel().coerceIn(0f, 1f) else 0f

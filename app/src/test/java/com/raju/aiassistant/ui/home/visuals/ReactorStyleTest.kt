@@ -72,9 +72,9 @@ class ReactorStyleTest {
     @Test
     fun taporiColoursFollowWhatSheIsDoing() {
         assertEquals(0xFF00E5FF, taporiAccentArgb(AssistantState.Listening)) // cyan
-        assertEquals(0xFF7C1FFF, taporiAccentArgb(AssistantState.Thinking)) // deep purple
-        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Speaking)) // red
-        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Idle)) // default glow
-        assertEquals(0xFFFF1E3C, taporiAccentArgb(AssistantState.Sleeping))
+        assertEquals(0xFF9D00FF, taporiAccentArgb(AssistantState.Thinking)) // purple
+        assertEquals(0xFFFF2A2A, taporiAccentArgb(AssistantState.Speaking)) // red
+        assertEquals(0x9900E5FF, taporiAccentArgb(AssistantState.Idle)) // calm cyan, 60 %
+        assertEquals(0x9900E5FF, taporiAccentArgb(AssistantState.Sleeping))
     }
 }
