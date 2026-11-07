@@ -226,6 +226,8 @@ class AppContainer(context: Context) {
             model = { VoiceCatalog.sttOption(currentSettings.value.deepgramSttModel) },
             configured = { SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value && online.value },
             keyterms = { keyterms() },
+            hub = micHub,
+            useHub = { currentSettings.value.micHub },
         )
     }
 

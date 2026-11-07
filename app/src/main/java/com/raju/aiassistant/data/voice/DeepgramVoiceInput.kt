@@ -43,6 +43,9 @@ class DeepgramVoiceInput(
     private val configured: () -> Boolean,
     /** Words to recognise especially well: "Seema", favourite contacts' names. */
     private val keyterms: suspend () -> List<String> = { emptyList() },
+    /** The shared microphone (MicHub). Used only while [useHub] is true; otherwise [record] runs as before. */
+    private val hub: MicHub? = null,
+    private val useHub: () -> Boolean = { false },
 ) : VoiceInput {
     private val _listening = MutableStateFlow(false)
     override val listening: StateFlow<Boolean> = _listening.asStateFlow()
@@ -67,7 +70,7 @@ class DeepgramVoiceInput(
             _partial.value = ""
             _listening.value = true
             val pcm = try {
-                withContext(Dispatchers.IO) { record() }
+                withContext(Dispatchers.IO) { recordTurn() }
             } catch (e: MicrophoneException) {
                 onError(VoiceError("The microphone could not be started (${e.message}). Another app may be using it."))
                 return@launch
@@ -108,6 +111,17 @@ class DeepgramVoiceInput(
         // Free the microphone right now, so the next recogniser (or barge-in) gets real audio.
         activeRecorder?.let { runCatching { it.stop() } }
         _listening.value = false
+    }
+
+    /** One turn: from the shared microphone when the flag is on, otherwise from this input's own recorder. */
+    private suspend fun recordTurn(): ByteArray? {
+        val shared = hub
+        if (shared == null || !useHub()) return record()
+        return try {
+            shared.recordSpeech()
+        } catch (e: SharedMicException) {
+            throw MicrophoneException(e.message ?: "microphone unavailable")
+        }
     }
 
     /** Records until the user stops talking. Returns null when no speech was heard. */

@@ -15,10 +15,14 @@ fun minMicBufferBytes(): Int =
  * order (the same fallback the wake listener uses), and the caller must already hold RECORD_AUDIO.
  */
 class AudioRecordFrameSource(
+    /**
+     * VOICE_RECOGNITION first: speech recognition (Deepgram) and the offline wake word already use it,
+     * and one recorder now serves all of them. MIC and DEFAULT are fallbacks.
+     */
     private val sources: IntArray = intArrayOf(
+        MediaRecorder.AudioSource.VOICE_RECOGNITION,
         MediaRecorder.AudioSource.MIC,
         MediaRecorder.AudioSource.DEFAULT,
-        MediaRecorder.AudioSource.VOICE_RECOGNITION,
     ),
 ) : FrameSource {
     private var recorder: AudioRecord? = null
