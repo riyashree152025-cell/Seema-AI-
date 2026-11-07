@@ -19,6 +19,11 @@ import com.raju.aiassistant.domain.tools.Contact
 import com.raju.aiassistant.domain.tools.ContactLookup
 import com.raju.aiassistant.domain.tools.DeviceTools
 import com.raju.aiassistant.domain.tools.ToolOutcome
+import com.raju.aiassistant.domain.screen.ElementKind
+import com.raju.aiassistant.domain.screen.ScreenElement
+import com.raju.aiassistant.domain.screen.ScreenOp
+import com.raju.aiassistant.domain.screen.ScreenRead
+import com.raju.aiassistant.domain.screen.ScreenSnapshot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
@@ -98,6 +103,12 @@ class AssistantEngineTest {
         override fun playMusic(query: String, service: MusicService): ToolOutcome { music += query to service; return ToolOutcome.Done("Opened ${service.label}") }
         val whatsApps = mutableListOf<Pair<String?, String>>()
         override fun openWhatsApp(number: String?, text: String): ToolOutcome { whatsApps += number to text; return ToolOutcome.Done("WhatsApp opened") }
+        /** Screens returned one after another; the last one stays. */
+        val screens = ArrayDeque<ScreenRead>()
+        private var lastScreen: ScreenRead = ScreenRead.Unavailable("Accessibility off")
+        val screenOps = mutableListOf<ScreenOp>()
+        override suspend fun readScreen(): ScreenRead { screens.removeFirstOrNull()?.let { lastScreen = it }; return lastScreen }
+        override suspend fun screenAction(op: ScreenOp): ToolOutcome { screenOps += op; return ToolOutcome.Done("done") }
     }
 
     private class Store : ChatHistory, MemoryStore, ActionLog {
@@ -780,6 +791,131 @@ class AssistantEngineTest {
         advanceTimeBy(10_000)
         runCurrent()
         assertEquals(AssistantState.Idle, e.state.value)
+    }
+
+    // ---------------------------------------------------------------- screen control
+
+    private val chatScreen = ScreenSnapshot(
+        "com.whatsapp", "WhatsApp",
+        listOf(
+            ScreenElement("Riya", ElementKind.TEXT),
+            ScreenElement("Hello!", ElementKind.TEXT),
+            ScreenElement("Kal milte hain", ElementKind.INPUT, clickable = true, editable = true, hint = "Message"),
+            ScreenElement("Send", ElementKind.BUTTON, clickable = true),
+        ),
+    )
+    private val sentScreen = chatScreen.copy(elements = chatScreen.elements.map { if (it.editable) it.copy(text = "") else it })
+
+    @Test
+    fun aTapIsAskedFirstThenDoneAndChecked() = runTest {
+        tools.screens.addAll(listOf(ScreenRead.Ok(chatScreen), ScreenRead.Ok(sentScreen)))
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"send"}</action>"""))
+        e.submit("send dabao", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals("WhatsApp में \"Send\" दबा दूँ?", speaker.spoken.last())
+        assertTrue(tools.screenOps.isEmpty()) // nothing before the yes
+        assertNotNull(e.pending.value)
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf<ScreenOp>(ScreenOp.Tap("Send")), tools.screenOps)
+        assertEquals("\"Send\" दबा दिया — स्क्रीन बदल गई।", speaker.spoken.last())
+        assertNull(e.pending.value)
+    }
+
+    @Test
+    fun saying_nahi_tapsNothing() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen))
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"Send"}</action>"""))
+        e.submit("send dabao", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        voice.onResult!!("nahi rehne do")
+        settle()
+        assertTrue(tools.screenOps.isEmpty())
+        assertEquals("ठीक है, कुछ नहीं किया।", speaker.spoken.last())
+    }
+
+    @Test
+    fun noAnswerMeansNo() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen))
+        val e = engine(AiResult.Success("""<action>{"type":"go_back"}</action>"""))
+        e.submit("peeche jao", fromVoice = true)
+        settle()
+        assertTrue(tools.screenOps.isEmpty())
+        assertEquals("ठीक है, कुछ नहीं किया।", speaker.spoken.last())
+        assertNull(e.pending.value)
+    }
+
+    @Test
+    fun anUnchangedScreenIsReportedHonestly() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen)) // the same screen before and after
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"Send"}</action>"""))
+        e.submit("send dabao", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(1, tools.screenOps.size)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कोई बदलाव नहीं"))
+    }
+
+    @Test
+    fun bankingScreensAreNeverTouched() = runTest {
+        val upi = ScreenSnapshot("com.phonepe.app", "PhonePe", listOf(ScreenElement("Pay", ElementKind.BUTTON, clickable = true)))
+        tools.screens.add(ScreenRead.Ok(upi))
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"Pay"}</action>"""))
+        e.submit("pay dabao", fromVoice = true)
+        settle()
+        assertTrue(tools.screenOps.isEmpty())
+        assertNull(e.pending.value) // not even asked
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("सुरक्षा"))
+    }
+
+    @Test
+    fun twoSimilarButtonsAreNeverGuessed() = runTest {
+        val s = ScreenSnapshot("com.x", "X", listOf(ScreenElement("Send", ElementKind.BUTTON, clickable = true), ScreenElement("भेजें", ElementKind.BUTTON, clickable = true)))
+        tools.screens.add(ScreenRead.Ok(s))
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"send"}</action>"""))
+        e.submit("send dabao", fromVoice = true)
+        settle()
+        assertTrue(tools.screenOps.isEmpty())
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कौन-सा"))
+    }
+
+    @Test
+    fun withoutAccessibilitySheSaysSo() = runTest {
+        val e = engine(AiResult.Success("""<action>{"type":"tap","target":"Send"}</action>"""))
+        e.submit("send dabao", fromVoice = true)
+        settle()
+        assertTrue(tools.screenOps.isEmpty())
+        assertEquals("Accessibility off", speaker.spoken.last())
+    }
+
+    @Test
+    fun typingIsCheckedOnTheScreen() = runTest {
+        val empty = sentScreen
+        tools.screens.addAll(listOf(ScreenRead.Ok(empty), ScreenRead.Ok(chatScreen)))
+        val e = engine(AiResult.Success("""<action>{"type":"type_text","text":"Kal milte hain"}</action>"""))
+        e.submit("likho kal milte hain", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("ये लिख दूँ"))
+        voice.onResult!!("हाँ")
+        settle()
+        assertEquals(listOf<ScreenOp>(ScreenOp.Type("Kal milte hain", null)), tools.screenOps)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("लिख दिया"))
+    }
+
+    @Test
+    fun readingTheScreenSendsItsTextToTheAi() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen))
+        val e = engine(
+            AiResult.Success("""<action>{"type":"read_screen","question":"kya likha hai"}</action>"""),
+            AiResult.Success("Riya ne Hello likha hai."),
+        )
+        e.submit("screen padho", fromVoice = true)
+        settle()
+        val screenTurn = provider.calls[1].last().text
+        assertTrue(screenTurn, screenTurn.contains("[button] Send") && screenTurn.contains("kya likha hai"))
+        assertEquals("Riya ne Hello likha hai.", speaker.spoken.last())
+        assertTrue(tools.screenOps.isEmpty()) // reading never taps
     }
 
     @Test

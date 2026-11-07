@@ -1,13 +1,33 @@
 package com.raju.aiassistant.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import com.raju.aiassistant.domain.screen.ElementKind
+import com.raju.aiassistant.domain.screen.ScreenElement
+import com.raju.aiassistant.domain.screen.ScreenMatch
+import com.raju.aiassistant.domain.screen.ScreenOp
+import com.raju.aiassistant.domain.screen.ScreenRead
+import com.raju.aiassistant.domain.screen.ScreenSnapshot
+import com.raju.aiassistant.domain.screen.SensitiveScreens
+import com.raju.aiassistant.domain.screen.WhatsAppButtons
 
+/**
+ * Seema's eyes and hands on other apps — only when the user asks:
+ * - reads the app in front (texts, buttons, input boxes), never password or banking/UPI screens;
+ * - taps a named button, goes back, scrolls, types — the engine asks the user first;
+ * - presses WhatsApp's Send / Call button for a chat Seema opened, and reports whether it worked.
+ */
 class SeemaAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -24,142 +44,196 @@ class SeemaAccessibilityService : AccessibilityService() {
             if (pendingWhatsAppAutoSend) {
                 attemptWhatsAppSend(pkg)
             } else if (pendingWhatsAppCall) {
-                attemptWhatsAppCall()
+                attemptWhatsAppCall(pkg)
             }
-        } else if (pendingSpeakerphone && (pkg.contains("incall") || pkg.contains("dialer") || pkg.contains("telecom"))) {
-            attemptSpeakerphone()
-        } else if (pendingYouTubePlay && pkg == "com.google.android.youtube") {
-            attemptYouTubePlay()
         }
     }
+
+    // ------------------------------------------------------------------ WhatsApp send
+
+    private val sendWords = listOf("send", "भेजें", "भेजो", "পাঠান").map { ScreenMatch.normalize(it) }
 
     private fun attemptWhatsAppSend(pkg: String) {
         val root = rootInActiveWindow ?: return
         try {
-            // 1. By view ID (WhatsApp Business has its own package in the id)
-            val byId = root.findAccessibilityNodeInfosByViewId("$pkg:id/send")
-            for (node in byId) {
-                if (clickNode(node)) {
-                    finishAutoSend()
-                    return
+            // 1. WhatsApp's own Send button (the id carries the package, also for WhatsApp Business).
+            var clicked = root.findAccessibilityNodeInfosByViewId("$pkg:id/send").any { clickNode(it) }
+            // 2. A button described exactly as "Send" / "भेजें" — not anything merely containing "send".
+            if (!clicked) {
+                clicked = walk(root).any { n ->
+                    val d = ScreenMatch.normalize(n.contentDescription?.toString() ?: "")
+                    d.isNotEmpty() && d in sendWords && clickNode(n)
                 }
             }
-            // 2. By content description ("Send", "भेजें", "পাঠান", "bheje")
-            val targetDescs = listOf("send", "\u092d\u0947\u091c\u0947\u0902", "\u09aa\u09be\u09a0\u09be\u09a8", "bheje")
-            val queue = ArrayDeque<AccessibilityNodeInfo>()
-            queue.add(root)
-            while (queue.isNotEmpty()) {
-                val node = queue.removeFirst()
-                val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-                if (targetDescs.any { desc.contains(it) }) {
-                    if (clickNode(node)) {
-                        finishAutoSend()
-                        return
-                    }
-                }
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { queue.add(it) }
-                }
-            }
+            if (!clicked) return
+            pendingWhatsAppAutoSend = false // never press twice
+            // Verify: after a real send WhatsApp empties its message box.
+            handler.postDelayed({
+                val text = pendingSendText
+                val box = rootInActiveWindow?.findAccessibilityNodeInfosByViewId("$pkg:id/entry")?.firstOrNull()
+                val stillThere = text != null && box?.text?.toString()?.trim()?.startsWith(text.trim().take(20)) == true
+                finishAuto(!stillThere)
+                if (!stillThere) returnToSeema()
+            }, 800)
         } catch (_: Exception) {}
     }
 
-    private fun attemptWhatsAppCall() {
+    // ------------------------------------------------------------------ WhatsApp call
+
+    private var callButtonPressedAt = 0L
+
+    private fun attemptWhatsAppCall(pkg: String) {
         val root = rootInActiveWindow ?: return
         try {
-            // First check if a confirmation dialog is visible (e.g. "Start voice call? Call / Cancel")
-            val confirmButtons = root.findAccessibilityNodeInfosByViewId("android:id/button1")
-            for (btn in confirmButtons) {
-                if (clickNode(btn)) {
-                    pendingWhatsAppCall = false
-                    return
+            if (callButtonPressedAt > 0) {
+                // Only a dialog about starting this call is confirmed; "Block?", "Delete?" etc. never.
+                val confirm = root.findAccessibilityNodeInfosByViewId("android:id/button1")
+                if (confirm.isNotEmpty() && WhatsAppButtons.isCallDialog(texts(root))) {
+                    if (confirm.any { clickNode(it) }) finishCall(true)
+                }
+                return
+            }
+            val ids = if (pendingWhatsAppVideo) listOf("video_call", "menuitem_video_call") else listOf("voice_call", "menuitem_call", "audio_call")
+            var pressed = ids.any { id -> root.findAccessibilityNodeInfosByViewId("$pkg:id/$id").any { clickNode(it) } }
+            if (!pressed) {
+                pressed = walk(root).any { n ->
+                    val label = n.contentDescription?.toString() ?: n.text?.toString() ?: ""
+                    WhatsAppButtons.isCallButton(label, pendingWhatsAppVideo) && clickNode(n)
                 }
             }
-
-            // Now look for Voice Call or Video Call buttons in WhatsApp action bar
-            val targetIds = if (pendingWhatsAppVideo) {
-                listOf("com.whatsapp:id/video_call", "com.whatsapp:id/menuitem_video_call")
-            } else {
-                listOf("com.whatsapp:id/voice_call", "com.whatsapp:id/menuitem_call", "com.whatsapp:id/audio_call")
-            }
-
-            for (id in targetIds) {
-                val nodes = root.findAccessibilityNodeInfosByViewId(id)
-                for (n in nodes) {
-                    if (clickNode(n)) {
-                        handler.postDelayed({ attemptDialogConfirm() }, 600)
-                        return
-                    }
-                }
-            }
-
-            // Fallback by content descriptions
-            val targetDescs = if (pendingWhatsAppVideo) {
-                listOf("video call", "\u0935\u0940\u0921\u093f\u092f\u094b \u0915\u0949\u0932", "\u09ad\u09bf\u09a1\u09bf\u0993 \u0995\u09b2")
-            } else {
-                listOf("voice call", "call", "\u0915\u0949\u0932", "\u09ad\u09af\u09bc\u09c7\u09b8 \u0995\u09b2", "\u0995\u09b2", "audio call")
-            }
-
-            val queue = ArrayDeque<AccessibilityNodeInfo>()
-            queue.add(root)
-            while (queue.isNotEmpty()) {
-                val node = queue.removeFirst()
-                val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-                if (targetDescs.any { desc.contains(it) }) {
-                    if (clickNode(node)) {
-                        handler.postDelayed({ attemptDialogConfirm() }, 600)
-                        return
-                    }
-                }
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { queue.add(it) }
-                }
+            if (pressed) {
+                callButtonPressedAt = SystemClock.elapsedRealtime()
+                // No confirm dialog came: the call button press was enough.
+                handler.postDelayed({ if (pendingWhatsAppCall) finishCall(true) }, 2_500)
             }
         } catch (_: Exception) {}
     }
 
-    private fun attemptDialogConfirm() {
-        val root = rootInActiveWindow ?: return
-        val confirm = root.findAccessibilityNodeInfosByViewId("android:id/button1")
-        for (btn in confirm) {
-            clickNode(btn)
-        }
+    private fun finishCall(ok: Boolean) {
         pendingWhatsAppCall = false
+        callButtonPressedAt = 0
+        finishAuto(ok)
     }
 
-    private fun attemptSpeakerphone() {
-        val root = rootInActiveWindow ?: return
-        try {
-            val speakerKeywords = listOf("speaker", "स्पीकर", "লাউডস্পিকার", "speakerphone")
-            val queue = ArrayDeque<AccessibilityNodeInfo>()
-            queue.add(root)
-            while (queue.isNotEmpty()) {
-                val node = queue.removeFirst()
-                val desc = (node.contentDescription?.toString() ?: node.text?.toString() ?: "").lowercase()
-                if (speakerKeywords.any { desc.contains(it) } && node.isClickable) {
-                    clickNode(node)
-                    pendingSpeakerphone = false
-                    return
-                }
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { queue.add(it) }
-                }
+    private fun returnToSeema() {
+        // Back to Seema shortly after sending, so the user stays hands-free.
+        handler.postDelayed({
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
-        } catch (_: Exception) {}
+            if (launchIntent != null) runCatching { startActivity(launchIntent) } else performGlobalAction(GLOBAL_ACTION_HOME)
+        }, 400)
     }
 
-    private fun attemptYouTubePlay() {
-        val root = rootInActiveWindow ?: return
-        try {
-            val videoItems = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/thumbnail_layout")
-            for (item in videoItems) {
-                if (clickNode(item)) {
-                    pendingYouTubePlay = false
-                    return
-                }
-            }
-        } catch (_: Exception) {}
+    // ------------------------------------------------------------------ screen reading
+
+    /** The app the user is working in: the active window, or — when Seema is in front — another app window. */
+    private fun targetRoot(): AccessibilityNodeInfo? {
+        val active = rootInActiveWindow
+        if (active != null && active.packageName?.toString() != packageName) return active
+        return runCatching {
+            windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                .mapNotNull { it.root }
+                .firstOrNull { it.packageName?.toString() != packageName }
+        }.getOrNull()
     }
+
+    private fun label(pkg: String): String = runCatching {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(pkg)
+
+    /** Elements of the screen with the node each came from (for tapping / typing). */
+    private fun collect(root: AccessibilityNodeInfo): List<Pair<ScreenElement, AccessibilityNodeInfo>> {
+        val out = ArrayList<Pair<ScreenElement, AccessibilityNodeInfo>>()
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
+        queue.add(root to false)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < MAX_NODES && out.size < MAX_ELEMENTS) {
+            val (n, parentClickable) = queue.removeFirst()
+            visited++
+            if (!n.isVisibleToUser) continue
+            val clickable = n.isClickable || parentClickable
+            val cls = n.className?.toString().orEmpty()
+            val password = n.isPassword
+            val text = if (password) "" else (n.text?.toString() ?: n.contentDescription?.toString() ?: "").trim().take(200)
+            val hint = n.hintText?.toString()?.trim().orEmpty()
+            val kind = when {
+                n.isEditable -> ElementKind.INPUT
+                n.isScrollable && text.isEmpty() -> ElementKind.LIST
+                cls.contains("Button") || (clickable && text.isNotEmpty()) -> ElementKind.BUTTON
+                cls.contains("Image") -> ElementKind.IMAGE
+                else -> ElementKind.TEXT
+            }
+            if (text.isNotEmpty() || n.isEditable || password || n.isScrollable) {
+                out += ScreenElement(text, kind, clickable = clickable, editable = n.isEditable, scrollable = n.isScrollable, password = password, hint = hint) to n
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it to clickable) }
+        }
+        return out
+    }
+
+    private fun read(): Pair<ScreenSnapshot, List<Pair<ScreenElement, AccessibilityNodeInfo>>>? {
+        val root = targetRoot() ?: return null
+        val pkg = root.packageName?.toString() ?: return null
+        val items = collect(root)
+        return ScreenSnapshot(pkg, label(pkg), items.map { it.first }) to items
+    }
+
+    private fun doPerform(op: ScreenOp): Outcome {
+        if (op is ScreenOp.Back) {
+            return if (performGlobalAction(GLOBAL_ACTION_BACK)) Outcome(true, "पीछे गई।") else Outcome(false, "पीछे नहीं जा पाई।")
+        }
+        val (snap, items) = read() ?: return Outcome(false, NO_APP)
+        SensitiveScreens.reason(snap)?.let { return Outcome(false, "ये $it है — सुरक्षा के लिए मैं यहाँ कुछ नहीं करूँगी।") }
+        return when (op) {
+            is ScreenOp.Tap -> {
+                val target = ScreenMatch.candidates(snap, op.target).firstOrNull()
+                    ?: return Outcome(false, "स्क्रीन पर \"${op.target}\" नहीं मिला।")
+                val node = items.firstOrNull { it.first == target }?.second ?: return Outcome(false, "स्क्रीन बदल गई, \"${op.target}\" नहीं मिला।")
+                if (clickNode(node)) Outcome(true, "\"${target.text.ifBlank { target.hint }}\" दबाया।") else Outcome(false, "\"${op.target}\" दबाया नहीं जा सका।")
+            }
+            is ScreenOp.Scroll -> scroll(items, op.down)
+            is ScreenOp.Type -> {
+                val box = ScreenMatch.inputFor(snap, op.field) ?: return Outcome(false, "स्क्रीन पर लिखने की कोई जगह नहीं मिली।")
+                val node = items.firstOrNull { it.first == box }?.second ?: return Outcome(false, "लिखने की जगह नहीं मिली।")
+                if (node.isPassword) return Outcome(false, "पासवर्ड वाली जगह में मैं नहीं लिखती।")
+                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, op.text) }
+                if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) Outcome(true, "लिख दिया।") else Outcome(false, "यहाँ लिखा नहीं जा सका।")
+            }
+            ScreenOp.Back -> Outcome(false, "")
+        }
+    }
+
+    private fun scroll(items: List<Pair<ScreenElement, AccessibilityNodeInfo>>, down: Boolean): Outcome {
+        val list = items.filter { it.first.scrollable }.maxByOrNull { val r = Rect(); it.second.getBoundsInScreen(r); r.width() * r.height() }?.second
+        val action = if (down) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        if (list != null && list.performAction(action)) return Outcome(true, if (down) "नीचे स्क्रॉल किया।" else "ऊपर स्क्रॉल किया।")
+        // No scrollable list reported: swipe like a finger.
+        val dm = resources.displayMetrics
+        val x = dm.widthPixels / 2f
+        val (from, to) = if (down) dm.heightPixels * 0.7f to dm.heightPixels * 0.3f else dm.heightPixels * 0.3f to dm.heightPixels * 0.7f
+        val path = Path().apply { moveTo(x, from); lineTo(x, to) }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 350)).build()
+        return if (dispatchGesture(gesture, null, null)) Outcome(true, "स्क्रॉल किया।") else Outcome(false, "स्क्रॉल नहीं हो पाया।")
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private fun walk(root: AccessibilityNodeInfo): Sequence<AccessibilityNodeInfo> = sequence {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < MAX_NODES) {
+            val n = queue.removeFirst()
+            visited++
+            yield(n)
+            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it) }
+        }
+    }
+
+    private fun texts(root: AccessibilityNodeInfo): List<String> =
+        walk(root).mapNotNull { (it.text ?: it.contentDescription)?.toString() }.take(40).toList()
 
     private fun clickNode(node: AccessibilityNodeInfo): Boolean {
         var current: AccessibilityNodeInfo? = node
@@ -172,26 +246,9 @@ class SeemaAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun finishAutoSend() {
-        pendingWhatsAppAutoSend = false
-        // Return back to Seema AI after brief delay so user stays hands-free
-        handler.postDelayed({
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            if (launchIntent != null) {
-                startActivity(launchIntent)
-            } else {
-                performGlobalAction(GLOBAL_ACTION_HOME)
-            }
-        }, 1200)
-    }
-
     override fun onInterrupt() {
         pendingWhatsAppAutoSend = false
         pendingWhatsAppCall = false
-        pendingSpeakerphone = false
-        pendingYouTubePlay = false
     }
 
     override fun onDestroy() {
@@ -199,11 +256,15 @@ class SeemaAccessibilityService : AccessibilityService() {
         if (instance === this) instance = null
         pendingWhatsAppAutoSend = false
         pendingWhatsAppCall = false
-        pendingSpeakerphone = false
-        pendingYouTubePlay = false
     }
 
+    private data class Outcome(val ok: Boolean, val message: String)
+
     companion object {
+        private const val MAX_NODES = 800
+        private const val MAX_ELEMENTS = 150
+        private const val NO_APP = "अभी Seema की अपनी स्क्रीन सामने है। जिस ऐप पर काम करना है उसे खोलकर \"हे सीमा …\" बोलिए।"
+
         @Volatile
         var instance: SeemaAccessibilityService? = null
             private set
@@ -221,43 +282,49 @@ class SeemaAccessibilityService : AccessibilityService() {
             private set
 
         @Volatile
-        var pendingSpeakerphone: Boolean = false
+        private var pendingSendText: String? = null
+
+        /** Result of the last armed WhatsApp send/call: true = done, false = not done, null = still waiting. */
+        @Volatile
+        var autoResult: Boolean? = null
             private set
 
-        @Volatile
-        var pendingYouTubePlay: Boolean = false
-            private set
+        private var armSeq = 0
+
+        private fun finishAuto(ok: Boolean) {
+            autoResult = ok
+        }
 
         fun isRunning(): Boolean = instance != null
 
-        fun armWhatsAppAutoSend() {
+        /** Presses Send in the WhatsApp chat Seema opens next with [text]; gives up after 15 s. */
+        fun armWhatsAppAutoSend(text: String? = null) {
+            val seq = ++armSeq
+            pendingSendText = text
+            autoResult = null
             pendingWhatsAppAutoSend = true
             Handler(Looper.getMainLooper()).postDelayed({
-                pendingWhatsAppAutoSend = false
+                if (seq == armSeq && pendingWhatsAppAutoSend) {
+                    pendingWhatsAppAutoSend = false
+                    autoResult = false
+                }
             }, 15_000)
         }
 
         fun armWhatsAppCall(video: Boolean = false) {
+            val seq = ++armSeq
+            autoResult = null
+            instance?.callButtonPressedAt = 0
             pendingWhatsAppCall = true
             pendingWhatsAppVideo = video
             Handler(Looper.getMainLooper()).postDelayed({
-                pendingWhatsAppCall = false
-                pendingWhatsAppVideo = false
+                if (seq == armSeq && pendingWhatsAppCall) {
+                    pendingWhatsAppCall = false
+                    pendingWhatsAppVideo = false
+                    instance?.callButtonPressedAt = 0
+                    autoResult = false
+                }
             }, 15_000)
-        }
-
-        fun armSpeakerphone() {
-            pendingSpeakerphone = true
-            Handler(Looper.getMainLooper()).postDelayed({
-                pendingSpeakerphone = false
-            }, 10_000)
-        }
-
-        fun armYouTubePlay() {
-            pendingYouTubePlay = true
-            Handler(Looper.getMainLooper()).postDelayed({
-                pendingYouTubePlay = false
-            }, 10_000)
         }
 
         fun goHome(): Boolean {
@@ -278,5 +345,21 @@ class SeemaAccessibilityService : AccessibilityService() {
                 false
             }
         }
+
+        /** What is on the screen of the app in front (Seema's own screen excluded). */
+        fun readScreen(): ScreenRead {
+            val service = instance ?: return ScreenRead.Unavailable(NOT_ON)
+            return runCatching { service.read()?.first }.getOrNull()?.let { ScreenRead.Ok(it) }
+                ?: ScreenRead.Unavailable(NO_APP)
+        }
+
+        /** Does [op] on the app in front. Returns (done, message). The engine has already asked the user. */
+        fun perform(op: ScreenOp): Pair<Boolean, String> {
+            val service = instance ?: return false to NOT_ON
+            return runCatching { service.doPerform(op) }.getOrElse { Outcome(false, "स्क्रीन पर काम नहीं हो पाया: ${it.javaClass.simpleName}") }
+                .let { it.ok to it.message }
+        }
+
+        const val NOT_ON = "Seema की Accessibility चालू नहीं है। फ़ोन की Settings → Accessibility → Installed apps → Seema AI → On कीजिए।"
     }
 }

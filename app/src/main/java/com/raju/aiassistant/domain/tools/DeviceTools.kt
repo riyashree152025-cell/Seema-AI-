@@ -54,6 +54,17 @@ interface DeviceTools {
     fun shareTextFile(name: String, content: String): ToolOutcome = ToolOutcome.Failed("Saving files is not supported here.")
     suspend fun getLastCall(): ToolOutcome = ToolOutcome.Failed("Call log is not supported here.")
     fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
+    /** The app on screen, read by Seema's Accessibility service (never a password, banking or UPI screen). */
+    suspend fun readScreen(): com.raju.aiassistant.domain.screen.ScreenRead =
+        com.raju.aiassistant.domain.screen.ScreenRead.Unavailable("Screen reading is not supported here.")
+    /** Taps, goes back, scrolls or types on the app in front. Only called after the user said yes. */
+    suspend fun screenAction(op: com.raju.aiassistant.domain.screen.ScreenOp): ToolOutcome =
+        ToolOutcome.Failed("Screen control is not supported here.")
+    /**
+     * Waits for the result of the WhatsApp Send/Call button press Seema armed: true = pressed (and the
+     * message left the box), false = it did not happen, null = cannot be checked here.
+     */
+    suspend fun awaitAutoAction(timeoutMs: Long): Boolean? = null
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")

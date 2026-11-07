@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Seema AI Assistant</string>
     <string name="share_label">Ask Seema AI</string>
-    <string name="accessibility_service_description">Seema AI Accessibility Service enables taking screenshots and performing hands-free voice actions.</string>
+    <string name="accessibility_service_description">Seema AI reads the app on your screen only when you ask (\"Hey Seema, screen padho\"), and taps, scrolls, goes back or types only after you say yes. It presses WhatsApp Send/Call for chats Seema opens for you. It never reads password, banking or UPI screens, and nothing is stored.</string>
 </resources>

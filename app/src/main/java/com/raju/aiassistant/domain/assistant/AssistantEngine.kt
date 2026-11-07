@@ -60,6 +60,15 @@ import com.raju.aiassistant.domain.business.formatRupees
 import com.raju.aiassistant.domain.business.periodRange
 import com.raju.aiassistant.domain.business.summarizeExpenses
 import com.raju.aiassistant.domain.business.summarizeJourneys
+import com.raju.aiassistant.domain.screen.ElementKind
+import com.raju.aiassistant.domain.screen.RiskyButtons
+import com.raju.aiassistant.domain.screen.ScreenMatch
+import com.raju.aiassistant.domain.screen.ScreenOp
+import com.raju.aiassistant.domain.screen.ScreenRead
+import com.raju.aiassistant.domain.screen.ScreenSnapshot
+import com.raju.aiassistant.domain.screen.SensitiveScreens
+import com.raju.aiassistant.domain.screen.confirmReply
+import com.raju.aiassistant.domain.screen.describeForAi
 
 /** A question the user must answer before the assistant continues. */
 data class PendingRequest(
@@ -88,6 +97,12 @@ private const val HISTORY_CHARS_PER_REQUEST = 4_000
 private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
+/** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
+private const val AUTO_ACTION_WAIT_MS = 9_000L
+/** How long a spoken "haan / nahi" is listened for after "ये बटन दबा दूँ?". */
+private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
+/** Time the app on screen gets to react before Seema checks that the action really happened. */
+private const val SCREEN_VERIFY_DELAY_MS = 900L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
@@ -301,6 +316,7 @@ class AssistantEngine(
      */
     private fun onHeard(heard: String) {
         trace("recognized (${heard.length} chars)")
+        if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
         val text = heldVoiceText?.let { "$it $heard" } ?: heard
@@ -484,6 +500,11 @@ class AssistantEngine(
             onError = { err ->
                 if (gen != listenGen) { trace("stale error dropped"); return@start }
                 trace("listen error: ${err.message}")
+                // Waiting for "haan / nahi" to a screen action: keep listening until the window ends.
+                if (voiceConfirmOpen()) {
+                    scope.launch { delay(300); if (voiceConfirmOpen()) listen() }
+                    return@start
+                }
                 // A short yes/no window (message or call) ends quietly on silence: no loop.
                 if (replyHandler != null) { finishReadReply(null); return@start }
                 if (clock() < callCommandUntil) {
@@ -1436,7 +1457,8 @@ class AssistantEngine(
         val s = settings.value
         val sensitive = action is AssistantAction.Call || action is AssistantAction.WhatsApp ||
             action is AssistantAction.WhatsAppCall ||
-            action is AssistantAction.OpenApp || action is AssistantAction.PlayMusic || action is AssistantAction.Sms
+            action is AssistantAction.OpenApp || action is AssistantAction.PlayMusic || action is AssistantAction.Sms ||
+            action is AssistantAction.ScreenTap || action is AssistantAction.ScreenType
         if (s.safetyMode && sensitive) {
             report(action, ActionStatus.BLOCKED, "Safety Mode is on, so \"${action.label}\" was not performed. Turn it off with \"Turn off\" on the Home screen (or Settings → Safety Mode) to allow it.")
             return
@@ -1450,6 +1472,11 @@ class AssistantEngine(
             is AssistantAction.LastCall -> checkLastCall(action, speak)
             is AssistantAction.ReadNotification -> readNotification(action, speak)
             is AssistantAction.Screenshot -> takeScreenshot(action, speak)
+            is AssistantAction.ReadScreen -> readScreenAction(action, provider, model, system, speak)
+            is AssistantAction.ScreenTap -> screenTap(action, speak)
+            is AssistantAction.ScreenBack -> screenBack(action, speak)
+            is AssistantAction.ScreenScroll -> screenScroll(action, speak)
+            is AssistantAction.ScreenType -> screenType(action, speak)
             is AssistantAction.OpenApp -> report(action, tools.openApp(action.name))
             is AssistantAction.OpenSettings -> report(action, tools.openSettings(action.page))
             is AssistantAction.Battery -> {
@@ -1761,6 +1788,214 @@ class AssistantEngine(
         }
     }
 
+    // ---------------------------------------------------------------- screen control (Accessibility)
+
+    /** Until when a spoken "haan / nahi" answers the open screen-action question (0 = none open). */
+    @Volatile private var voiceConfirmUntil = 0L
+
+    private fun voiceConfirmOpen() = voiceConfirmUntil != 0L && clock() < voiceConfirmUntil && _pending.value != null
+
+    /** "haan" / "nahi" while Seema waits to tap, scroll, go back or type. */
+    private fun handleVoiceConfirm(heard: String): Boolean {
+        if (!voiceConfirmOpen()) return false
+        when (confirmReply(heard)) {
+            true -> { trace("screen confirm: yes"); decision?.complete(Decision.Approve()) }
+            false -> { trace("screen confirm: no"); decision?.complete(Decision.Deny) }
+            null -> { trace("screen confirm: not a yes/no, listening again"); listen() }
+        }
+        return true
+    }
+
+    /**
+     * Asks before any screen action: on the screen (when Seema is visible) and out loud with a short
+     * "haan / nahi" listen (when the user is talking, often from inside another app). No answer = no.
+     */
+    private suspend fun confirmScreenAction(title: String, question: String, speak: Boolean): Boolean {
+        val d = CompletableDeferred<Decision>()
+        decision = d
+        _pending.value = PendingRequest(PendingRequest.Kind.CONFIRM, title, question)
+        return try {
+            if (speak) {
+                say(question, allowBargeIn = false)
+                voiceConfirmUntil = clock() + SCREEN_CONFIRM_WINDOW_MS
+                _voiceSession.value = true
+                listen()
+            }
+            val answer = if (speak) withTimeoutOrNull(SCREEN_CONFIRM_WINDOW_MS + 3_000L) { d.await() } else d.await()
+            answer is Decision.Approve
+        } finally {
+            voiceConfirmUntil = 0L
+            if (decision === d) {
+                _pending.value = null
+                decision = null
+            }
+            if (speak) {
+                listenGen++
+                voice.stop()
+            }
+        }
+    }
+
+    /** The app on screen, or null after telling the user why not (no Accessibility, Seema in front, a sensitive screen). */
+    private suspend fun screenOrSay(action: AssistantAction, speak: Boolean, allowSensitive: Boolean = false): ScreenSnapshot? {
+        return when (val r = tools.readScreen()) {
+            is ScreenRead.Unavailable -> {
+                report(action, ActionStatus.FAILED, r.reason)
+                if (speak) say(r.reason)
+                null
+            }
+            is ScreenRead.Ok -> {
+                val why = if (allowSensitive) null else SensitiveScreens.reason(r.snapshot)
+                if (why != null) {
+                    val msg = phrase(lang(), "ये $why है — आपकी सुरक्षा के लिए मैं इसे न पढ़ूँगी, न छुऊँगी।", "এটা $why — আপনার সুরক্ষার জন্য আমি এটা পড়ব না, ছোঁব না।")
+                    trace("screen: sensitive, refused")
+                    report(action, ActionStatus.BLOCKED, msg)
+                    if (speak) say(msg)
+                    null
+                } else {
+                    r.snapshot
+                }
+            }
+        }
+    }
+
+    private suspend fun screenCancelled(action: AssistantAction, speak: Boolean) {
+        val msg = phrase(lang(), "ठीक है, कुछ नहीं किया।", "ঠিক আছে, কিছু করিনি।")
+        report(action, ActionStatus.CANCELLED, msg)
+        if (speak) say(msg)
+    }
+
+    /** After an action: look at the screen again and say honestly whether it really happened. */
+    private suspend fun verifyAndReport(
+        action: AssistantAction,
+        before: ScreenSnapshot,
+        outcome: ToolOutcome,
+        speak: Boolean,
+        done: String,
+        unchanged: String,
+        happened: (ScreenSnapshot) -> Boolean = { it.fingerprint != before.fingerprint },
+    ) {
+        if (outcome !is ToolOutcome.Done) {
+            report(action, outcome)
+            if (speak) say((outcome as? ToolOutcome.Failed)?.message ?: phrase(lang(), "ये काम नहीं हो पाया।", "কাজটা হয়নি।"))
+            return
+        }
+        delay(SCREEN_VERIFY_DELAY_MS)
+        // Unavailable afterwards = another screen (Seema's own, or a closed app): it did change.
+        val after = (tools.readScreen() as? ScreenRead.Ok)?.snapshot
+        val ok = after == null || happened(after)
+        trace("screen action ${action.javaClass.simpleName}: ${if (ok) "verified" else "no change seen"}")
+        report(action, if (ok) ActionStatus.SUCCESS else ActionStatus.FAILED, if (ok) done else unchanged)
+        if (speak) say(if (ok) done else unchanged)
+    }
+
+    private suspend fun readScreenAction(action: AssistantAction.ReadScreen, provider: AiProvider, model: String, system: String, speak: Boolean) {
+        val snap = screenOrSay(action, speak) ?: return
+        trace("screen read: ${snap.elements.size} elements")
+        _state.value = AssistantState.Thinking
+        val question = buildString {
+            appendLine("SCREEN — read just now by Seema's Accessibility service from the app in front (this is real):")
+            appendLine(snap.describeForAi())
+            appendLine()
+            append("User's question: ").appendLine(action.question ?: "Screen par kya hai? Chhote mein batao.")
+            append("Answer only from this screen text, short and natural (")
+            append(if (lang() == SeemaLanguage.BENGALI) "in Bengali" else "in Hindi")
+            append("). If a button should be pressed, name the exact button and ask \"दबा दूँ?\" — do not add any action tag now.")
+        }
+        val turns = listOf(com.raju.aiassistant.domain.ai.Turn(com.raju.aiassistant.domain.ai.TurnRole.USER, question))
+        when (val r = withTimeoutOrNull(AI_TIMEOUT_MS) { provider.chat(model, system, turns) }) {
+            is AiResult.Success -> {
+                val text = parseReply(r.value).text.ifBlank { phrase(lang(), "स्क्रीन पर ${snap.appLabel} खुला है।", "স্ক্রিনে ${snap.appLabel} খোলা।") }
+                report(action, ActionStatus.SUCCESS, "Screen padhi: ${snap.appLabel}")
+                record(ChatRole.ASSISTANT, text)
+                if (speak) say(text)
+            }
+            else -> {
+                val why = (r as? AiResult.Failure)?.message
+                val msg = phrase(lang(), "स्क्रीन पढ़ ली, पर समझा नहीं पाई" + (why?.let { ": $it" } ?: "।"), "স্ক্রিন পড়েছি, কিন্তু বোঝাতে পারিনি।")
+                report(action, ActionStatus.FAILED, msg)
+                if (speak) say(msg)
+            }
+        }
+    }
+
+    private suspend fun screenTap(action: AssistantAction.ScreenTap, speak: Boolean) {
+        val before = screenOrSay(action, speak) ?: return
+        val found = ScreenMatch.candidates(before, action.target)
+        if (found.isEmpty()) {
+            val visible = before.elements.filter { it.kind == ElementKind.BUTTON && it.text.isNotBlank() }.map { it.text }.distinct().take(6)
+            val msg = phrase(
+                lang(),
+                "स्क्रीन पर \"${action.target}\" नहीं मिला।" + (if (visible.isNotEmpty()) " दिख रहे बटन: ${visible.joinToString(", ")}।" else ""),
+                "স্ক্রিনে \"${action.target}\" পাইনি।" + (if (visible.isNotEmpty()) " দেখা যাচ্ছে: ${visible.joinToString(", ")}।" else ""),
+            )
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        if (found.size > 1) {
+            // Never guess between two different buttons.
+            val names = found.take(4).mapIndexed { i, e -> "${i + 1}. ${e.text.ifBlank { e.hint }}" }.joinToString(", ")
+            val msg = phrase(lang(), "\"${action.target}\" जैसे ${found.size} बटन हैं: $names — पूरा नाम बोलिए, कौन-सा दबाऊँ?", "\"${action.target}\" এর মতো ${found.size}টা বোতাম: $names — কোনটা চাপব?")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val el = found[0]
+        val name = el.text.ifBlank { el.hint }.ifBlank { action.target }
+        val warn = if (RiskyButtons.isRisky(name)) phrase(lang(), " ध्यान दें, ये बटन कुछ हटा या बदल सकता है।", " সাবধান, এটা কিছু মুছে বা বদলে দিতে পারে।") else ""
+        val q = phrase(lang(), "${before.appLabel} में \"$name\" दबा दूँ?$warn", "${before.appLabel}-এ \"$name\" চাপব?$warn")
+        if (!confirmScreenAction("Tap on screen?", q, speak)) return screenCancelled(action, speak)
+        verifyAndReport(
+            action, before, tools.screenAction(ScreenOp.Tap(name)), speak,
+            done = phrase(lang(), "\"$name\" दबा दिया — स्क्रीन बदल गई।", "\"$name\" চেপে দিয়েছি — স্ক্রিন বদলেছে।"),
+            unchanged = phrase(lang(), "\"$name\" दबाया, पर स्क्रीन में कोई बदलाव नहीं दिखा — शायद काम नहीं हुआ, एक बार देख लीजिए।", "\"$name\" চেপেছি, কিন্তু স্ক্রিনে কোনো বদল দেখিনি — একবার দেখে নিন।"),
+        )
+    }
+
+    private suspend fun screenBack(action: AssistantAction.ScreenBack, speak: Boolean) {
+        // Going back reveals nothing: allowed on any screen, still only after a yes.
+        val before = screenOrSay(action, speak, allowSensitive = true) ?: return
+        if (!confirmScreenAction("Go back?", phrase(lang(), "${before.appLabel} में पीछे जाऊँ?", "${before.appLabel}-এ পিছনে যাব?"), speak)) return screenCancelled(action, speak)
+        verifyAndReport(
+            action, before, tools.screenAction(ScreenOp.Back), speak,
+            done = phrase(lang(), "पीछे आ गई।", "পিছনে এসেছি।"),
+            unchanged = phrase(lang(), "पीछे जाने का बटन दबाया, पर स्क्रीन नहीं बदली।", "পিছনে যাওয়ার চেষ্টা করেছি, কিন্তু স্ক্রিন বদলায়নি।"),
+        )
+    }
+
+    private suspend fun screenScroll(action: AssistantAction.ScreenScroll, speak: Boolean) {
+        val before = screenOrSay(action, speak) ?: return
+        val dirHi = if (action.down) "नीचे" else "ऊपर"
+        val dirBn = if (action.down) "নিচে" else "উপরে"
+        if (!confirmScreenAction("Scroll?", phrase(lang(), "${before.appLabel} में $dirHi स्क्रॉल करूँ?", "${before.appLabel}-এ $dirBn স্ক্রল করব?"), speak)) return screenCancelled(action, speak)
+        verifyAndReport(
+            action, before, tools.screenAction(ScreenOp.Scroll(action.down)), speak,
+            done = phrase(lang(), "$dirHi स्क्रॉल कर दिया।", "$dirBn স্ক্রল করেছি।"),
+            unchanged = phrase(lang(), "स्क्रॉल की कोशिश की, पर स्क्रीन नहीं हिली — शायद $dirHi और कुछ नहीं है।", "স্ক্রল করার চেষ্টা করেছি, কিন্তু স্ক্রিন নড়েনি।"),
+        )
+    }
+
+    private suspend fun screenType(action: AssistantAction.ScreenType, speak: Boolean) {
+        val before = screenOrSay(action, speak) ?: return
+        val box = ScreenMatch.inputFor(before, action.field)
+        if (box == null) {
+            val msg = phrase(lang(), "इस स्क्रीन पर लिखने की कोई जगह नहीं मिली।", "এই স্ক্রিনে লেখার জায়গা পাইনি।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val where = box.hint.ifBlank { box.text }.ifBlank { phrase(lang(), "लिखने की जगह", "লেখার জায়গা") }
+        val q = phrase(lang(), "${before.appLabel} में \"$where\" में ये लिख दूँ: \"${action.text}\"?", "${before.appLabel}-এ \"$where\"-এ এটা লিখব: \"${action.text}\"?")
+        if (!confirmScreenAction("Type on screen?", q, speak)) return screenCancelled(action, speak)
+        verifyAndReport(
+            action, before, tools.screenAction(ScreenOp.Type(action.text, action.field)), speak,
+            done = phrase(lang(), "लिख दिया। भेजना हो तो बोलिए \"Send दबाओ\"।", "লিখে দিয়েছি। পাঠাতে চাইলে বলুন \"Send চাপো\"।"),
+            unchanged = phrase(lang(), "लिखने की कोशिश की, पर स्क्रीन पर लिखा हुआ नहीं दिखा।", "লেখার চেষ্টা করেছি, কিন্তু স্ক্রিনে দেখা যাচ্ছে না।"),
+            happened = { ScreenMatch.showsTyped(it, action.text) },
+        )
+    }
+
     private suspend fun takeScreenshot(action: AssistantAction.Screenshot, speak: Boolean) {
         when (val outcome = tools.takeScreenshot()) {
             is ToolOutcome.Done -> {
@@ -1832,12 +2067,19 @@ class AssistantEngine(
         }
         val outcome = tools.openWhatsApp(target?.number, action.text)
         report(action, outcome)
+        val autoArmed = outcome is ToolOutcome.Done && target?.name != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        // Verify: did Seema's Accessibility really press Send (and the message leave the box)?
+        val sent = if (autoArmed) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
+        if (sent == true) report(action, ActionStatus.SUCCESS, "WhatsApp: Send दबाया गया, मैसेज बॉक्स खाली हुआ (पक्का भेजा गया)।")
+        if (sent == false) report(action, ActionStatus.FAILED, "WhatsApp में Send बटन नहीं दबा पाई — WhatsApp में खुद Send दबाइए।")
         if (speak && outcome is ToolOutcome.Done) {
             // "Sent" only when it really goes out by itself (a known chat + Seema's accessibility service).
             val name = target?.name
             val autoSends = name != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
             say(
                 when {
+                    sent == true -> phrase(lang(), "हो गया राजू, $name को व्हाट्सएप पर मैसेज भेज दिया।", "হয়ে গেছে রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি।")
+                    sent == false -> phrase(lang(), "$name का व्हाट्सएप खुला है, पर Send नहीं दबा पाई — Send आप दबा दीजिए।", "$name এর হোয়াটসঅ্যাপ খোলা, কিন্তু Send চাপতে পারিনি — আপনি চাপুন।")
                     autoSends -> phrase(lang(), "हाँ राजू, $name को व्हाट्सएप पर मैसेज भेज रही हूँ!", "হ্যাঁ রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠাচ্ছি!")
                     name != null -> phrase(lang(), "$name के लिए व्हाट्सएप में मैसेज तैयार है, बस Send दबा दीजिए।", "$name এর জন্য হোয়াটসঅ্যাপে মেসেজ তৈরি, শুধু Send চাপুন।")
                     else -> phrase(lang(), "व्हाट्सएप खुल गया है, चैट चुनकर Send दबाइए।", "হোয়াটসঅ্যাপ খুলেছে, চ্যাট বেছে Send চাপুন।")
@@ -1870,11 +2112,19 @@ class AssistantEngine(
         }
         val outcome = tools.openWhatsAppCall(targetNumber, action.video)
         report(action, outcome)
+        val autoArmed = outcome is ToolOutcome.Done && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        // Verify: was WhatsApp's own call button (and only a call dialog) really pressed?
+        val pressed = if (autoArmed) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
+        if (pressed == true) report(action, ActionStatus.SUCCESS, "WhatsApp का कॉल बटन दबाया गया।")
+        if (pressed == false) report(action, ActionStatus.FAILED, "WhatsApp में कॉल बटन नहीं मिला/दबा — चैट में कॉल का बटन खुद दबाइए।")
         if (speak && outcome is ToolOutcome.Done) {
             val name = target?.name ?: action.contact ?: "जिओ"
             val typeHi = if (action.video) "वीडियो कॉल" else "कॉल"
             val typeBn = if (action.video) "ভিডিও কল" else "কল"
-            say(phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप $typeHi लगा दी है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপ $typeBn লাগিয়ে দিয়েছি!"))
+            say(
+                if (pressed == false) phrase(lang(), "$name की व्हाट्सएप चैट खुली है, पर $typeHi का बटन नहीं दबा पाई — आप दबा दीजिए।", "$name এর চ্যাট খোলা, কিন্তু $typeBn বোতাম চাপতে পারিনি — আপনি চাপুন।")
+                else phrase(lang(), "हाँ राजू, मैंने $name को व्हाट्सएप $typeHi लगा दी है!", "হ্যাঁ রাজু, আমি $name কে হোয়াটসঅ্যাপ $typeBn লাগিয়ে দিয়েছি!"),
+            )
         }
     }
 

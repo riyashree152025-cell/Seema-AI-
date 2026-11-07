@@ -158,6 +158,23 @@ sealed interface AssistantAction {
     data object Screenshot : AssistantAction {
         override val label get() = "Take screenshot"
     }
+
+    // ---- Screen control (Seema Accessibility): read first, act only after the user says yes
+    data class ReadScreen(val question: String?) : AssistantAction {
+        override val label get() = "Read the screen"
+    }
+    data class ScreenTap(val target: String) : AssistantAction {
+        override val label get() = "Tap \"$target\" on screen"
+    }
+    data object ScreenBack : AssistantAction {
+        override val label get() = "Go back"
+    }
+    data class ScreenScroll(val down: Boolean) : AssistantAction {
+        override val label get() = if (down) "Scroll down" else "Scroll up"
+    }
+    data class ScreenType(val text: String, val field: String?) : AssistantAction {
+        override val label get() = "Type on screen"
+    }
 }
 
 /** Repeat rule for a calendar event; [rrule] is the iCalendar RRULE Android's calendar understands. */
@@ -207,6 +224,13 @@ private fun parseAction(json: String): AssistantAction? {
         "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
         "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification
         "screenshot", "take_screenshot" -> AssistantAction.Screenshot
+        "read_screen", "screen", "what_is_on_screen", "look_screen" -> AssistantAction.ReadScreen(str("question"))
+        "tap", "click", "press", "tap_button" -> (str("target") ?: str("button") ?: str("text") ?: str("name"))?.let { AssistantAction.ScreenTap(it) }
+        "go_back", "back" -> AssistantAction.ScreenBack
+        "scroll", "scroll_down", "scroll_up" -> AssistantAction.ScreenScroll(
+            down = !(str("type").equals("scroll_up", ignoreCase = true) || str("direction").equals("up", ignoreCase = true)),
+        )
+        "type_text", "type", "enter_text", "write_text" -> str("text")?.let { AssistantAction.ScreenType(it, str("field")) }
         "call" -> if (str("contact") == null && str("number") == null) null else AssistantAction.Call(str("contact"), str("number"))
         "open_app" -> str("name")?.let { AssistantAction.OpenApp(it) }
         "search_web" -> str("query")?.let { AssistantAction.SearchWeb(it, str("topic")?.lowercase()?.takeIf { t -> t == "news" }) }

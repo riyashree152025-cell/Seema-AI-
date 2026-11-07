@@ -134,7 +134,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             "icici", "axis mobile", "kotak", "canara", "union bank",
             "pnb one", "bob world", "mobikwik", "freecharge", "zerodha", "groww"
         )
-        return financialKeywords.any { lowerPkg.contains(it) || lowerLabel.contains(it) }
+        return financialKeywords.any { lowerPkg.contains(it) || lowerLabel.contains(it) } ||
+            com.raju.aiassistant.domain.screen.SensitiveScreens.isFinancialApp(packageName, label)
     }
 
     override fun openApp(name: String): ToolOutcome {
@@ -227,7 +228,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         // pressing "send" there could reach the wrong person.
         val autoSendActive = normalized != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
         if (autoSendActive) {
-            com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend()
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend(text)
         }
         val msg = when {
             autoSendActive -> "WhatsApp संदेश सीधे भेजा जा रहा है (ऑटो-सेंड सक्रिय)।"
@@ -549,6 +550,26 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 ToolOutcome.Failed("Could not read call log: ${e.message}")
             }
         }
+    }
+
+    override suspend fun readScreen(): com.raju.aiassistant.domain.screen.ScreenRead = withContext(Dispatchers.Default) {
+        com.raju.aiassistant.accessibility.SeemaAccessibilityService.readScreen()
+    }
+
+    override suspend fun screenAction(op: com.raju.aiassistant.domain.screen.ScreenOp): ToolOutcome = withContext(Dispatchers.Default) {
+        val (ok, message) = com.raju.aiassistant.accessibility.SeemaAccessibilityService.perform(op)
+        if (ok) ToolOutcome.Done(message) else ToolOutcome.Failed(message)
+    }
+
+    override suspend fun awaitAutoAction(timeoutMs: Long): Boolean? {
+        if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) return null
+        var waited = 0L
+        while (waited < timeoutMs) {
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.autoResult?.let { return it }
+            kotlinx.coroutines.delay(200)
+            waited += 200
+        }
+        return com.raju.aiassistant.accessibility.SeemaAccessibilityService.autoResult
     }
 
     override fun takeScreenshot(): ToolOutcome {

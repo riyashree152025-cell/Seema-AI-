@@ -10,6 +10,28 @@ import org.junit.Test
 
 class ActionParserTest {
     @Test
+    fun screenControlActions() {
+        val raw = """<action>{"type":"read_screen","question":"kya likha hai"}</action>
+<action>{"type":"tap","target":"Send"}</action>
+<action>{"type":"go_back"}</action>
+<action>{"type":"scroll","direction":"up"}</action>
+<action>{"type":"type_text","text":"kal milte hain","field":"Message"}</action>"""
+        assertEquals(
+            listOf(
+                AssistantAction.ReadScreen("kya likha hai"),
+                AssistantAction.ScreenTap("Send"),
+                AssistantAction.ScreenBack,
+                AssistantAction.ScreenScroll(down = false),
+                AssistantAction.ScreenType("kal milte hain", "Message"),
+            ),
+            parseReply(raw).actions,
+        )
+        assertEquals(listOf(AssistantAction.ScreenScroll(down = true)), parseReply("""<action>{"type":"scroll"}</action>""").actions)
+        assertTrue(parseReply("""<action>{"type":"tap"}</action>""").actions.isEmpty()) // nothing named: nothing tapped
+        assertTrue(parseReply("""<action>{"type":"type_text"}</action>""").actions.isEmpty())
+    }
+
+    @Test
     fun extractsActionsAndCleansText() {
         val raw = """Theek hai, main Mom ko call lagati hoon.
 <action>{"type":"call","contact":"Mom"}</action>
