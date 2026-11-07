@@ -1536,9 +1536,9 @@ class AssistantEngineTest {
         )
         e.submit("time kya hua?")
         settle()
-        assertEquals(listOf("gemini-2.0-flash", "gemini-3.8-flash"), asked)
+        assertEquals(listOf("gemini-2.0-flash", "gemini-3.8-flash-lite"), asked)
         assertEquals("Saade paanch baje hain.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
-        assertEquals(ProviderId.GEMINI to "gemini-3.8-flash", remembered)
+        assertEquals(ProviderId.GEMINI to "gemini-3.8-flash-lite", remembered)
         assertNull(e.lastError.value)
     }
 }

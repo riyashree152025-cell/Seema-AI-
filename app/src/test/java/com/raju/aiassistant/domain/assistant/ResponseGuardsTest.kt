@@ -67,8 +67,10 @@ class ResponseGuardsTest {
     }
 
     @Test
-    fun geminiPrefersFlashNotLite() {
+    fun geminiPrefersFlashLiteForTheBiggerFreeQuota() {
         val gemini = listOf("gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "text-embedding-004").map { AiModel(it, it) }
-        assertEquals("gemini-2.5-flash", pickDefaultModel(ProviderId.GEMINI, gemini)?.id)
+        assertEquals("gemini-2.5-flash-lite", pickDefaultModel(ProviderId.GEMINI, gemini)?.id)
+        val noLite = listOf("gemini-2.5-pro", "gemini-2.5-flash").map { AiModel(it, it) }
+        assertEquals("gemini-2.5-flash", pickDefaultModel(ProviderId.GEMINI, noLite)?.id)
     }
 }

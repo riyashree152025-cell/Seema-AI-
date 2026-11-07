@@ -89,4 +89,10 @@ class ReactorStyleTest {
         assertEquals(0xFF00E5FF, taporiRimArgb(AssistantState.Listening, TaporiMood.SHARP))
         assertEquals(taporiAccentArgb(AssistantState.Idle), taporiRimArgb(AssistantState.Idle, TaporiMood.FUNNY))
     }
+
+    @Test
+    fun theFaceDrawsLessInBatterySaver() {
+        assertTrue(faceDotCount(richEffects = false) < faceDotCount(richEffects = true))
+        assertTrue(faceSparkCount(richEffects = false) < faceSparkCount(richEffects = true))
+    }
 }

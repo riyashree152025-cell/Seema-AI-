@@ -493,6 +493,7 @@ fun HomeScreen(
                         speechLevel = { speechLevel },
                         state = assistantState,
                         modifier = Modifier.fillMaxSize(),
+                        richEffects = profile.richEffects,
                         mood = if (state.tapori) com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply) else com.raju.aiassistant.ui.home.visuals.TaporiMood.NORMAL,
                     )
 

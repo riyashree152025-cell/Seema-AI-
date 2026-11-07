@@ -201,7 +201,29 @@ fun SettingsScreen(
                         currentScreen = "ai_detail"
                     },
                     onSelectTavily = { currentScreen = "tavily_detail" },
-                    personalityPanel = { PersonalityPanel(s, viewModel) }
+                    personalityPanel = { PersonalityPanel(s, viewModel) },
+                    // More AI backups: the app could already use these keys but had no place to enter them.
+                    moreKeys = {
+                        // Which AI and model really answer now, the last reply's route, and a real test.
+                        ActiveAiPanel(
+                            s,
+                            keySaved = { state.secrets[it.secret]?.configured == true },
+                            testing = { state.secrets[it.secret]?.busy == true },
+                            viewModel = viewModel,
+                        )
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.OPENROUTER_API_KEY,
+                            title = "OpenRouter API Key (backup AI, free models)",
+                            secretStatus = state.secrets[SecretId.OPENROUTER_API_KEY] ?: SecretStatus(),
+                            viewModel = viewModel
+                        )
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.DEEPSEEK_API_KEY,
+                            title = "DeepSeek API Key (backup AI)",
+                            secretStatus = state.secrets[SecretId.DEEPSEEK_API_KEY] ?: SecretStatus(),
+                            viewModel = viewModel
+                        )
+                    }
                 )
             }
             "ai_detail" -> {
@@ -523,6 +545,7 @@ fun BrainAiGridScreen(
     onSelectProvider: (ProviderId) -> Unit,
     onSelectTavily: () -> Unit,
     personalityPanel: @Composable () -> Unit = {},
+    moreKeys: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -729,6 +752,8 @@ fun BrainAiGridScreen(
                 )
             }
         }
+
+        moreKeys()
 
         personalityPanel()
 
@@ -1526,6 +1551,8 @@ fun VoiceSpeechScreen(
         }
 
         // Below your voice choices (which stay where they were): listening / wake word and offline voices.
+        // Check-up first: what is missing (permissions, Accessibility, battery, keys) with buttons to fix it.
+        DiagnosePanel(secrets)
         ListeningPanel(s, viewModel)
         // Deepgram: the key box (save / test / remove) and the choice of listening engine.
         VoiceEngineSecretCard(

@@ -22,7 +22,9 @@ import kotlin.math.sqrt
 
 private val HOT_WHITE = Color(0xFFFFF4F6)
 private val FACE_BASE = Color(0xFF0A0F1D)
-private const val DOTS = 720
+/** Dots of the ball and sparks around it: full, or half in battery saver / on a hot phone. */
+fun faceDotCount(richEffects: Boolean): Int = if (richEffects) 720 else 360
+fun faceSparkCount(richEffects: Boolean): Int = if (richEffects) 24 else 10
 private val PUPIL_DARK = Color(0xFF0A1423)
 
 /** The tone of her last reply, shown by the colour of the glowing rim. */
@@ -84,7 +86,11 @@ fun TaporiFace(
     state: AssistantState,
     modifier: Modifier = Modifier,
     mood: TaporiMood = TaporiMood.CALM,
+    /** False in battery saver or on a hot phone: half the dots and fewer sparks. */
+    richEffects: Boolean = true,
 ) {
+    val dots = faceDotCount(richEffects)
+    val sparks = faceSparkCount(richEffects)
     val expression = taporiExpressionFor(state)
     val rim by animateColorAsState(Color(taporiRimArgb(state, mood)), tween(400), label = "taporiRim")
     // Cyan listening, purple thinking, red speaking/default; the colour changes smoothly.
@@ -110,8 +116,8 @@ fun TaporiFace(
         val golden = PI * (3 - sqrt(5.0))
         // The ball swells a little with her voice (and breathes slightly at rest).
         val swell = 1f + 0.06f * level + 0.012f * sin(t * 1.6f)
-        for (i in 0 until DOTS) {
-            val y0 = 1.0 - 2.0 * (i + 0.5) / DOTS
+        for (i in 0 until dots) {
+            val y0 = 1.0 - 2.0 * (i + 0.5) / dots
             val r0 = sqrt(1.0 - y0 * y0)
             val a = golden * i
             val x1 = cos(a) * r0
@@ -138,7 +144,7 @@ fun TaporiFace(
         drawOval(rim.copy(alpha = 0.95f), rimTopLeft, rimSize, style = Stroke(unit * 0.018f))
 
         // Sparks that drift out from the edge of the ball and fade away, each on its own cycle.
-        for (i in 0 until 24) {
+        for (i in 0 until sparks) {
             val life = ((t * 0.35f + i * 0.137f) % 1f) // 0 born at the edge .. 1 gone
             val ang = i * 2.399f
             val dist = 1.0f + 0.22f * life

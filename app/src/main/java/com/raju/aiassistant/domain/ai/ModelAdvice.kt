@@ -31,9 +31,17 @@ object ModelAdvice {
         return m.isEmpty() || m.contains("omni", ignoreCase = true) || m.startsWith("gemini-1.") || m.startsWith("gemini-2.0")
     }
 
-    /** The newest plain "gemini-X.Y-flash" the key lists (not lite / preview / experimental), e.g. gemini-3.8-flash. */
-    fun newestGeminiFlash(models: List<AiModel>): AiModel? = models
-        .mapNotNull { m -> GEMINI_FLASH.find(m.id.trim())?.groupValues?.get(1)?.toDoubleOrNull()?.let { it to m } }
+    /** The default Gemini model: the newest Flash-Lite the key lists, else the newest plain Flash (not preview / experimental). */
+    fun newestGeminiFlash(models: List<AiModel>): AiModel? = newest(models, GEMINI_FLASH_LITE) ?: newest(models, GEMINI_FLASH)
+
+    /**
+     * The newest "gemini-X.Y-flash-lite" first: on the free plan Flash-Lite allows about 500
+     * requests a day, Flash only about 20 (the phone hit that limit by lunchtime).
+     */
+    private val GEMINI_FLASH_LITE = Regex("^(?:models/)?gemini-(\\d+(?:\\.\\d+)?)-flash-lite$")
+
+    private fun newest(models: List<AiModel>, pattern: Regex): AiModel? = models
+        .mapNotNull { m -> pattern.find(m.id.trim())?.groupValues?.get(1)?.toDoubleOrNull()?.let { it to m } }
         .maxByOrNull { it.first }?.second
 
     /** Non-null when the model is a poor fit for this assistant; shown next to the model in Settings and Chat. */
