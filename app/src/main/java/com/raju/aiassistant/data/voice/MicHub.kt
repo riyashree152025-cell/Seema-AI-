@@ -7,7 +7,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.ceil
@@ -271,15 +273,16 @@ class MicHub(
     }
 
     private suspend fun record() {
+        val me = currentCoroutineContext()[Job]
         val src = try {
             sourceFactory()
         } catch (e: Exception) {
-            recorderFailed("microphone unavailable")
+            recorderFailed("microphone unavailable", me)
             return
         }
         if (!src.open()) {
             src.close()
-            recorderFailed("microphone unavailable")
+            recorderFailed("microphone unavailable", me)
             return
         }
         synchronized(lock) { opens++ }
@@ -288,9 +291,14 @@ class MicHub(
         val scratch = ByteArray(MIC_FRAME_BYTES)
         try {
             recordLoop@ while (true) {
+                // AudioRecord.read blocks without suspending, so cancellation is never noticed by itself:
+                // without these checks every closed recorder kept reading, and on the phone each turn
+                // added one more stream (45, 97, 149 … 1000 frames/s) mixed into the next one.
+                currentCoroutineContext().ensureActive()
                 var got = 0
                 while (got < MIC_FRAME_BYTES) {
                     val n = src.read(scratch, got, MIC_FRAME_BYTES - got)
+                    currentCoroutineContext().ensureActive()
                     if (n <= 0) {
                         stoppedBy = "microphone read failed"
                         break@recordLoop
@@ -298,6 +306,8 @@ class MicHub(
                     got += n
                 }
                 synchronized(lock) {
+                    // Only the current reader may hand out frames, never one that was replaced.
+                    if (reader !== me) return
                     framesRead++
                     val frame = pool.removeLastOrNull()
                     if (frame == null) {
@@ -311,12 +321,14 @@ class MicHub(
         } finally {
             src.close()
         }
-        stoppedBy?.let { recorderFailed(it) }
+        stoppedBy?.let { recorderFailed(it, me) }
     }
 
     /** The recorder could not run: tell every holder once, and let the next lease try again. */
-    private fun recorderFailed(reason: String) {
+    private fun recorderFailed(reason: String, me: Job?) {
         val victims = synchronized(lock) {
+            // A reader that was already replaced must not take the new one down with it.
+            if (reader !== me) return
             reader = null
             leases.toList()
         }
