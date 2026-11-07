@@ -71,12 +71,53 @@ object ContactMatch {
         }.map { it.first }.ifEmpty {
             // Same sound in Hindi or English. Short skeletons ("m" for both Mummy and मम्मी) are too
             // common to trust, so they only match by the exact name above.
+            // Digits are not part of a skeleton, so "Airtel 01" must also have its "01" in the name —
+            // otherwise it sounded like "airtel money *400#" and that service code was offered to call.
             val sk = skeleton(query)
-            if (sk.length >= 3) contacts.filter { skeleton(it.name).contains(sk) } else emptyList()
+            val qd = digits(query)
+            if (sk.length >= 3) contacts.filter { skeleton(it.name).contains(sk) && (qd.isEmpty() || digits(it.name).contains(qd)) } else emptyList()
         }.ifEmpty {
             val qd = digits(query)
             if (qd.length >= 6 && qd.length * 2 >= q.length) contacts.filter { digits(it.number).takeLast(10).let { n -> n.length >= 6 && (n.endsWith(qd.takeLast(10)) || qd.endsWith(n)) } } else emptyList()
         }
         return result.distinctBy { normalize(it.name) to digits(it.number).takeLast(10) }
+    }
+
+    private val ORDINALS: List<Regex> = listOf(
+        "1|pehla|pahla|pehle|pahle|pehli|first|पहला|पहले|पहली|প্রথম|প্রথমটা",
+        "2|doosra|dusra|doosre|dusre|doosri|second|दूसरा|दूसरे|दूसरी|দ্বিতীয়|দ্বিতীয়টা",
+        "3|teesra|tisra|teesre|teesri|third|तीसरा|तीसरे|तीसरी|তৃতীয়",
+        "4|chautha|chauthe|chauthi|fourth|चौथा|चौथे|चौथी|চতুর্থ",
+    ).map { Regex("(^|\\s)(?:$it)(\\s|$)", RegexOption.IGNORE_CASE) }
+
+    /**
+     * Which of the offered [candidates] the user means by a spoken answer: a name ("राहुल शर्मा"),
+     * a number, or a position ("पहला", "doosra", "2"). Null when it is not clear — then she asks again.
+     */
+    fun pick(heard: String, candidates: List<Contact>): Contact? {
+        if (candidates.isEmpty()) return null
+        val t = heard.trim().trimEnd('.', '!', '?', '।').trim()
+        if (t.isEmpty()) return null
+        if (t.split(Regex("\\s+")).size <= 3) {
+            ORDINALS.forEachIndexed { i, r -> if (r.containsMatchIn(t) && i < candidates.size) return candidates[i] }
+        }
+        val found = best(t, candidates)
+        return found.singleOrNull()
+            ?: found.filter { normalize(it.name) == normalize(t) }.singleOrNull()
+    }
+}
+
+/** Phone numbers Seema may call or message: full numbers only, never "01", "121" or "*400#". */
+object PhoneNumbers {
+    fun isCallable(number: String): Boolean {
+        if (number.any { it == '*' || it == '#' }) return false
+        val d = number.map { ch ->
+            when (ch) {
+                in '०'..'९' -> '0' + (ch - '०')
+                in '০'..'৯' -> '0' + (ch - '০')
+                else -> ch
+            }
+        }.filter { it in '0'..'9' }
+        return d.size in 10..15
     }
 }

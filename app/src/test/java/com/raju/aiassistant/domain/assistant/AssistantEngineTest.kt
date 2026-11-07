@@ -96,7 +96,13 @@ class AssistantEngineTest {
             events += title to durationMinutes; eventStarts += startMillis; eventRules += rrule; return ToolOutcome.Done("Calendar opened")
         }
         override suspend fun findContacts(query: String) = contacts
-        override fun dial(contact: Contact, direct: Boolean): ToolOutcome { dialed += contact; return ToolOutcome.Done("Dialer opened for ${contact.name}") }
+        val dialedDirect = mutableListOf<Boolean>()
+        override fun dial(contact: Contact, direct: Boolean): ToolOutcome { dialed += contact; dialedDirect += direct; return ToolOutcome.Done("Dialer opened for ${contact.name}") }
+        /** What the phone reports after a direct call: true = call started, false = it did not. */
+        var callStarts: Boolean? = true
+        var canCallDirectly = true
+        override fun hasPermission(permission: String): Boolean = if (permission.endsWith("CALL_PHONE")) canCallDirectly else true
+        override suspend fun awaitCallStarted(timeoutMs: Long): Boolean? = callStarts
         override fun openApp(name: String) = ToolOutcome.Failed("App \"$name\" is not installed")
         override fun openSettings(page: SettingsPage) = ToolOutcome.Done("Opened")
         override fun batteryStatus() = ToolOutcome.Done("Battery 80%")
@@ -236,7 +242,7 @@ class AssistantEngineTest {
 
     @Test
     fun callNeedsConfirmationAndUsesChosenContact() = runTest {
-        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "98765 43210"), Contact("Mom Office", "011 2345")))
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "98765 43210"), Contact("Mom Office", "011 2345 6789")))
         val e = engine(AiResult.Success("""Calling. <action>{"type":"call","contact":"Mom"}</action>"""))
         e.submit("call mom")
         runCurrent()
@@ -246,7 +252,7 @@ class AssistantEngineTest {
         assertTrue(tools.dialed.isEmpty()) // nothing happens before confirmation
         e.resolve(Decision.Approve(pending.options[1]))
         settle()
-        assertEquals(listOf(Contact("Mom Office", "011 2345")), tools.dialed)
+        assertEquals(listOf(Contact("Mom Office", "011 2345 6789")), tools.dialed)
         assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
         assertNull(e.pending.value)
     }
@@ -749,7 +755,7 @@ class AssistantEngineTest {
         settle()
         assertEquals("Badhiya hoon.", speaker.spoken.last())
         assertEquals(AssistantState.Sleeping, e.state.value) // not open listening to the other app
-        assertEquals(2, wake.starts)
+        assertEquals(3, wake.starts) // asleep, kept listening during the name check, asleep again
 
         heard.text = "Hey Seema, time kya hua" // right after her answer (same clock): not thrown away
         wake.onUtterance!!(ByteArray(10))
@@ -916,6 +922,124 @@ class AssistantEngineTest {
         assertTrue(screenTurn, screenTurn.contains("[button] Send") && screenTurn.contains("kya likha hai"))
         assertEquals("Riya ne Hello likha hai.", speaker.spoken.last())
         assertTrue(tools.screenOps.isEmpty()) // reading never taps
+    }
+
+    // ---------------------------------------------------------------- Smart Contact Brain: calls
+
+    private val rahuls = listOf(
+        Contact("Rahul Kumar", "98000 00001"),
+        Contact("Rahul Sharma", "98000 00002"),
+        Contact("Rahul Verma", "98000 00003"),
+    )
+
+    @Test
+    fun aSavedContactIsCalledOnlyAfterYesAndOnlyAStartedCallIsASuccess() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rahul Sharma", "91234 56789")))
+        val e = engine()
+        e.submit("rahul sharma ko call karo", fromVoice = true)
+        runCurrent()
+        assertEquals("Rahul Sharma, नंबर 91234 56789 — कॉल लगाऊँ?", speaker.spoken.last()) // name + full number
+        assertTrue(tools.dialed.isEmpty()) // nothing before the yes
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf(Contact("Rahul Sharma", "91234 56789")), tools.dialed)
+        assertEquals(listOf(true), tools.dialedDirect) // really calls, not just the dialer
+        assertTrue(e.transcript.value.any { it.text.contains("कॉल शुरू हो गई") })
+        assertTrue(speaker.spoken.none { it.contains("लगा दी") })
+    }
+
+    @Test
+    fun sayingNahiCallsNobody() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rahul Sharma", "91234 56789")))
+        val e = engine()
+        e.submit("rahul sharma ko call karo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("nahi")
+        settle()
+        assertTrue(tools.dialed.isEmpty())
+        assertEquals("ठीक है, कॉल नहीं लगाई।", speaker.spoken.last())
+    }
+
+    @Test
+    fun anIncompleteNumberIsNeverCalled() = runTest {
+        // Seen on the phone: "Call 01 (01)?" and a dialer showing just "01".
+        val e = engine(AiResult.Success("""<action>{"type":"call","number":"01"}</action>"""))
+        e.submit("01 ko call karo", fromVoice = true)
+        settle()
+        assertTrue(tools.dialed.isEmpty())
+        assertNull(e.pending.value) // not even offered
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("पूरा फ़ोन नंबर नहीं"))
+    }
+
+    @Test
+    fun anOperatorServiceEntryIsNeverCalled() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("airtel money", "*400#"), Contact("Airtel Care", "121")))
+        val e = engine(AiResult.Success("""<action>{"type":"call","contact":"Airtel 01"}</action>"""))
+        e.submit("airtel 01 ko call karo", fromVoice = true)
+        settle()
+        assertTrue(tools.dialed.isEmpty())
+        assertNull(e.pending.value)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("पूरा फ़ोन नंबर नहीं मिला"))
+    }
+
+    @Test
+    fun aCallThatDoesNotStartIsNeverReportedAsDone() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rahul Sharma", "91234 56789")))
+        tools.callStarts = false
+        val e = engine()
+        e.submit("rahul sharma ko call karo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(1, tools.dialed.size)
+        assertTrue(e.transcript.value.none { it.text.contains("कॉल शुरू हो गई") })
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("पुष्टि फ़ोन से नहीं मिली"))
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
+    }
+
+    @Test
+    fun withoutPhonePermissionTheDialerOpensAndSheSaysWhoPresses() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rahul Sharma", "91234 56789")))
+        tools.canCallDirectly = false
+        val e = engine()
+        e.submit("rahul sharma ko call karo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf(false), tools.dialedDirect)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Call बटन आप दबाइए"))
+        assertTrue(speaker.spoken.none { it.contains("लगा दी") || it.contains("शुरू हो गई") })
+    }
+
+    @Test
+    fun threeRahulsAreAskedAboutAndTheSpokenOneIsConfirmed() = runTest {
+        tools.contacts = ContactLookup.Found(rahuls)
+        val e = engine()
+        e.submit("rahul ko call karo", fromVoice = true)
+        runCurrent()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("3 कॉन्टैक्ट मिले"))
+        voice.onResult!!("राहुल शर्मा")
+        runCurrent()
+        assertEquals("Rahul Sharma, नंबर 98000 00002 — कॉल लगाऊँ?", speaker.spoken.last())
+        assertTrue(tools.dialed.isEmpty())
+        voice.onResult!!("हाँ")
+        settle()
+        assertEquals(listOf(Contact("Rahul Sharma", "98000 00002")), tools.dialed)
+    }
+
+    @Test
+    fun whatsAppUsesTheSameContactBrain() = runTest {
+        tools.contacts = ContactLookup.Found(rahuls)
+        val e = engine(AiResult.Success("""<action>{"type":"whatsapp","contact":"Rahul","text":"Kal milte hain"}</action>"""))
+        e.submit("rahul ko whatsapp par kal milte hain bhejo", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        voice.onResult!!("doosra")
+        runCurrent()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("Rahul Sharma, नंबर 98000 00002"))
+        assertTrue(tools.whatsApps.isEmpty())
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf<Pair<String?, String>>("98000 00002" to "Kal milte hain"), tools.whatsApps)
     }
 
     @Test

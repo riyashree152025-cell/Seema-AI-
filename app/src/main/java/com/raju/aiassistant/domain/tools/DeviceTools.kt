@@ -65,6 +65,11 @@ interface DeviceTools {
      * message left the box), false = it did not happen, null = cannot be checked here.
      */
     suspend fun awaitAutoAction(timeoutMs: Long): Boolean? = null
+    /**
+     * Waits until the phone reports a call in progress (the call Seema placed has started):
+     * true = started, false = not within [timeoutMs], null = cannot be checked here.
+     */
+    suspend fun awaitCallStarted(timeoutMs: Long): Boolean? = null
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")

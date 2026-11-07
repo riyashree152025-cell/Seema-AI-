@@ -572,6 +572,21 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return com.raju.aiassistant.accessibility.SeemaAccessibilityService.autoResult
     }
 
+    override suspend fun awaitCallStarted(timeoutMs: Long): Boolean? {
+        val am = context.getSystemService(AudioManager::class.java) ?: return null
+        var waited = 0L
+        while (waited < timeoutMs) {
+            // The phone switches its audio to "in call" once a real call is dialling or connected.
+            if (am.mode == AudioManager.MODE_IN_CALL) return true
+            kotlinx.coroutines.delay(250)
+            waited += 250
+        }
+        // No call: undo the call-style audio set for the loudspeaker, so Seema's voice is not
+        // left on the earpiece.
+        if (am.mode == AudioManager.MODE_IN_COMMUNICATION) runCatching { am.mode = AudioManager.MODE_NORMAL }
+        return false
+    }
+
     override fun takeScreenshot(): ToolOutcome {
         if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
             val taken = com.raju.aiassistant.accessibility.SeemaAccessibilityService.takeScreenshot()

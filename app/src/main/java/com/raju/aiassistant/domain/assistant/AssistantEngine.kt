@@ -69,6 +69,9 @@ import com.raju.aiassistant.domain.screen.ScreenSnapshot
 import com.raju.aiassistant.domain.screen.SensitiveScreens
 import com.raju.aiassistant.domain.screen.confirmReply
 import com.raju.aiassistant.domain.screen.describeForAi
+import com.raju.aiassistant.domain.tools.ContactMatch
+import com.raju.aiassistant.domain.tools.PhoneNumbers
+import com.raju.aiassistant.domain.tools.normalizeForWhatsApp
 
 /** A question the user must answer before the assistant continues. */
 data class PendingRequest(
@@ -103,6 +106,8 @@ private const val AUTO_ACTION_WAIT_MS = 9_000L
 private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 /** Time the app on screen gets to react before Seema checks that the action really happened. */
 private const val SCREEN_VERIFY_DELAY_MS = 900L
+/** How long Seema waits for the phone to report that a call she placed has started. */
+private const val CALL_START_WAIT_MS = 8_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
@@ -649,13 +654,22 @@ class AssistantEngine(
         trace("wake audio: ${pcm.size} bytes")
         val t = transcriber
         if (t != null && t.isAvailable()) {
-            val heard = runCatching { t.transcribe(pcm) }.getOrNull()?.trim().orEmpty()
+            // Keep listening while her name is checked online (1-3 s on a slow connection): a
+            // "Hey Seema" said during the check used to fall into that gap and was never heard.
+            armWakeListener()
+            var raw = runCatching { t.transcribe(pcm) }.getOrNull()
+            if (raw == null && asleep) {
+                // The check itself failed (network): try once more rather than drop her name.
+                trace("wake: name check failed, trying once more")
+                raw = runCatching { t.transcribe(pcm) }.getOrNull()
+            }
+            val heard = raw?.trim().orEmpty()
             trace("wake heard: $heard")
             if (!asleep) return
             val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
             trace("wake request: $request")
             when {
-                request == null -> armWakeListener() // someone else talking, TV, noise: keep sleeping
+                request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
                 request.isBlank() -> { onWake(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
                 else -> {
                     onWake()
@@ -1418,6 +1432,8 @@ class AssistantEngine(
      * call. After the call hands-free comes back by itself ([resumeAfterCall]).
      */
     fun pauseForCall() {
+        // The call Seema just placed has really started: that is the proof she reports.
+        if (callToVerify != null) scope.launch { reportCallStarted() }
         callCommandUntil = 0
         if (pausedForCall) return
         pausedForCall = true
@@ -1641,31 +1657,74 @@ class AssistantEngine(
     }
 
     private suspend fun callContact(action: AssistantAction.Call, speak: Boolean = false) {
-        val candidates: List<Contact> = if (action.number != null && action.contact == null) {
-            listOf(Contact(action.number, action.number))
+        suspend fun endWith(msg: String, status: ActionStatus = ActionStatus.FAILED) {
+            report(action, status, msg)
+            if (speak) say(msg)
+        }
+        val spokenNumber = action.number != null && action.contact == null
+        val found: List<Contact> = if (spokenNumber) {
+            listOf(Contact(action.number.orEmpty(), action.number.orEmpty()))
         } else {
-            when (val found = lookup(action.contact ?: action.number.orEmpty())) {
+            when (val r = lookup(action.contact ?: action.number.orEmpty())) {
                 null -> { report(action, ActionStatus.CANCELLED, "Contacts permission was not granted, so I could not find ${action.contact}."); return }
-                else -> found
+                else -> r
             }
         }
+        if (found.isEmpty()) {
+            return endWith(phrase(lang(), "Contacts में \"${action.contact}\" नाम का कोई नंबर नहीं मिला। सेव किया हुआ नाम या पूरा नंबर बोलिए।", "কন্টাক্টে \"${action.contact}\" নামে কোনো নম্বর পাইনি। সেভ করা নাম বা পুরো নম্বর বলুন।"))
+        }
+        // Only full phone numbers: never "01", "121" or service codes like "*400#".
+        val candidates = found.filter { PhoneNumbers.isCallable(it.number) }
         if (candidates.isEmpty()) {
-            report(action, ActionStatus.FAILED, "No contact named \"${action.contact}\" was found.")
-            return
+            trace("call: no full number among ${found.size} match(es)")
+            return endWith(
+                if (spokenNumber) phrase(lang(), "\"${action.number}\" पूरा फ़ोन नंबर नहीं है, इसलिए कॉल नहीं लगाई। पूरा 10 अंकों का नंबर या कॉन्टैक्ट का नाम बोलिए।", "\"${action.number}\" পুরো ফোন নম্বর নয়, তাই কল করিনি। পুরো ১০ সংখ্যার নম্বর বা কন্টাক্টের নাম বলুন।")
+                else phrase(lang(), "\"${action.contact}\" के लिए कोई पूरा फ़ोन नंबर नहीं मिला (${found.first().number} जैसे सर्विस या छोटे नंबर पर कॉल नहीं लगाती)। Contacts में सेव पूरा नाम बोलिए।", "\"${action.contact}\" এর জন্য পুরো নম্বর পাইনি। কন্টাক্টে সেভ করা পুরো নাম বলুন।"),
+            )
         }
         val chosen = if (candidates.size == 1 && settings.value.directCalling) {
             candidates[0]
         } else {
-            confirmContact(
+            chooseContact(
                 title = "Call?",
                 message = if (candidates.size == 1) "Call ${candidates[0].name} (${candidates[0].number})?" else "Multiple contacts match \"${action.contact}\". Choose one to call:",
                 candidates = candidates,
+                query = action.contact ?: action.number,
+                speak = speak,
+                verbHi = "कॉल लगाऊँ",
+                verbBn = "কল করব",
             )
-        } ?: run { report(action, ActionStatus.CANCELLED, "Call cancelled."); return }
-        val outcome = tools.dial(chosen, settings.value.directCalling)
-        report(action, outcome)
-        if (speak && outcome is ToolOutcome.Done) {
-            say(phrase(lang(), "हाँ राजू, मैंने ${chosen.name} को कॉल लगा दी है!", "হ্যাঁ রাজু, আমি ${chosen.name} কে কল লাগিয়ে দিয়েছি!"))
+        } ?: return endWith(phrase(lang(), "ठीक है, कॉल नहीं लगाई।", "ঠিক আছে, কল করিনি।"), ActionStatus.CANCELLED)
+        // The user has confirmed the person and number: call straight away when Android allows it,
+        // otherwise open the dialer and say plainly that the green button is theirs to press.
+        val direct = tools.hasPermission("android.permission.CALL_PHONE")
+        if (speak && direct) say(phrase(lang(), "${chosen.name} को कॉल लगा रही हूँ।", "${chosen.name} কে কল করছি।"))
+        val outcome = tools.dial(chosen, direct)
+        if (outcome !is ToolOutcome.Done) {
+            report(action, outcome)
+            if (speak) say(phrase(lang(), "कॉल नहीं लग पाई।", "কল করা গেল না।"))
+            return
+        }
+        if (!direct) {
+            return endWith(
+                phrase(lang(), "${chosen.name} (${chosen.number}) का नंबर डायलर में डाल दिया है — कॉल के लिए हरा Call बटन आप दबाइए। सीधे कॉल के लिए Seema को Phone की अनुमति दीजिए।", "${chosen.name} (${chosen.number}) নম্বর ডায়ালারে দিয়েছি — কল করতে সবুজ Call বোতাম আপনি চাপুন।"),
+                ActionStatus.SUCCESS,
+            )
+        }
+        // "Call lag gayi" only when the phone itself reports a call in progress.
+        callToVerify = action to chosen
+        trace("call: placed, waiting for the phone to report the call")
+        when (tools.awaitCallStarted(CALL_START_WAIT_MS)) {
+            true -> reportCallStarted() // no speech: her voice would go into the call
+            false -> {
+                callToVerify = null
+                endWith(phrase(lang(), "${chosen.name} को कॉल शुरू होने की पुष्टि फ़ोन से नहीं मिली — एक बार फ़ोन पर देख लीजिए।", "${chosen.name} কে কল শুরু হওয়ার নিশ্চয়তা ফোন থেকে পাইনি — একবার ফোনে দেখে নিন।"))
+            }
+            null -> {
+                callToVerify = null
+                val msg = phrase(lang(), "${chosen.name} (${chosen.number}) को कॉल करने का निर्देश फ़ोन को दे दिया है — कॉल शुरू हुई या नहीं, यहाँ से जाँच नहीं हो सकती।", "${chosen.name} কে কল করার নির্দেশ ফোনকে দিয়েছি — কল শুরু হল কি না, এখান থেকে দেখা যাচ্ছে না।")
+                report(action, ActionStatus.SUCCESS, msg)
+            }
         }
     }
 
@@ -1795,45 +1854,131 @@ class AssistantEngine(
 
     private fun voiceConfirmOpen() = voiceConfirmUntil != 0L && clock() < voiceConfirmUntil && _pending.value != null
 
-    /** "haan" / "nahi" while Seema waits to tap, scroll, go back or type. */
+    /** How a spoken answer to the open question is understood (null = not an answer, listen again). */
+    private var voiceInterpret: ((String) -> Decision?)? = null
+    /** The last question was answered by voice (not by a tap on the screen). */
+    private var answeredByVoice = false
+
+    /** A spoken answer ("haan", "nahi", "Rahul Sharma", "doosra") to the question Seema just asked. */
     private fun handleVoiceConfirm(heard: String): Boolean {
         if (!voiceConfirmOpen()) return false
-        when (confirmReply(heard)) {
-            true -> { trace("screen confirm: yes"); decision?.complete(Decision.Approve()) }
-            false -> { trace("screen confirm: no"); decision?.complete(Decision.Deny) }
-            null -> { trace("screen confirm: not a yes/no, listening again"); listen() }
+        val interpret = voiceInterpret ?: return false
+        val d = interpret(heard)
+        if (d == null) {
+            trace("voice answer: not understood, listening again")
+            listen()
+        } else {
+            trace("voice answer: ${if (d is Decision.Approve) "yes" else "no"}")
+            answeredByVoice = true
+            decision?.complete(d)
         }
         return true
+    }
+
+    private fun yesNo(heard: String, option: Contact? = null): Decision? =
+        confirmReply(heard)?.let { yes -> if (yes) Decision.Approve(option) else Decision.Deny }
+
+    /**
+     * Shows [request] on the screen and, when the user is talking ([listenForAnswer]), also asks it
+     * out loud ([spoken]) and listens for the answer. No answer within the window = no.
+     */
+    private suspend fun askOutLoud(request: PendingRequest, spoken: String?, listenForAnswer: Boolean, interpret: (String) -> Decision?): Decision? {
+        val d = CompletableDeferred<Decision>()
+        decision = d
+        answeredByVoice = false
+        _pending.value = request
+        return try {
+            if (spoken != null) say(spoken, allowBargeIn = false)
+            if (listenForAnswer) {
+                voiceInterpret = interpret
+                voiceConfirmUntil = clock() + SCREEN_CONFIRM_WINDOW_MS
+                _voiceSession.value = true
+                listen()
+                withTimeoutOrNull(SCREEN_CONFIRM_WINDOW_MS + 3_000L) { d.await() }
+            } else {
+                d.await()
+            }
+        } finally {
+            voiceConfirmUntil = 0L
+            voiceInterpret = null
+            if (decision === d) {
+                _pending.value = null
+                decision = null
+            }
+            if (listenForAnswer) {
+                listenGen++
+                voice.stop()
+            }
+        }
     }
 
     /**
      * Asks before any screen action: on the screen (when Seema is visible) and out loud with a short
      * "haan / nahi" listen (when the user is talking, often from inside another app). No answer = no.
      */
-    private suspend fun confirmScreenAction(title: String, question: String, speak: Boolean): Boolean {
-        val d = CompletableDeferred<Decision>()
-        decision = d
-        _pending.value = PendingRequest(PendingRequest.Kind.CONFIRM, title, question)
-        return try {
-            if (speak) {
-                say(question, allowBargeIn = false)
-                voiceConfirmUntil = clock() + SCREEN_CONFIRM_WINDOW_MS
-                _voiceSession.value = true
-                listen()
-            }
-            val answer = if (speak) withTimeoutOrNull(SCREEN_CONFIRM_WINDOW_MS + 3_000L) { d.await() } else d.await()
-            answer is Decision.Approve
-        } finally {
-            voiceConfirmUntil = 0L
-            if (decision === d) {
-                _pending.value = null
-                decision = null
-            }
-            if (speak) {
-                listenGen++
-                voice.stop()
-            }
+    private suspend fun confirmScreenAction(title: String, question: String, speak: Boolean): Boolean =
+        askOutLoud(
+            PendingRequest(PendingRequest.Kind.CONFIRM, title, question),
+            spoken = question.takeIf { speak },
+            listenForAnswer = speak && voiceTurn,
+        ) { yesNo(it) } is Decision.Approve
+
+    /**
+     * Smart Contact Brain (on the phone only — contacts are never sent to the AI): one way for calls
+     * and WhatsApp to settle on the person. One match: "नाम, नंबर — कॉल लगाऊँ?". Several: she lists
+     * them and the user says the name or "पहला / दूसरा" (or taps one); a spoken choice is confirmed
+     * once more with the full number. Returns null when the user said no or did not answer.
+     */
+    private suspend fun chooseContact(
+        title: String,
+        message: String,
+        candidates: List<Contact>,
+        query: String?,
+        speak: Boolean,
+        verbHi: String,
+        verbBn: String,
+    ): Contact? {
+        val byVoice = speak && voiceTurn
+        fun question(c: Contact) = phrase(lang(), "${c.name}, नंबर ${c.number} — $verbHi?", "${c.name}, নম্বর ${c.number} — $verbBn?")
+        if (candidates.size == 1) {
+            val c = candidates[0]
+            val d = askOutLoud(
+                PendingRequest(PendingRequest.Kind.CONFIRM, title, message, options = candidates),
+                spoken = if (speak) question(c) else null,
+                listenForAnswer = byVoice,
+            ) { yesNo(it, c) }
+            return (d as? Decision.Approve)?.let { it.option ?: c }
         }
+        val names = candidates.take(4).mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
+        val q = phrase(
+            lang(),
+            "\"${query.orEmpty()}\" से ${candidates.size} कॉन्टैक्ट मिले: $names। किसे? नाम या पहला, दूसरा बोलिए।",
+            "\"${query.orEmpty()}\" নামে ${candidates.size} জন পেয়েছি: $names। কাকে? নাম বা প্রথম, দ্বিতীয় বলুন।",
+        )
+        val d = askOutLoud(
+            PendingRequest(PendingRequest.Kind.CONFIRM, title, message, options = candidates.take(8)),
+            spoken = if (speak) q else null,
+            listenForAnswer = byVoice,
+        ) { heard -> ContactMatch.pick(heard, candidates.take(8))?.let { Decision.Approve(it) } ?: if (confirmReply(heard) == false) Decision.Deny else null }
+        if (d !is Decision.Approve) return null
+        val chosen = d.option ?: return null
+        // A tap on a name is the confirmation; a spoken choice is checked once more with the number.
+        if (!answeredByVoice) return chosen
+        val again = askOutLoud(
+            PendingRequest(PendingRequest.Kind.CONFIRM, title, "${chosen.name} (${chosen.number})", options = listOf(chosen)),
+            spoken = question(chosen),
+            listenForAnswer = true,
+        ) { yesNo(it, chosen) }
+        return if (again is Decision.Approve) chosen else null
+    }
+
+    /** The call Seema placed and is waiting to see start (reported once, by whichever sees it first). */
+    private var callToVerify: Pair<AssistantAction, Contact>? = null
+
+    private suspend fun reportCallStarted() {
+        val (action, who) = callToVerify ?: return
+        callToVerify = null
+        report(action, ActionStatus.SUCCESS, "${who.name} (${who.number}) को कॉल शुरू हो गई — फ़ोन ने पुष्टि की।")
     }
 
     /** The app on screen, or null after telling the user why not (no Accessibility, Seema in front, a sensitive screen). */
@@ -2042,22 +2187,30 @@ class AssistantEngine(
                 return
             } else {
                 val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
-                // Several people with that name: ask out loud as well as on the screen.
-                if (found.size > 1 && speak) {
-                    val names = found.take(4).mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
-                    say(phrase(lang(), "\"${action.contact}\" नाम के ${found.size} लोग मिले हैं: $names। किसको भेजना है?", "\"${action.contact}\" নামে ${found.size} জন পেয়েছি: $names। কাকে পাঠাবো?"))
+                // Only numbers WhatsApp can use: never a service code ("*400#") or a short number.
+                val usable = found.filter { normalizeForWhatsApp(it.number) != null }
+                if (usable.isEmpty()) {
+                    val noNumber = phrase(lang(), "\"${action.contact}\" के लिए कोई पूरा फ़ोन नंबर नहीं मिला, इसलिए WhatsApp नहीं भेजा। Contacts में सेव पूरा नाम या नंबर बोलिए।", "\"${action.contact}\" এর জন্য পুরো নম্বর পাইনি, তাই হোয়াটসঅ্যাপ পাঠাইনি।")
+                    report(action, ActionStatus.FAILED, noNumber)
+                    if (speak) say(noNumber)
+                    return
                 }
                 // In the phone log: why a confirmation shows instead of sending directly.
-                trace("whatsapp: ${found.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
-                target = if (found.size == 1 && autoSend) {
-                    found[0]
+                trace("whatsapp: ${usable.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
+                target = if (usable.size == 1 && autoSend) {
+                    usable[0]
                 } else {
+                    val found = usable
                     val why = when {
                         found.size > 1 -> "\"${action.contact}\" naam se ${found.size} number mile — kis par bhejna hai?"
                         else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle)."
                     }
-                    confirmContact("Send on WhatsApp?", "$why\n\nYe message WhatsApp mein khulega, Send aap dabayenge:\n\n\"${action.text}\"", found)
-                        ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+                    chooseContact(
+                        "Send on WhatsApp?",
+                        "$why\n\nYe message WhatsApp mein khulega, Send aap dabayenge:\n\n\"${action.text}\"",
+                        usable, action.contact, speak,
+                        verbHi = "इन्हें WhatsApp भेजूँ", verbBn = "একে হোয়াটসঅ্যাপ পাঠাব",
+                    ) ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
                 }
             }
         }
@@ -2097,11 +2250,21 @@ class AssistantEngine(
             if (found.isNullOrEmpty()) {
                 note(if (found == null) "Contacts permission not granted." else "No contact named \"${action.contact}\".")
             } else {
-                target = if (found.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
-                    found[0]
+                val usable = found.filter { normalizeForWhatsApp(it.number) != null }
+                if (usable.isEmpty()) {
+                    report(action, ActionStatus.FAILED, "\"${action.contact}\" के लिए कोई पूरा फ़ोन नंबर नहीं मिला।")
+                    return
+                }
+                target = if (usable.size == 1 && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+                    usable[0]
                 } else {
-                    confirmContact(if (action.video) "WhatsApp video call?" else "WhatsApp call?", "Start WhatsApp ${if (action.video) "video call" else "call"} to:", found)
-                        ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp call cancelled."); return }
+                    chooseContact(
+                        if (action.video) "WhatsApp video call?" else "WhatsApp call?",
+                        "Start WhatsApp ${if (action.video) "video call" else "call"} to:",
+                        usable, action.contact, speak,
+                        verbHi = if (action.video) "वीडियो कॉल लगाऊँ" else "WhatsApp कॉल लगाऊँ",
+                        verbBn = if (action.video) "ভিডিও কল করব" else "হোয়াটসঅ্যাপ কল করব",
+                    ) ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp call cancelled."); return }
                 }
             }
         }
