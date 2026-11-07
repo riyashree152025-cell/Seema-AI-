@@ -139,6 +139,8 @@ fun SciFiHomeNavButton(
     iconColor: Color = SciFiCyanGlow,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Shows a small status dot: green = on/working, null = nothing to show. */
+    active: Boolean? = null,
 ) {
     Box(
         modifier = modifier
@@ -176,20 +178,45 @@ fun SciFiHomeNavButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(iconColor.copy(alpha = 0.2f))
-                    .border(1.3.dp, iconColor.copy(alpha = 0.8f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = title,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp)
+            Box(contentAlignment = Alignment.Center) {
+                // Soft glow behind the icon in its own colour.
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(
+                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.35f), Color.Transparent)),
+                            CircleShape
+                        )
                 )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(iconColor.copy(alpha = 0.38f), iconColor.copy(alpha = 0.10f))
+                            )
+                        )
+                        .border(1.4.dp, iconColor.copy(alpha = 0.9f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = title,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                if (active != null) {
+                    // Status dot in the corner: green when on, dim grey when off.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(9.dp)
+                            .background(if (active) Color(0xFF00E676) else Color(0xFF5D7083), CircleShape)
+                            .border(1.dp, Color(0xFF030A18), CircleShape)
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             Text(

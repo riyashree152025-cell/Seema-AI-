@@ -135,6 +135,20 @@ fun TaporiFace(
             )
         }
 
+        // Light inside the ball: a soft core glow, brighter while she speaks.
+        val core = 0.16f + 0.14f * level
+        drawCircle(
+            Brush.radialGradient(listOf(accent.copy(alpha = core), Color.Transparent), c, rx * 0.95f),
+            rx * 0.95f, c,
+        )
+        // Glossy highlight on the upper-left of the ball, drifting very slowly like a real reflection.
+        val hx = c.x - rx * (0.38f + 0.02f * sin(t * 0.5f))
+        val hy = c.y - ry * (0.42f + 0.015f * cos(t * 0.5f))
+        drawCircle(
+            Brush.radialGradient(listOf(HOT_WHITE.copy(alpha = 0.30f), Color.Transparent), Offset(hx, hy), rx * 0.42f),
+            rx * 0.42f, Offset(hx, hy),
+        )
+
         // Glowing rim around the ball; its colour shows the mood of her reply.
         val breathe = 0.75f + 0.25f * sin(t * 2.4f)
         val rimSize = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f)
@@ -209,6 +223,21 @@ private fun DrawScope.drawFace(
                 color = HOT_WHITE,
                 topLeft = Offset(ex - eyeW / 2f, eyeY - eyeH / 2f),
                 size = androidx.compose.ui.geometry.Size(eyeW, eyeH),
+            )
+            // Eyebrow: raised when she is curious or listening, lowered when thinking, worried on an error.
+            val browLift = when (expression) {
+                TaporiExpression.LISTEN -> -fy * 0.30f
+                TaporiExpression.OOPS -> -fy * 0.26f
+                TaporiExpression.EYE_ROLL -> -fy * 0.18f
+                else -> -fy * 0.22f
+            }
+            val browTilt = if (expression == TaporiExpression.OOPS) -side * fy * 0.02f else side * fy * 0.035f
+            drawLine(
+                color = accent,
+                start = Offset(ex - side * eyeW * 0.55f, eyeY + browLift + browTilt),
+                end = Offset(ex + side * eyeW * 0.55f, eyeY + browLift - browTilt),
+                strokeWidth = unit * 0.028f,
+                cap = StrokeCap.Round,
             )
             if (blink > 0.5f) { // hidden while the lid is down
                 val ix = ex + look.x * eyeW * 0.25f
