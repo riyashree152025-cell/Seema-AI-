@@ -86,6 +86,8 @@ private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
 private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
+/** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
+private const val BACKGROUND_GUARD_MS = 3_000L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
@@ -252,6 +254,12 @@ class AssistantEngine(
     private var lastActivityAt = 0L
     private var lastSpokeAt = 0L
     private var lastWakeAttemptAt = 0L
+    /**
+     * Another app is on screen (Seema opened WhatsApp, YouTube, the camera…). Then she must always
+     * end up waiting for "Hey Seema" — never deaf, and never listening openly to the other app's sound.
+     */
+    @Volatile private var inBackground = false
+    private var backgroundGuard: Job? = null
     /** Low-confidence recognitions in a row; she asks to repeat only for the first. */
     private var unclearInARow = 0
     /** First half of a sentence the user paused in ("… aur"), waiting for the rest. */
@@ -388,7 +396,7 @@ class AssistantEngine(
 
     private fun returnToStandby() {
         _voiceSession.value = false
-        if (settings.value.wakeWord && !settings.value.assistantPaused && settings.value.voiceMode != VoiceMode.SESSION && wakeListener !== NoWakeListener) {
+        if (canSleep() && (inBackground || settings.value.voiceMode != VoiceMode.SESSION)) {
             goToSleep()
         } else {
             _state.value = AssistantState.Idle
@@ -397,15 +405,19 @@ class AssistantEngine(
 
     /** App went to the background: keep wake detector alive if wakeWord is on (supported by SeemaWakeService). */
     fun suspendListening() {
+        inBackground = true
         conversationMode.exit()
         heldJob?.cancel()
         heldVoiceText = null
-        if (settings.value.wakeWord && !settings.value.assistantPaused && wakeListener !== NoWakeListener) {
-            // SeemaWakeService runs as a foreground service with microphone type, allowing continuous background wake word
-            if (!asleep) {
-                goToSleep()
-            }
+        if (canSleep()) {
+            // SeemaWakeService (a microphone foreground service) keeps the wake word alive while
+            // another app is on screen. A turn still running (her "WhatsApp khol diya") finishes
+            // first and then goes to sleep itself; the guard catches every other way out.
+            trace("app in background: standby for \"Hey Seema\"")
+            if (!asleep && !pausedForCall && job?.isActive != true) goToSleep()
+            startBackgroundGuard()
         } else {
+            trace("app in background: wake word off, not listening")
             if (asleep) {
                 leaveSleep()
             }
@@ -413,6 +425,41 @@ class AssistantEngine(
             listenGen++
             voice.stop()
             _state.value = AssistantState.Idle
+        }
+    }
+
+    /** Seema's own screen is visible again (ON_START): normal foreground behaviour. */
+    fun onAppForeground() {
+        if (inBackground) trace("app on screen")
+        inBackground = false
+        backgroundGuard?.cancel()
+        backgroundGuard = null
+    }
+
+    /** "Hey Seema" standby is possible: wake word on, not switched off, a listener exists. */
+    private fun canSleep(): Boolean =
+        settings.value.wakeWord && !settings.value.assistantPaused && wakeListener !== NoWakeListener
+
+    /**
+     * While another app is on screen, whatever path a turn ends on (an error, silence, a session
+     * timing out, a yes/no question nobody answered), Seema returns to waiting for her name.
+     */
+    private fun startBackgroundGuard() {
+        backgroundGuard?.cancel()
+        backgroundGuard = scope.launch {
+            while (inBackground) {
+                delay(BACKGROUND_GUARD_MS)
+                if (!inBackground) break
+                val st = _state.value
+                val busy = st == AssistantState.Thinking || st == AssistantState.Speaking ||
+                    st == AssistantState.Executing || st == AssistantState.Listening
+                if (canSleep() && !asleep && !pausedForCall && !busy && job?.isActive != true &&
+                    !_voiceSession.value && _pending.value == null && replyHandler == null && clock() >= callCommandUntil
+                ) {
+                    trace("background: back to \"Hey Seema\" standby")
+                    goToSleep()
+                }
+            }
         }
     }
 
@@ -447,7 +494,11 @@ class AssistantEngine(
                 }
                 val keepGoing = handsFree && _voiceSession.value && !settings.value.assistantPaused && !err.permissionDenied
                 val held = heldVoiceText
-                if (held != null && (err.noSpeech || err.unclear)) {
+                if (inBackground && held == null && canSleep() && (err.noSpeech || err.unclear)) {
+                    // Another app is on screen: no open listening to its sound, wait for her name.
+                    trace("background: nothing said, back to standby")
+                    goToSleep()
+                } else if (held != null && (err.noSpeech || err.unclear)) {
                     // The pause after "… aur" was the end after all: answer what was said.
                     heldVoiceText = null
                     heldJob?.cancel()
@@ -519,6 +570,11 @@ class AssistantEngine(
         trace("session ended after silence")
         handsFree = false
         _handsFreeActive.value = false
+        if (inBackground && canSleep()) {
+            // Behind another app the microphone must not go fully off: wait for "Hey Seema".
+            goToSleep()
+            return
+        }
         listenGen++
         voice.stop()
         conversationMode.exit()
@@ -562,7 +618,10 @@ class AssistantEngine(
             return
         }
         val now = clock()
-        if (now - lastSpokeAt < 4_000L) { // the tail of her own voice must not wake her
+        // The tail of her own voice must not wake her. When her name can be checked (Deepgram), the
+        // words decide instead: "Hey Seema …" said right after her answer used to be thrown away.
+        val nameCheckable = settings.value.wakeWord && transcriber?.isAvailable() == true
+        if (now - lastSpokeAt < 4_000L && !nameCheckable) {
             armWakeListener()
             return
         }
@@ -1097,7 +1156,12 @@ class AssistantEngine(
         val wasVoice = voiceTurn
         voiceTurn = false
         lastActivityAt = clock() // the sleep timer counts from the end of her answer
-        if (_voiceSession.value && (s.continuousConversation || handsFree) && !s.assistantPaused) {
+        if (inBackground && canSleep() && _voiceSession.value) {
+            // Another app is on screen: listen on only when she just asked something
+            // ("किसको भेजना है?"); otherwise wait for "Hey Seema", not for the app's sound.
+            val asked = lastSpoken?.trimEnd()?.let { it.endsWith("?") || it.endsWith("？") } == true && clock() - lastSpokeAt < 5_000L
+            if (asked) listen() else goToSleep()
+        } else if (_voiceSession.value && (s.continuousConversation || handsFree) && !s.assistantPaused) {
             listen()
         } else {
             _voiceSession.value = false
@@ -1359,7 +1423,7 @@ class AssistantEngine(
         handsFreeBeforeCall = false
         trace("phone call ended")
         if (settings.value.assistantPaused) return
-        if (wasHandsFree && handsFree) startHandsFree() else returnToStandby()
+        if (wasHandsFree && handsFree && !inBackground) startHandsFree() else returnToStandby()
     }
 
     fun interrupt() {
@@ -1959,8 +2023,9 @@ class AssistantEngine(
         _state.value = state
         _voiceSession.value = false
         scheduleErrorReset()
-        if (handsFree && !settings.value.assistantPaused && voice.isAvailable()) {
-            // Hands-free: show the error, then go back to listening.
+        if (handsFree && !inBackground && !settings.value.assistantPaused && voice.isAvailable()) {
+            // Hands-free: show the error, then go back to listening (behind another app the guard
+            // returns her to "Hey Seema" standby instead).
             scope.launch {
                 delay(4_500)
                 if (handsFree && !_voiceSession.value && job?.isActive != true && _pending.value == null) startVoice()

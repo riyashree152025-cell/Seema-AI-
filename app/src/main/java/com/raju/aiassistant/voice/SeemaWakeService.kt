@@ -43,6 +43,7 @@ class SeemaWakeService : Service() {
             stopSelf()
             return
         }
+        running = true
 
         runCatching {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -70,6 +71,7 @@ class SeemaWakeService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         super.onDestroy()
         runCatching { wakeLock?.release() }
         wakeLock = null
@@ -116,6 +118,10 @@ class SeemaWakeService : Service() {
     companion object {
         const val CHANNEL_ID = "seema_wake_standby_channel"
         const val NOTIFICATION_ID = 9021
+
+        /** True while the microphone foreground service runs: without it Android gives a background app only silence. */
+        @Volatile var running: Boolean = false
+            private set
 
         /** Call while the app is on screen. Needs the microphone permission (otherwise it is not started). */
         fun start(context: Context) {

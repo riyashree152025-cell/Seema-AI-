@@ -99,6 +99,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return all
     }
 
+    @android.annotation.SuppressLint("MissingPermission") // CALL_PHONE is checked (useDirect)
     override fun dial(contact: Contact, direct: Boolean): ToolOutcome {
         val uri = Uri.parse("tel:" + contact.number.filter { it.isDigit() || it == '+' })
         val useDirect = direct && granted(Manifest.permission.CALL_PHONE)
@@ -108,6 +109,15 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 it.mode = AudioManager.MODE_IN_COMMUNICATION
                 it.isSpeakerphoneOn = true
             }
+        }
+        if (useDirect) {
+            // Telecom places the call without opening a screen, so it also works while another
+            // app (WhatsApp, YouTube…) is on top; ACTION_CALL from behind would be ignored.
+            val placed = runCatching {
+                context.getSystemService(TelecomManager::class.java)?.placeCall(uri, android.os.Bundle())
+                    ?: error("no telecom")
+            }.isSuccess
+            if (placed) return ToolOutcome.Done("कॉल लगाई जा रही है ${contact.name} को (लाउडस्पीकर चालू)।")
         }
         val intent = Intent(if (useDirect) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri)
         return start(intent,
@@ -194,6 +204,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
         }
         if (isInstalled(pkg)) {
+            if (!canOpenScreens()) return blockedInBackground()
             if (tryStart(playFromSearch)) return ToolOutcome.Done("Asked ${service.label} to play \"$query\". Playback depends on the app and your subscription.")
             if (tryStart(Intent(Intent.ACTION_VIEW, Uri.parse(deepLink)).setPackage(pkg))) return ToolOutcome.Done("Opened ${service.label} search for \"$query\".")
         }
@@ -282,6 +293,15 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override suspend fun takePhoto(front: Boolean, save: Boolean): com.raju.aiassistant.domain.tools.PhotoResult {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             return com.raju.aiassistant.domain.tools.PhotoResult.NeedsPermission(Manifest.permission.CAMERA, "फोटो लेने के लिए कैमरा की अनुमति चाहिए।")
+        }
+        if (!appOnScreen()) {
+            // Android lets only the app on screen use the camera: bring Seema forward first.
+            if (openSeema() !is ToolOutcome.Done) {
+                return com.raju.aiassistant.domain.tools.PhotoResult.Failed(BACKGROUND_BLOCKED)
+            }
+            var waited = 0
+            while (!appOnScreen() && waited < 2_500) { kotlinx.coroutines.delay(100); waited += 100 }
+            kotlinx.coroutines.delay(300)
         }
         val jpeg = try {
             CameraCapture.capture(context, front)
@@ -400,6 +420,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         val q = Uri.encode(destination)
         val mapsMode = when (mode) { TravelMode.DRIVE -> "d"; TravelMode.WALK -> "w"; TravelMode.BIKE -> "b"; TravelMode.TRANSIT -> "d" }
         val webMode = when (mode) { TravelMode.DRIVE -> "driving"; TravelMode.WALK -> "walking"; TravelMode.BIKE -> "bicycling"; TravelMode.TRANSIT -> "transit" }
+        if (!canOpenScreens()) return blockedInBackground()
         val ok = (mode != TravelMode.TRANSIT && isInstalled(MAPS_PKG) &&
             tryStart(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$q&mode=$mapsMode")).setPackage(MAPS_PKG))) ||
             tryStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$q&travelmode=$webMode"))) ||
@@ -431,8 +452,28 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         false
     }
 
-    private fun start(intent: Intent, success: String, failure: String): ToolOutcome =
-        if (tryStart(intent)) ToolOutcome.Done(success) else ToolOutcome.Failed(failure)
+    /** Seema's own screen is visible (not only her background microphone service). */
+    private fun appOnScreen(): Boolean = runCatching {
+        val info = android.app.ActivityManager.RunningAppProcessInfo()
+        android.app.ActivityManager.getMyMemoryState(info)
+        info.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+    }.getOrDefault(true)
+
+    /**
+     * Android 10+ silently ignores screens opened by an app that is behind another app — Seema
+     * would say "khol diya" and nothing opens. A running Seema Accessibility service is the
+     * exemption that lets her open apps from anywhere.
+     */
+    private fun canOpenScreens(): Boolean =
+        appOnScreen() || com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+
+    private fun blockedInBackground(): ToolOutcome.Failed = ToolOutcome.Failed(BACKGROUND_BLOCKED)
+
+    private fun start(intent: Intent, success: String, failure: String): ToolOutcome = when {
+        !canOpenScreens() -> blockedInBackground()
+        tryStart(intent) -> ToolOutcome.Done(success)
+        else -> ToolOutcome.Failed(failure)
+    }
 
     override fun openWebPage(url: String): ToolOutcome =
         start(Intent(Intent.ACTION_VIEW, Uri.parse(url)), "Opened $url", "No browser could open $url")
@@ -562,6 +603,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.goHome()) {
             return ToolOutcome.Done("Navigated to Home screen.")
         }
+        if (!canOpenScreens()) return blockedInBackground()
         return try {
             val intent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
@@ -575,6 +617,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     override fun openSeema(): ToolOutcome {
+        if (!canOpenScreens()) return blockedInBackground()
         return try {
             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -592,5 +635,6 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     private companion object {
         const val MAPS_PKG = "com.google.android.apps.maps"
+        const val BACKGROUND_BLOCKED = "सीमा पीछे से (दूसरे ऐप के ऊपर) स्क्रीन नहीं खोल सकती। Settings → Accessibility में Seema AI चालू कीजिए, या सीमा की स्क्रीन खोलकर फिर बोलिए।"
     }
 }

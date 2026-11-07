@@ -715,9 +715,71 @@ class AssistantEngineTest {
         runCurrent()
         assertEquals(AssistantState.Sleeping, e.state.value)
         e.suspendListening()
+        e.onAppForeground()
         e.startHandsFree() // app opened again
         assertEquals(AssistantState.Listening, e.state.value)
         assertTrue(wake.stops >= 2)
+    }
+
+    @Test
+    fun behindAnotherAppASessionNeverGoesDeaf() = runTest {
+        // "Hey Seema, WhatsApp kholo": WhatsApp comes on top. Every later "Hey Seema …" must still
+        // work, also straight after her answer, and after each answer she waits for her name again.
+        settings.value = settings.value.copy(wakeWord = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.SESSION)
+        val wake = FakeWake()
+        val heard = FakeTranscriber("Seema, kya haal hai")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Badhiya hoon."), AiResult.Success("Saade paanch baje hain."))
+        e.startVoice()
+        e.suspendListening() // another app is on screen now
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertEquals(1, wake.starts)
+
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertEquals("Badhiya hoon.", speaker.spoken.last())
+        assertEquals(AssistantState.Sleeping, e.state.value) // not open listening to the other app
+        assertEquals(2, wake.starts)
+
+        heard.text = "Hey Seema, time kya hua" // right after her answer (same clock): not thrown away
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertEquals("Saade paanch baje hain.", speaker.spoken.last())
+        assertEquals(AssistantState.Sleeping, e.state.value)
+    }
+
+    @Test
+    fun behindAnotherAppAQuestionIsListenedForOnceThenHerName() = runTest {
+        settings.value = settings.value.copy(wakeWord = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.SESSION)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("Seema, message bhejo"), AiResult.Success("किसको भेजना है?"))
+        e.startVoice()
+        e.suspendListening()
+        wake.onUtterance!!(ByteArray(10))
+        settle()
+        assertEquals(AssistantState.Listening, e.state.value) // waits for the answer
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value) // nobody answered: back to "Hey Seema"
+    }
+
+    @Test
+    fun behindAnotherAppAnyDeadEndReturnsToStandby() = runTest {
+        settings.value = settings.value.copy(wakeWord = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.SESSION)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("x"))
+        e.startVoice()
+        e.suspendListening()
+        e.stop() // any path that leaves her idle without a wake listener
+        assertEquals(AssistantState.Idle, e.state.value)
+        advanceTimeBy(4_000)
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+
+        e.onAppForeground() // on screen again: no more background guard
+        e.stop()
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(AssistantState.Idle, e.state.value)
     }
 
     @Test

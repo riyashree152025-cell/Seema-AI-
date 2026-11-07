@@ -35,15 +35,16 @@ private data class Check(val label: String, val ok: Boolean, val fixHint: String
 
 /**
  * "Seema ki jaanch": everything Seema needs, on one card — microphone, contacts, notification
- * access, Seema Accessibility (WhatsApp auto-send), battery "Unrestricted", and the keys for
+ * access, Seema Accessibility (WhatsApp auto-send, opening apps from behind another app), the
+ * "Hey Seema" wake word and its background microphone service, battery "Unrestricted", and the keys for
  * listening (Deepgram) and the brain (Gemini / Groq). Each missing item has a button to the
  * right Android screen. Nothing is sent anywhere; it only reads the phone's settings.
  */
 @Composable
-fun DiagnosePanel(secrets: Map<SecretId, SecretStatus>) {
+fun DiagnosePanel(secrets: Map<SecretId, SecretStatus>, wakeWord: Boolean) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
-    val checks = remember(refresh, secrets) { checksFor(context, secrets) }
+    val checks = remember(refresh, secrets, wakeWord) { checksFor(context, secrets, wakeWord) }
 
     HudPanel(title = "Seema ki jaanch (Diagnose)") {
         val missing = checks.count { !it.ok }
@@ -79,7 +80,7 @@ fun DiagnosePanel(secrets: Map<SecretId, SecretStatus>) {
     }
 }
 
-private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>): List<Check> {
+private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>, wakeWord: Boolean): List<Check> {
     fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
     val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
     val battery = context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
@@ -90,7 +91,9 @@ private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>): L
         Check("Microphone", granted(Manifest.permission.RECORD_AUDIO), "Permissions mein Microphone Allow karein", appDetails),
         Check("Contacts", granted(Manifest.permission.READ_CONTACTS), "Permissions mein Contacts Allow karein", appDetails),
         Check("Notification padhna", notificationAccess, "Notification access mein Seema AI ON karein", Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)),
-        Check("WhatsApp auto-send (Accessibility)", accessibility, "Accessibility mein Seema AI ON karein (pehle App info → ⋮ → Allow restricted settings)", Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
+        Check("Accessibility (WhatsApp auto-send, doosre app se kaam)", accessibility, "Accessibility mein Seema AI ON karein (pehle App info → ⋮ → Allow restricted settings)", Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
+        Check("\"Hey Seema\" se jaagna", wakeWord, "Neeche \"Sirf naam se jaage\" ON karein", null),
+        Check("Doosre app ke upar sunna (notification \"सीमा AI तैयार है\")", com.raju.aiassistant.voice.SeemaWakeService.running, "Seema ON karke app ek baar kholiye (Mic Allow ho)", appDetails),
         Check("Battery Unrestricted", battery, "Battery → Unrestricted chunein", appDetails),
         Check("Deepgram key (sunna, \"Hey Seema\")", key(SecretId.DEEPGRAM_API_KEY), "Neeche Deepgram key save karein", null),
         Check("AI key (Gemini ya Groq)", key(SecretId.GEMINI_API_KEY) || key(SecretId.GROQ_API_KEY), "AI & Brain mein key save karein", null),

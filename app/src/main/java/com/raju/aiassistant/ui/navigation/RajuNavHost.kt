@@ -82,6 +82,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> scope.launch {
+                    container.engine.onAppForeground()
                     val s = container.settingsRepository.settings.first() // stored values, not the startup default
                     if (!s.assistantPaused) {
                         if (container.voiceInput.hasPermission()) {
@@ -93,7 +94,10 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                         }
                     }
                 }
-                Lifecycle.Event.ON_STOP -> container.engine.suspendListening()
+                Lifecycle.Event.ON_STOP -> {
+                    android.util.Log.i("SeemaWake", "app in background, standby service running=${com.raju.aiassistant.voice.SeemaWakeService.running}")
+                    container.engine.suspendListening()
+                }
                 else -> Unit
             }
         }

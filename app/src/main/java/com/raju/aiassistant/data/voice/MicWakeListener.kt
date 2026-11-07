@@ -83,6 +83,10 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         val preRoll = ArrayDeque<ByteArray>()
         var noise = -1.0
         var loudFrames = 0
+        // Every ~5 s: was there any sound at all? Pure zeros mean Android is blocking the microphone
+        // for a background app (no microphone foreground service, or another app holds the mic).
+        var windowFrames = 0
+        var windowMax = 0.0
         try {
             recorder.startRecording()
             activeRecorder = recorder
@@ -94,6 +98,16 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
                 preRoll.addLast(frame)
                 if (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst()
                 val level = rms(frame)
+                windowMax = max(windowMax, level)
+                if (++windowFrames >= LEVEL_WINDOW_FRAMES) {
+                    if (windowMax < 1.0) {
+                        android.util.Log.w("SeemaWake", "Mic gives only silence for 5 s — Android is blocking the background microphone (standby service running=${com.raju.aiassistant.voice.SeemaWakeService.running}, or another app/call holds the mic)")
+                    } else {
+                        android.util.Log.d("SeemaWake", "standby mic ok, loudest level ${windowMax.toInt()} (noise ${noise.toInt()})")
+                    }
+                    windowFrames = 0
+                    windowMax = 0.0
+                }
                 noise = when {
                     noise < 0 -> level
                     level < noise -> noise * 0.9 + level * 0.1
@@ -169,5 +183,6 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
         const val MIN_SPEECH_MS = 160
         const val END_SILENCE_MS = 650
         const val MAX_UTTERANCE_MS = 7_500
+        const val LEVEL_WINDOW_FRAMES = 5_000 / FRAME_MS
     }
 }

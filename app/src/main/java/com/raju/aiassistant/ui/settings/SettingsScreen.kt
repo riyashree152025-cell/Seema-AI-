@@ -1552,7 +1552,7 @@ fun VoiceSpeechScreen(
 
         // Below your voice choices (which stay where they were): listening / wake word and offline voices.
         // Check-up first: what is missing (permissions, Accessibility, battery, keys) with buttons to fix it.
-        DiagnosePanel(secrets)
+        DiagnosePanel(secrets, wakeWord = s.wakeWord)
         ListeningPanel(s, viewModel)
         // Deepgram: the key box (save / test / remove) and the choice of listening engine.
         VoiceEngineSecretCard(
