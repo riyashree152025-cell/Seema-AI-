@@ -82,10 +82,27 @@ class SharedSpeechTest {
 
     @Test
     fun silenceAloneEndsWithNoSpeechAfterTheTimeout() {
-        val c = SpeechCapture()
-        val outcomes = List(360) { c.feed(silence) }
+        // Real-time frames: one frame every 20 ms of the fake clock.
+        var now = 0L
+        val c = SpeechCapture { now }
+        val outcomes = List(360) { now += 20; c.feed(silence) }
         assertEquals(SpeechCapture.Outcome.NoSpeech, outcomes.first { it != null })
-        assertNull(outcomes[299]) // the decision comes at the timeout, not before
+        assertNull(outcomes[298]) // the decision comes at the 7 s of real time, not before
+    }
+
+    @Test
+    fun framesArrivingFarFasterThanRealTimeDoNotEndTheTurnEarly() {
+        // The phone's case: 350 "frames" (7 s of audio by count) arrive within about 0.4 s of real time.
+        var now = 0L
+        val c = SpeechCapture { now }
+        val first = List(350) { now += 1; c.feed(silence) }.firstOrNull { it != null }
+        assertNull(first) // not "no speech": the real time has not passed
+        assertTrue(c.earlyNoSpeech >= 1)
+
+        // Only once 7 s of real time have passed is "no speech" believed.
+        val decided = (0 until 10_000).firstNotNullOfOrNull { _ -> now += 1; c.feed(silence) }
+        assertEquals(SpeechCapture.Outcome.NoSpeech, decided)
+        assertTrue(now >= MIN_NO_SPEECH_WALL_MS)
     }
 
     // ---------------------------------------------------------------- hand-over on the hub
@@ -160,7 +177,7 @@ class SharedSpeechTest {
         var result: ByteArray? = ByteArray(1)
         var finished = false
         launch {
-            result = hub.recordSpeech()
+            result = hub.recordSpeech(clock = { testScheduler.currentTime })
             finished = true
         }
         advanceTimeBy(8_000)

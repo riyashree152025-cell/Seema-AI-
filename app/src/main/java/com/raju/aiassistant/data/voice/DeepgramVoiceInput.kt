@@ -118,7 +118,7 @@ class DeepgramVoiceInput(
         val shared = hub
         if (shared == null || !useHub()) return record()
         return try {
-            shared.recordSpeech()
+            shared.recordSpeech(log = { android.util.Log.i("SeemaVoice", it) })
         } catch (e: SharedMicException) {
             throw MicrophoneException(e.message ?: "microphone unavailable")
         }

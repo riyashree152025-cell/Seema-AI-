@@ -133,6 +133,12 @@ internal fun cooldownMsFor(kind: FailureKind): Long = when (kind) {
 }
 
 private const val MAX_LISTEN_FAILURES = 3
+/** A "no speech" sooner than this is the recogniser failing, not a quiet room. */
+private const val FAST_NO_SPEECH_MS = 1_000L
+/** After this many fast "no speech" in a row, the re-listen waits 2 s instead of 300 ms. */
+private const val BACKOFF_AFTER_FAST_NO_SPEECH = 3
+/** After this many, the hands-free loop stops and she waits (standby or the Mic button). */
+private const val MAX_FAST_NO_SPEECH = 6
 /** Chat messages kept in memory (older ones stay in the database). */
 private const val MAX_TRANSCRIPT_IN_MEMORY = 300
 /** A voice message ending in one of these was cut off by a pause: wait for the rest. */
@@ -274,6 +280,10 @@ class AssistantEngine(
     private var lastActivityAt = 0L
     private var lastSpokeAt = 0L
     private var lastWakeAttemptAt = 0L
+    /** When the current listen started (real time): tells a quick "no speech" from a normal quiet turn. */
+    private var listenStartedAt = 0L
+    /** "No speech" errors in a row that came back quickly. */
+    private var fastNoSpeech = 0
     /**
      * Another app is on screen (Seema opened WhatsApp, YouTube, the camera…). Then she must always
      * end up waiting for "Hey Seema" — never deaf, and never listening openly to the other app's sound.
@@ -321,6 +331,7 @@ class AssistantEngine(
      */
     private fun onHeard(heard: String) {
         trace("recognized (${heard.length} chars)")
+        fastNoSpeech = 0
         if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
@@ -499,6 +510,7 @@ class AssistantEngine(
         // without headphones call-style audio would play her voice from the earpiece.
         if (!callStyleAllowed()) conversationMode.exit()
         trace("listen ${if (handsFree) "hands-free" else "tap"} ${if (voice.capturesInApp()) "in-app" else "system"} recogniser")
+        listenStartedAt = clock()
         voice.start(
             lang().tag,
             onResult = { heard -> if (gen == listenGen) onHeard(heard) else trace("stale result dropped") },
@@ -536,10 +548,22 @@ class AssistantEngine(
                     if (keepGoing) relisten(500) else returnToStandby()
                 } else if (keepGoing && (err.noSpeech || err.unclear)) {
                     // Silence is normal in hands-free mode: listen again, or doze off after a quiet while.
+                    // A "no speech" that comes back almost at once is not a quiet room: the recogniser is
+                    // failing (seen on a phone: 0.4 s each time). Back off, and stop the loop after several.
+                    fastNoSpeech = if (err.noSpeech && clock() - listenStartedAt < FAST_NO_SPEECH_MS) fastNoSpeech + 1 else 0
                     if (sleepDue()) {
                         // Always-listening sleeps and waits for her name; a session simply ends (mic off).
                         if (settings.value.voiceMode == VoiceMode.ALWAYS) goToSleep() else endSession()
-                    } else relisten(300)
+                    } else if (fastNoSpeech >= MAX_FAST_NO_SPEECH) {
+                        trace("no speech again and again: listening loop paused")
+                        fastNoSpeech = 0
+                        handsFree = false
+                        _handsFreeActive.value = false
+                        _hint.value = phrase(lang(), "मुझे आवाज़ नहीं सुनाई दे रही। Mic दबाकर या \"हे सीमा\" बोलकर फिर कहिए।", "আমি শুনতে পাচ্ছি না। Mic চেপে বা \"হে সীমা\" বলে আবার বলুন।")
+                        returnToStandby()
+                    } else {
+                        relisten(if (fastNoSpeech >= BACKOFF_AFTER_FAST_NO_SPEECH) 2_000 else 300)
+                    }
                 } else if (err.transient && _voiceSession.value && listenFailures < MAX_LISTEN_FAILURES) {
                     // Recogniser busy/restarting: harmless, try again shortly (also in tap-to-talk).
                     listenFailures++
