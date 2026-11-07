@@ -116,6 +116,11 @@ data class UserSettings(
     val sleepAfterSeconds: Int = 60,
     /** While asleep, wake only when called by name ("Seema …"); off = any speech wakes her. */
     val wakeWord: Boolean = true,
+    /**
+     * Phase 1 (MicHub): the wake listener takes the shared microphone instead of its own recorder.
+     * Off by default: the original recorder runs exactly as before until this is switched on.
+     */
+    val micHub: Boolean = false,
     /** Morning briefing (journeys, yesterday's spending) and the Sunday expense report as notifications. */
     val businessReminders: Boolean = true,
     /** Smart power: animations slow down and stop when nobody is using the app. */

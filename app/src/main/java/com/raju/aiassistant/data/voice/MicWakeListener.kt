@@ -26,13 +26,25 @@ import kotlin.math.sqrt
  * over that utterance including half a second from before the start. Runs only while the app is on
  * screen in hands-free mode; no audio leaves the phone unless the engine sends that utterance on.
  */
-class MicWakeListener(private val context: Context, private val scope: CoroutineScope) : WakeListener {
+class MicWakeListener(
+    private val context: Context,
+    private val scope: CoroutineScope,
+    /** The shared microphone (MicHub). Used only while [useHub] is true; otherwise the recorder below runs as before. */
+    hub: MicHub? = null,
+    private val useHub: () -> Boolean = { false },
+) : WakeListener {
     private var job: Job? = null
+    private val hubListener: HubWakeListener? = hub?.let { HubWakeListener(it) }
 
     override fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit) {
         stop()
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             onError()
+            return
+        }
+        val shared = hubListener
+        if (shared != null && useHub()) {
+            shared.start(onUtterance, onError)
             return
         }
         job = scope.launch(Dispatchers.IO) {
@@ -43,6 +55,7 @@ class MicWakeListener(private val context: Context, private val scope: Coroutine
     }
 
     override fun stop() {
+        hubListener?.stop() // a no-op unless the shared microphone was used
         job?.cancel()
         job = null
         // Release the microphone immediately: the speech recogniser usually starts right after this,

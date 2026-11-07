@@ -154,10 +154,19 @@ class AppContainer(context: Context) {
         }
     }
     /** Standby: offline "Hey Seema" when downloaded and "wake by name" is on; otherwise the voice detector (+ Deepgram name check). */
+    /** The one shared microphone reader (Phase 1). Only used while the micHub setting is on. */
+    val micHub by lazy {
+        com.raju.aiassistant.data.voice.MicHub(
+            appScope,
+            { com.raju.aiassistant.data.voice.AudioRecordFrameSource() },
+            ringFrames = com.raju.aiassistant.data.voice.ringFramesFor(com.raju.aiassistant.data.voice.minMicBufferBytes()),
+            log = { android.util.Log.i("SeemaVoice", it) },
+        )
+    }
     val wakeListener by lazy {
         com.raju.aiassistant.data.voice.SwitchingWakeListener(
             kwsWakeListener,
-            MicWakeListener(appContext, appScope),
+            MicWakeListener(appContext, appScope, micHub) { currentSettings.value.micHub },
             preferCloud = { online.value && deepgramTranscriber.isAvailable() },
         ) { currentSettings.value.wakeWord }
     }
@@ -168,8 +177,14 @@ class AppContainer(context: Context) {
             onCall = { phase ->
                 when (phase) {
                     com.raju.aiassistant.core.audio.CallPhase.RINGING -> engine.onCallRinging()
-                    com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> engine.pauseForCall()
-                    com.raju.aiassistant.core.audio.CallPhase.NONE -> engine.resumeAfterCall()
+                    com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> {
+                        engine.pauseForCall()
+                        if (currentSettings.value.micHub) micHub.pauseForCall()
+                    }
+                    com.raju.aiassistant.core.audio.CallPhase.NONE -> {
+                        engine.resumeAfterCall()
+                        if (currentSettings.value.micHub) micHub.resumeAfterCall()
+                    }
                 }
             },
             onBecomingNoisy = { engine.interrupt() },
