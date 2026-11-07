@@ -47,18 +47,22 @@ class HubWakeListener(private val hub: MicHub) : WakeListener {
         }
         val lease = synchronized(this) { old.lease }
         lease?.release()
+        hub.closeIfIdle()
     }
 
     private fun onFrame(s: Session, frame: ByteArray) {
         val utterance = synchronized(this) { if (s.finished) null else s.detector.feed(frame) } ?: return
         val lease = finish(s) ?: return
         lease.release()
+        // The recognizer that follows opens its own AudioRecord: the shared one must be closed first.
+        hub.closeIfIdle()
         s.onUtterance(utterance)
     }
 
     private fun fail(s: Session) {
         val lease = finish(s) ?: return
         lease.release()
+        hub.closeIfIdle()
         s.onError()
     }
 

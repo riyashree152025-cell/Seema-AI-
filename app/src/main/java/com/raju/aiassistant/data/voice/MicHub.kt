@@ -151,6 +151,20 @@ class MicHub(
         return lease
     }
 
+    /**
+     * Closes the recorder right now when nobody holds a lease. For a consumer whose hand-over must not
+     * overlap another AudioRecord (a speech recognizer that opens its own): no idle grace.
+     */
+    fun closeIfIdle() {
+        synchronized(lock) {
+            if (leases.isEmpty()) {
+                closeJob?.cancel()
+                closeJob = null
+                closeRecorderLocked()
+            }
+        }
+    }
+
     /** A phone call is using the microphone: stop reading now. Leases stay, they just get no frames. */
     fun pauseForCall() {
         synchronized(lock) {

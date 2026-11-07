@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,6 +79,9 @@ class HubWakeListenerTest {
         assertEquals(68 * MIC_FRAME_BYTES, delivered[0].size)
         assertEquals(0, errors)
         assertEquals(0, hub.stats().leases) // the wake lease ended with the utterance
+        // No idle grace here: the recognizer that follows opens its own AudioRecord, so the shared one is closed now.
+        assertFalse(hub.stats().recording)
+        assertEquals(1, source.closed)
     }
 
     @Test
