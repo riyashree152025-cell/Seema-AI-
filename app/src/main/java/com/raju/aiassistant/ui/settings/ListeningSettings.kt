@@ -41,6 +41,12 @@ fun ListeningPanel(s: UserSettings, viewModel: SettingsViewModel) {
 
         ToggleRow("Sirf naam se jaage (\"Hey Seema\" / \"Seema\")", s.wakeWord, viewModel::setWakeWord)
 
+        ToggleRow("Shared Mic Engine (Beta)", s.micHub, viewModel::setMicHub)
+        Text(
+            "Reduces microphone conflicts and wake-up lag using centralized MicHub",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
+
         Text("Offline \"Hey Seema\" (${m.sizeBytes / 1_000_000} MB, ${m.license})", style = MaterialTheme.typography.titleMedium)
         Text(
             "Phone par hi \"Hey Seema\" pehchanta hai — internet ya Deepgram key nahi chahiye, kuch record ya bheja nahi jata. " +
