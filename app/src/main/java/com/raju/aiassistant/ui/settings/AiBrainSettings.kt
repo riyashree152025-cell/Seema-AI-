@@ -2,7 +2,7 @@ package com.raju.aiassistant.ui.settings
 
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
 import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
-import com.raju.aiassistant.ui.home.visuals.ArcReactor
+import com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer
 import com.raju.aiassistant.ui.components.LocalHudEffects
 import com.raju.aiassistant.domain.model.AssistantState
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -130,7 +130,7 @@ fun ActiveAiPanel(s: UserSettings, keySaved: (ProviderId) -> Boolean, testing: (
 }
 
 /**
- * Decorative only: a small copy of Home's Arc Reactor at the top of the AI Brain card. Calm and
+ * Decorative only: a small copy of Home's Living Eye at the top of the AI Brain card. Calm and
  * low-cost (few particles, 24 fps, still when animations are off); red tones when the AI fails.
  */
 @Composable
@@ -139,6 +139,10 @@ private fun BrainArc(status: ProviderStatus) {
     val time = rememberAnimationTime(running = animate, maxFps = 24)
     val style = reactorStyleFor(if (status.isError) AssistantState.Error else AssistantState.Idle)
     Box(Modifier.fillMaxWidth().clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
-        ArcReactor(style, particleCount = 18, richEffects = false, time = { time.floatValue }, speechLevel = { 0f }, modifier = Modifier.size(112.dp))
+        LivingEyeVisualizer(
+            time = { time.floatValue }, speechLevel = { 0f }, micLevel = { 0f },
+            state = if (status.isError) AssistantState.Error else AssistantState.Idle,
+            modifier = Modifier.size(112.dp), richEffects = false, accentArgb = style.primaryArgb,
+        )
     }
 }

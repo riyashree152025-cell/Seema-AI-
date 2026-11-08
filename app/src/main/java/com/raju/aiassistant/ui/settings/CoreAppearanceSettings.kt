@@ -30,8 +30,7 @@ import com.raju.aiassistant.domain.model.CoreAppearance
 import com.raju.aiassistant.domain.model.UserSettings
 import com.raju.aiassistant.ui.components.HudPanel
 import com.raju.aiassistant.ui.components.hudFrame
-import com.raju.aiassistant.ui.home.visuals.ArcReactor
-import com.raju.aiassistant.ui.home.visuals.HoloCore
+import com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer
 import com.raju.aiassistant.ui.home.visuals.holoCoreStyleFor
 import com.raju.aiassistant.ui.home.visuals.reactorStyleFor
 import com.raju.aiassistant.ui.home.visuals.rememberAnimationTime
@@ -71,8 +70,8 @@ internal fun CoreAppearanceSettings(s: UserSettings, autoResolvesTo: CoreAppeara
             ) {
                 Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
                     val speech = { if (st == AssistantState.Speaking) abs(sin(time.floatValue * 9f)) * 0.8f else 0f }
-                    if (shows == CoreAppearance.MODERN) HoloCore(style, 10, false, { time.floatValue }, speech, Modifier.size(104.dp))
-                    else ArcReactor(style, 10, false, { time.floatValue }, speech, Modifier.size(104.dp))
+                    // Home shows the Living Eye for every choice; the choice tints it.
+                    LivingEyeVisualizer({ time.floatValue }, speech, { 0f }, st, Modifier.size(104.dp), richEffects = false, accentArgb = style.primaryArgb)
                 }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

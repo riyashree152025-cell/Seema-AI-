@@ -68,6 +68,8 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     private val preview = c.debugPreview
 
     val speechLevel: StateFlow<Float> = engine.speechLevel
+    /** What the shared microphone hears, 0..1 (stays 0 when the Shared Mic Engine is off). */
+    val micLevel: StateFlow<Float> = c.micHub.level
 
     private val engineView = combine(engine.state, engine.listening, engine.partialTranscript, engine.transcript, engine.handsFreeActive) { s, l, p, t, h ->
         EngineView(s, l, p, t.lastOrNull { it.role == ChatRole.ASSISTANT }?.text, h)

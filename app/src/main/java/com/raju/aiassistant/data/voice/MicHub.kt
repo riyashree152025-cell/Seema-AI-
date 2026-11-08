@@ -242,6 +242,11 @@ class MicHub(
         log("mic: resumed after call")
     }
 
+    private val _level = kotlinx.coroutines.flow.MutableStateFlow(0f)
+
+    /** 0..1 loudness of what the microphone hears right now (0 when no recorder runs): drives Home's waves. */
+    val level: kotlinx.coroutines.flow.StateFlow<Float> = _level
+
     fun stats(): MicHubStats = synchronized(lock) {
         MicHubStats(
             opens = opens,
@@ -371,6 +376,7 @@ class MicHub(
                     }
                     got += n
                 }
+                _level.value = frameLevel(scratch)
                 synchronized(lock) {
                     // Only the current reader may hand out frames, never one that was replaced.
                     if (reader !== me) return
@@ -386,6 +392,7 @@ class MicHub(
             }
         } finally {
             src.close()
+            _level.value = 0f
         }
         stoppedBy?.let { recorderFailed(it, me) }
     }
@@ -401,4 +408,23 @@ class MicHub(
         log("mic: $reason")
         for (victim in victims) victim.onError(reason)
     }
+}
+
+/**
+ * Loudness of one 16-bit little-endian frame, 0..1: RMS scaled so normal speech near the phone
+ * (RMS ≈ 1 500–5 000) fills most of the range; silence stays near 0.
+ */
+internal fun frameLevel(frame: ByteArray): Float {
+    var sum = 0.0
+    var n = 0
+    var i = 0
+    while (i + 1 < frame.size) {
+        val v = ((frame[i + 1].toInt() shl 8) or (frame[i].toInt() and 0xFF)).toShort().toInt()
+        sum += v.toDouble() * v
+        n++
+        i += 2
+    }
+    if (n == 0) return 0f
+    val rms = kotlin.math.sqrt(sum / n)
+    return (rms / 5_000.0).toFloat().coerceIn(0f, 1f)
 }

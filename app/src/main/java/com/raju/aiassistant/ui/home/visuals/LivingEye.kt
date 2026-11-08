@@ -1,0 +1,163 @@
+package com.raju.aiassistant.ui.home.visuals
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.raju.aiassistant.domain.model.AssistantState
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+private val EYE_WHITE = Color(0xFFF2FBFF)
+private val PUPIL = Color(0xFF02060E)
+private val IRIS_DEEP = Color(0xFF061A3A)
+
+/**
+ * Home's visualizer, one canvas: ambient fluid waves (cyan → neon blue → purple) across the whole
+ * area, edge to edge, and a living biometric eye in the middle. The eye breathes, its pupil makes
+ * small adjustments; while she listens, thinks or speaks sharp spikes turn around the iris (and a
+ * radar sweeps inside it while she thinks). The waves swell with her voice while she speaks and
+ * with the microphone while she listens, and keep a gentle motion otherwise. Decorative (hidden
+ * from screen readers); [time], [speechLevel] and [micLevel] are read only while drawing.
+ */
+@Composable
+fun LivingEyeVisualizer(
+    time: () -> Float,
+    speechLevel: () -> Float,
+    micLevel: () -> Float,
+    state: AssistantState,
+    modifier: Modifier = Modifier,
+    /** False in battery saver or on a hot phone: fewer wave layers, points and iris lines. */
+    richEffects: Boolean = true,
+    accentArgb: Long = eyeAccentArgb(state),
+) {
+    val accent by animateColorAsState(Color(accentArgb), tween(450), label = "eyeAccent")
+    // Energy carried between frames so the waves swell and fade instead of jumping.
+    val energy = remember { floatArrayOf(AMBIENT_ENERGY) }
+    Canvas(modifier.clearAndSetSemantics {}) {
+        val t = time()
+        val target = waveEnergy(state, speechLevel(), micLevel())
+        energy[0] = smoothEnergy(energy[0], target)
+        val e = energy[0]
+        drawAmbientWaves(t, e, accent, richEffects)
+        drawLivingEye(t, e, state, accent, richEffects)
+    }
+}
+
+private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, richEffects: Boolean) {
+    val w = size.width
+    val h = size.height
+    val layers = waveLayerCount(richEffects)
+    val points = wavePointCount(richEffects)
+    val gradient = WAVE_GRADIENT_ARGB.map { Color(it) }
+    val midY = h / 2f
+    for (layer in layers - 1 downTo 0) {
+        val amp = h * (0.05f + 0.30f * energy) * (1f - layer * 0.14f)
+        val offsetY = (layer - (layers - 1) / 2f) * h * 0.035f
+        val top = Path()
+        val bottom = Path()
+        for (i in 0..points) {
+            val xf = i / points.toFloat()
+            val y = waveShape(xf, t, layer, energy) * amp
+            val x = xf * w
+            if (i == 0) {
+                top.moveTo(x, midY + offsetY - y)
+                bottom.moveTo(x, midY + offsetY + y * 0.6f)
+            } else {
+                top.lineTo(x, midY + offsetY - y)
+                bottom.lineTo(x, midY + offsetY + y * 0.6f)
+            }
+        }
+        val alpha = (0.85f - layer * 0.17f).coerceAtLeast(0.2f)
+        val brush = Brush.horizontalGradient(gradient.map { it.copy(alpha = alpha) }, startX = 0f, endX = w)
+        if (layer == 0) {
+            // The fluid body of the front wave: the band between its two edges, softly filled.
+            val band = Path().apply {
+                addPath(top)
+                for (i in points downTo 0) {
+                    val xf = i / points.toFloat()
+                    lineTo(xf * w, midY + offsetY + waveShape(xf, t, layer, energy) * amp * 0.6f)
+                }
+                close()
+            }
+            drawPath(band, Brush.horizontalGradient(gradient.map { it.copy(alpha = 0.10f + 0.12f * energy) }, startX = 0f, endX = w))
+        }
+        val width = (2.2f - layer * 0.35f) * density
+        drawPath(top, brush, style = Stroke(width, cap = StrokeCap.Round))
+        drawPath(bottom, brush, style = Stroke(width * 0.7f, cap = StrokeCap.Round), alpha = 0.55f)
+    }
+    // A wash of the state colour behind everything, brighter with energy.
+    drawRect(Brush.verticalGradient(listOf(Color.Transparent, accent.copy(alpha = 0.06f + 0.10f * energy), Color.Transparent)))
+}
+
+private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantState, accent: Color, richEffects: Boolean) {
+    val c = center
+    val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
+    val r = minOf(size.width, size.height) * 0.21f * eyeBreath(t) * (1f + 0.05f * energy)
+    val dim = if (asleep) 0.45f else 1f
+
+    // Glow around the eye.
+    drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f * dim), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
+
+    // Spikes turning around the iris while she listens, thinks, works or speaks.
+    if (eyeSpikesActive(state)) {
+        val count = if (richEffects) 56 else 32
+        val turn = t * eyeSpinSpeed(state) * 2f * PI.toFloat()
+        for (i in 0 until count) {
+            val a = turn + i * 2f * PI.toFloat() / count
+            val wobble = 0.5f + 0.5f * sin(t * 6f + i * 1.7f)
+            val len = r * (0.08f + 0.18f * energy * wobble + if (i % 4 == 0) 0.06f else 0f)
+            val from = Offset(c.x + cos(a) * r * 1.06f, c.y + sin(a) * r * 1.06f)
+            val to = Offset(c.x + cos(a) * (r * 1.06f + len), c.y + sin(a) * (r * 1.06f + len))
+            drawLine(accent.copy(alpha = 0.55f + 0.4f * wobble), from, to, strokeWidth = (if (i % 4 == 0) 2.2f else 1.3f) * density, cap = StrokeCap.Round)
+        }
+    }
+
+    // Iris: bright near the pupil, deep blue at the edge.
+    drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.9f * dim), accent.copy(alpha = dim), IRIS_DEEP), c, r), r, c)
+
+    // Iris fibres from the pupil outwards, gently shimmering.
+    val pupilR = r * pupilScale(t, energy, state)
+    val lines = irisLineCount(richEffects)
+    for (i in 0 until lines) {
+        val a = i * 2f * PI.toFloat() / lines + 0.04f * sin(t * 0.8f + i)
+        val inner = pupilR * 1.08f
+        val outer = r * (0.86f + 0.08f * sin(i * 2.3f))
+        val shade = if (i % 2 == 0) EYE_WHITE else accent
+        drawLine(
+            shade.copy(alpha = (0.22f + 0.18f * sin(t * 2f + i * 0.9f)).coerceIn(0.05f, 0.5f) * dim),
+            Offset(c.x + cos(a) * inner, c.y + sin(a) * inner),
+            Offset(c.x + cos(a) * outer, c.y + sin(a) * outer),
+            strokeWidth = 1f * density,
+        )
+    }
+
+    // Radar sweep inside the iris while she is processing.
+    if (eyeRadarActive(state)) {
+        val sweep = (t * 220f) % 360f
+        drawArc(
+            Brush.radialGradient(listOf(accent.copy(alpha = 0.55f), Color.Transparent), c, r * 0.95f),
+            startAngle = sweep, sweepAngle = 70f, useCenter = true,
+            topLeft = Offset(c.x - r * 0.95f, c.y - r * 0.95f), size = Size(r * 1.9f, r * 1.9f),
+        )
+    }
+
+    // Pupil with a faint accent edge, and two catch-lights.
+    drawCircle(Brush.radialGradient(listOf(PUPIL, PUPIL, accent.copy(alpha = 0.5f)), c, pupilR * 1.12f), pupilR * 1.12f, c)
+    drawCircle(PUPIL, pupilR, c)
+    drawCircle(EYE_WHITE.copy(alpha = 0.85f * dim), r * 0.09f, Offset(c.x - r * 0.28f, c.y - r * 0.30f))
+    drawCircle(EYE_WHITE.copy(alpha = 0.5f * dim), r * 0.04f, Offset(c.x + r * 0.22f, c.y + r * 0.20f))
+}

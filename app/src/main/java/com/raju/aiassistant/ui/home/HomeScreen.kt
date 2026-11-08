@@ -183,6 +183,7 @@ fun HomeScreen(
     val assistantState = state.previewState ?: state.assistantState
 
     val speechLevel by viewModel.speechLevel.collectAsStateWithLifecycle(initialValue = 0f)
+    val micLevel by viewModel.micLevel.collectAsStateWithLifecycle(initialValue = 0f)
 
 
 
@@ -487,14 +488,21 @@ fun HomeScreen(
 
 
 
-                    // Seema's face (all modes): the dotted ball with eyes and mouth fills the whole area above the buttons.
-                    com.raju.aiassistant.ui.home.visuals.TaporiFace(
+                    // Living Eye + ambient waves (all modes): one canvas filling the whole area above the buttons,
+                    // edge to edge. Waves follow her voice while she speaks and the microphone while she listens.
+                    com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
                         time = { timeProvider.floatValue },
                         speechLevel = { speechLevel },
+                        micLevel = { micLevel },
                         state = assistantState,
                         modifier = Modifier.fillMaxSize(),
                         richEffects = profile.richEffects,
-                        mood = if (state.tapori) com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply) else com.raju.aiassistant.ui.home.visuals.TaporiMood.NORMAL,
+                        // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
+                        accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
+                            com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
+                        } else {
+                            com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
+                        },
                     )
 
                 }
