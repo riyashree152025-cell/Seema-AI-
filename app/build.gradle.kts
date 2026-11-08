@@ -89,7 +89,20 @@ val sherpaOnnxAar: File = file("libs/sherpa-onnx-$sherpaOnnxVersion.aar").also {
         val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaOnnxVersion/sherpa-onnx-$sherpaOnnxVersion.aar"
         logger.lifecycle("Downloading $url")
         val tmp = File(aar.path + ".part")
-        URI(url).toURL().openStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+        // GitHub release downloads sometimes answer 504 for a moment: try three times before failing.
+        var lastError: Exception? = null
+        for (attempt in 1..3) {
+            try {
+                URI(url).toURL().openStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                lastError = null
+                break
+            } catch (e: java.io.IOException) {
+                lastError = e
+                logger.lifecycle("sherpa-onnx download attempt $attempt failed: ${e.message}")
+                if (attempt < 3) Thread.sleep(attempt * 10_000L)
+            }
+        }
+        lastError?.let { throw it }
         check(sha256(tmp) == sherpaOnnxSha256) { "sherpa-onnx AAR checksum mismatch — download it again" }
         tmp.renameTo(aar)
     }
