@@ -149,7 +149,11 @@ class AppContainer(context: Context) {
         com.raju.aiassistant.data.tts.local.VoiceModelManager(appContext, http, appScope, listOf(com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL))
     }
     val kwsWakeListener by lazy {
-        com.raju.aiassistant.data.voice.KwsWakeListener(appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { sherpaHost.nativeAvailable }) {
+        com.raju.aiassistant.data.voice.KwsWakeListener(
+            appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { sherpaHost.nativeAvailable },
+            hub = micHub,
+            useHub = { currentSettings.value.micHub },
+        ) {
             android.util.Log.i("SeemaVoice", it)
         }
     }

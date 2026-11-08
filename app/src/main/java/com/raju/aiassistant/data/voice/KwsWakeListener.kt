@@ -40,9 +40,17 @@ class KwsWakeListener(
     private val model: WakeWordModel,
     /** False when the native runtime cannot run on this phone. */
     private val nativeAvailable: () -> Boolean,
+    /** The shared microphone (MicHub). Used only while [useHub] is true; otherwise the recorder below runs as before. */
+    hub: MicHub? = null,
+    private val useHub: () -> Boolean = { false },
     private val log: (String) -> Unit = {},
 ) : WakeListener {
     override val spotsWakeWord = true
+
+    /** Shared-microphone path: 20 ms frames batched to 100 ms, then the same spotter. */
+    private val hubListener: HubWakeListener? = hub?.let { h ->
+        HubWakeListener(h) { KwsFrameDetector(openStream = { NativeKeywordStream(spotter()) }, log = log) }
+    }
 
     private var job: Job? = null
     @Volatile private var activeRecorder: AudioRecord? = null
@@ -57,6 +65,12 @@ class KwsWakeListener(
             onError()
             return
         }
+        val shared = hubListener
+        if (shared != null && useHub()) {
+            log("kws listening (shared mic)")
+            shared.start(onUtterance, onError)
+            return
+        }
         job = scope.launch(Dispatchers.IO) {
             val heard = runCatching { listenForWakeWord() }.onFailure { log("kws error ${it.javaClass.simpleName}") }.getOrNull()
             if (!isActive) return@launch
@@ -65,6 +79,7 @@ class KwsWakeListener(
     }
 
     override fun stop() {
+        hubListener?.stop() // a no-op unless the shared microphone was used
         job?.cancel()
         job = null
         activeRecorder?.let { runCatching { it.stop() } }
@@ -72,6 +87,7 @@ class KwsWakeListener(
 
     /** Frees the model's memory (app in the background without a voice session). */
     @Synchronized fun release() {
+        hubListener?.stop() // its stream belongs to this spotter: close it first
         spotter?.release()
         spotter = null
     }
@@ -171,6 +187,25 @@ class KwsWakeListener(
             recorder.release()
             stream.release()
         }
+    }
+
+    /** One sherpa-onnx stream on the shared spotter. */
+    private class NativeKeywordStream(private val kws: KeywordSpotter) : KeywordStream {
+        private val stream = kws.createStream()
+
+        override fun accept(samples: FloatArray): Boolean {
+            stream.acceptWaveform(samples, RATE)
+            while (kws.isReady(stream)) {
+                kws.decode(stream)
+                if (kws.getResult(stream).keyword.isNotBlank()) {
+                    kws.reset(stream)
+                    return true
+                }
+            }
+            return false
+        }
+
+        override fun release() = stream.release()
     }
 
     private companion object {

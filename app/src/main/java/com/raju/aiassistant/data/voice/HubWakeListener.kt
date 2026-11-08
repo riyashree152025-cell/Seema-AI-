@@ -3,14 +3,29 @@ package com.raju.aiassistant.data.voice
 import com.raju.aiassistant.domain.assistant.WakeListener
 
 /**
- * Sleep-mode listener on the shared microphone: holds a WAKE lease on [hub] and runs
- * [WakeUtteranceDetector] over the frames. Same contract as [MicWakeListener.start]: one utterance
- * (or onError), then the listener is done until started again. The lease is released as soon as an
- * utterance is complete, so the recognizer that follows reuses the open recorder.
+ * Turns 20 ms frames into a wake decision. A non-null result ends the listen: an utterance to check,
+ * or an empty array for "her name was spotted on the phone" (offline wake word).
  */
-class HubWakeListener(private val hub: MicHub) : WakeListener {
+interface FrameDetector {
+    fun feed(frame: ByteArray): ByteArray?
+
+    /** Frees what the detector holds (a native stream). Called once, never while [feed] runs. */
+    fun close() {}
+}
+
+/**
+ * Sleep-mode listener on the shared microphone: holds a WAKE lease on [hub] and runs a
+ * [FrameDetector] over the frames ([WakeUtteranceDetector] by default, the offline keyword spotter
+ * for KWS). Same contract as [MicWakeListener.start]: one result (or onError), then the listener is
+ * done until started again. The lease is released as soon as there is a result, and the shared
+ * recorder is closed for the recognizer that follows.
+ */
+class HubWakeListener(
+    private val hub: MicHub,
+    private val newDetector: () -> FrameDetector = { WakeUtteranceDetector() },
+) : WakeListener {
     private inner class Session(val onUtterance: (ByteArray) -> Unit, val onError: () -> Unit) {
-        val detector = WakeUtteranceDetector()
+        val detector = newDetector()
         var lease: MicLease? = null // guarded by this@HubWakeListener
         var finished = false // guarded by this@HubWakeListener
     }
@@ -43,6 +58,7 @@ class HubWakeListener(private val hub: MicHub) : WakeListener {
             val cur = session ?: return
             session = null
             cur.finished = true
+            cur.detector.close() // under the lock: never while feed() runs
             cur
         }
         val lease = synchronized(this) { old.lease }
@@ -70,6 +86,7 @@ class HubWakeListener(private val hub: MicHub) : WakeListener {
     private fun finish(s: Session): MicLease? = synchronized(this) {
         if (s.finished) return null
         s.finished = true
+        s.detector.close() // under the lock: never while feed() runs
         if (session === s) session = null
         s.lease ?: NO_LEASE_YET
     }

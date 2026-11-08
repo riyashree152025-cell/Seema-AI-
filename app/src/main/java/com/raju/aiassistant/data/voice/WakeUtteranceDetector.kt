@@ -11,7 +11,7 @@ import kotlin.math.sqrt
  * then paused. The thresholds and timings are the same as the original detector; this copy exists
  * so the shared-microphone path can be tested on the JVM.
  */
-class WakeUtteranceDetector {
+class WakeUtteranceDetector : FrameDetector {
     private val preRoll = ArrayDeque<ByteArray>()
     private val spare = ArrayDeque<ByteArray>() // recycled frame copies, so listening does not allocate per frame
     private var noise = -1.0
@@ -25,7 +25,7 @@ class WakeUtteranceDetector {
     }
 
     /** Returns the utterance's PCM when it is complete, otherwise null. [frame] is not kept. */
-    fun feed(frame: ByteArray): ByteArray? {
+    override fun feed(frame: ByteArray): ByteArray? {
         val level = rms(frame)
         val rec = recording
         if (rec == null) {
