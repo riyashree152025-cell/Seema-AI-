@@ -151,6 +151,18 @@ class SpeechPipelineTest {
     }
 
     @Test
+    fun eachChunkPicksItsOwnVoiceLanguageWithoutASettingChange() {
+        // The conversation is Hindi, but a Bengali, Roman-Bengali or English chunk gets its own voice.
+        assertEquals("bn-IN", languageFor("আমি ভালো আছি, আর আপনি?", "hi-IN"))
+        assertEquals("hi-IN", languageFor("राजू जी, আমার नमस्ते, आज आप कैसे हैं?", "bn-IN")) // mostly Hindi
+        assertEquals("bn-IN", languageFor("Ami bhalo achi, tumi kemon acho?", "hi-IN"))
+        assertEquals("hi-IN", languageFor("Main theek hoon, aap kaise ho?", "bn-IN"))
+        assertEquals("en-IN", languageFor("The train is on time and it will reach at nine.", "hi-IN"))
+        assertEquals("hi-IN", languageFor("Train time par hai", "hi-IN")) // Hinglish stays Hindi
+        assertEquals("hi-IN", languageFor("OK", "hi-IN"))
+    }
+
+    @Test
     fun firstChunkIsShortSoSpeechStartsQuickly() {
         val long = (1..20).joinToString(" ") { "Yeh vaakya $it hai." }
         val chunks = chunkForSpeech(long)

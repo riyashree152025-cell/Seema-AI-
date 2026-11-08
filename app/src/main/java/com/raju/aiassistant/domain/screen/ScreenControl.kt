@@ -173,23 +173,51 @@ object ScreenMatch {
     }
 }
 
+/** Card / account numbers (12–19 digits, spaces or dashes allowed) are never read out or sent: only the last 4. */
+private val LONG_NUMBER = Regex("\\b(?:\\d[ -]?){8,15}(\\d{4})\\b")
+
+fun maskSecrets(text: String): String = LONG_NUMBER.replace(text) { m ->
+    val digits = m.value.count { it.isDigit() }
+    if (digits in 12..19) "••••${m.groupValues[1]}" else m.value
+}
+
 /** What the AI gets to know about the screen (never a password; long screens are cut). */
 fun ScreenSnapshot.describeForAi(maxChars: Int = 2_500): String {
     val sb = StringBuilder("App on screen: $appLabel ($packageName)\n")
     for (e in elements) {
+        val text = maskSecrets(e.text)
         val line = when {
             e.password -> "[password box — hidden]"
-            e.kind == ElementKind.INPUT -> "[input] " + (e.text.ifBlank { "(empty)" }) + (if (e.hint.isNotBlank()) " — hint: ${e.hint}" else "")
-            e.kind == ElementKind.BUTTON -> "[button] ${e.text}"
+            e.kind == ElementKind.INPUT -> "[input] " + (text.ifBlank { "(empty)" }) + (if (e.hint.isNotBlank()) " — hint: ${e.hint}" else "")
+            e.kind == ElementKind.BUTTON -> "[button] $text"
             e.kind == ElementKind.LIST -> "[scrollable list]"
-            e.kind == ElementKind.IMAGE -> "[image] ${e.text}"
-            else -> e.text
+            e.kind == ElementKind.IMAGE -> "[image] $text"
+            else -> text
         }
         if (line.isBlank()) continue
         if (sb.length + line.length + 1 > maxChars) { sb.append("…(more on screen)"); break }
         sb.append(line).append('\n')
     }
     return sb.toString().trimEnd()
+}
+
+/**
+ * A short spoken summary made on the phone, without any AI (offline, or when the AI fails): the app
+ * and its first readable lines in screen order, numbers masked, buttons and empty boxes left out.
+ */
+fun ScreenSnapshot.localSummary(bengali: Boolean = false, maxLines: Int = 6, maxChars: Int = 260): String {
+    val lines = elements.asSequence()
+        .filter { !it.password && !it.editable && it.kind != ElementKind.LIST }
+        .map { maskSecrets(it.text).trim() }
+        .filter { t -> t.length >= 2 && t.any { it.isLetterOrDigit() } && !ScreenMatch.normalize(t).equals(ScreenMatch.normalize(appLabel)) }
+        .distinctBy { ScreenMatch.normalize(it) }
+        .take(maxLines)
+        .toList()
+    val head = if (bengali) "স্ক্রিনে $appLabel খোলা।" else "स्क्रीन पर $appLabel खुला है।"
+    if (lines.isEmpty()) return head + if (bengali) " পড়ার মতো লেখা নেই।" else " पढ़ने लायक कुछ लिखा नहीं दिख रहा।"
+    var body = lines.joinToString("। ")
+    if (body.length > maxChars) body = body.take(maxChars).substringBeforeLast(' ') + "…"
+    return head + (if (bengali) " লেখা আছে: " else " लिखा है: ") + body
 }
 
 /** The user's spoken answer to "ये बटन दबा दूँ?": true = yes, false = no, null = not an answer. */

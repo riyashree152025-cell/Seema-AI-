@@ -50,11 +50,20 @@ private val BENGALI = Regex("[\\u0980-\\u09FF]")
  * Language for one chunk: Bengali script is spoken as Bengali (bn-IN), Devanagari as Hindi (hi-IN);
  * Roman-script text (Hinglish) uses the conversation's language, so a Hindi voice reads Hinglish naturally.
  */
-fun languageFor(chunk: String, preferredTag: String): String = when {
-    BENGALI.containsMatchIn(chunk) -> "bn-IN"
-    DEVANAGARI.containsMatchIn(chunk) -> "hi-IN"
-    else -> preferredTag
-}
+fun languageFor(chunk: String, preferredTag: String): String =
+    when (com.raju.aiassistant.domain.language.detectScript(chunk)) {
+        // The script most of the chunk is written in (one Bengali name in a Hindi sentence stays Hindi).
+        com.raju.aiassistant.domain.language.Detection.BENGALI -> "bn-IN"
+        com.raju.aiassistant.domain.language.Detection.HINDI -> "hi-IN"
+        com.raju.aiassistant.domain.language.Detection.MIXED -> if (BENGALI.containsMatchIn(chunk)) "bn-IN" else "hi-IN"
+        // Plain English gets an English voice; Roman Hindi / Roman Bengali words decide by themselves.
+        com.raju.aiassistant.domain.language.Detection.LATIN -> if (com.raju.aiassistant.domain.language.isLikelyEnglish(chunk)) "en-IN" else when (com.raju.aiassistant.domain.language.detectLatinLanguage(chunk)) {
+            com.raju.aiassistant.domain.language.SeemaLanguage.HINDI -> "hi-IN"
+            com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI -> "bn-IN"
+            null -> preferredTag
+        }
+        else -> preferredTag
+    }
 
 /**
  * Speaks text chunk by chunk. While one chunk plays the next is already being synthesised

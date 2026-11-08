@@ -104,6 +104,19 @@ class AssistantEngineTest {
         override fun hasPermission(permission: String): Boolean = if (permission.endsWith("CALL_PHONE")) canCallDirectly else true
         override suspend fun awaitCallStarted(timeoutMs: Long): Boolean? = callStarts
         override fun openApp(name: String) = ToolOutcome.Failed("App \"$name\" is not installed")
+        /** The find-my-phone beacon's hardware: counts chimes, volume changes and lets a test "pick up" the phone. */
+        inner class Beacon : com.raju.aiassistant.domain.tools.BeaconHardware {
+            var loud = 0
+            var restored = 0
+            var chimes = 0
+            val found = kotlinx.coroutines.flow.MutableSharedFlow<com.raju.aiassistant.domain.tools.BeaconStop>()
+            override fun loud(): Boolean { loud++; return true }
+            override fun restore() { restored++ }
+            override suspend fun chime() { chimes++ }
+            override fun foundSignals() = found
+        }
+        var beacon: Beacon? = null
+        override fun beaconHardware() = beacon
         val settingsOpened = mutableListOf<SettingsPage>()
         override fun openSettings(page: SettingsPage): ToolOutcome { settingsOpened += page; return ToolOutcome.Done("Opened") }
         val media = mutableListOf<com.raju.aiassistant.domain.tools.MediaCommand>()
@@ -479,6 +492,44 @@ class AssistantEngineTest {
         settle()
         assertTrue(provider.calls.isEmpty())
         assertEquals(ActionStatus.FAILED, store.logs.last().second)
+    }
+
+    @Test
+    fun findMyPhoneRingsUntilMilGayaAndNothingElseReachesTheAi() = runTest {
+        val hw = tools.Beacon().also { tools.beacon = it }
+        val e = engine(AiResult.Success("unused"))
+        e.submit("mera phone dhundo", fromVoice = true)
+        advanceTimeBy(7_000); runCurrent()
+        assertTrue(hw.chimes >= 3)
+        assertTrue(speaker.spoken.count { it == "राजू जी, फोन यहाँ है!" } >= 2)
+        e.submit("phone yahan hai raju ji", fromVoice = true) // the mic hearing the beacon itself
+        advanceTimeBy(1_000); runCurrent()
+        assertTrue(provider.calls.isEmpty())
+        e.submit("mil gaya", fromVoice = true)
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(1, hw.restored)
+        val chimes = hw.chimes
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(chimes, hw.chimes)
+        assertTrue(speaker.spoken.last().contains("फोन मिल गया"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun pickingThePhoneUpStopsTheBeaconAndStopButtonToo() = runTest {
+        val hw = tools.Beacon().also { tools.beacon = it }
+        val e = engine(AiResult.Success("unused"))
+        e.submit("kahan ho seema", fromVoice = true)
+        advanceTimeBy(3_000); runCurrent()
+        hw.found.emit(com.raju.aiassistant.domain.tools.BeaconStop.PICKED_UP)
+        runCurrent()
+        assertEquals(1, hw.restored)
+        e.submit("phone dhundo", fromVoice = true)
+        advanceTimeBy(3_000); runCurrent()
+        assertEquals(2, hw.loud)
+        e.stop()
+        runCurrent()
+        assertEquals(2, hw.restored)
     }
 
     @Test
@@ -959,12 +1010,41 @@ class AssistantEngineTest {
             AiResult.Success("""<action>{"type":"read_screen","question":"kya likha hai"}</action>"""),
             AiResult.Success("Riya ne Hello likha hai."),
         )
-        e.submit("screen padho", fromVoice = true)
+        e.submit("is chat mein Riya ne kya likha hai", fromVoice = true) // not a plain command: the AI decides
         settle()
         val screenTurn = provider.calls[1].last().text
         assertTrue(screenTurn, screenTurn.contains("[button] Send") && screenTurn.contains("kya likha hai"))
         assertEquals("Riya ne Hello likha hai.", speaker.spoken.last())
         assertTrue(tools.screenOps.isEmpty()) // reading never taps
+    }
+
+    @Test
+    fun screenPadhoGoesStraightToTheScreenInOneAiRequest() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen))
+        val e = engine(AiResult.Success("Riya ne Hello likha hai."))
+        e.submit("screen padho", fromVoice = true)
+        settle()
+        assertEquals(1, provider.calls.size) // no routing request first
+        assertTrue(provider.calls[0].last().text.contains("[button] Send"))
+        assertEquals("Riya ne Hello likha hai.", speaker.spoken.last())
+        assertTrue(tools.screenOps.isEmpty())
+    }
+
+    @Test
+    fun withoutInternetOrWhenTheAiFailsThePhoneReadsTheScreenItself() = runTest {
+        tools.screens.add(ScreenRead.Ok(chatScreen))
+        online = false
+        val e = engine(AiResult.Failure(FailureKind.SERVER, "down"))
+        e.submit("screen par kya hai", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertEquals("स्क्रीन पर WhatsApp खुला है। लिखा है: Riya। Hello!। Send", speaker.spoken.last())
+        online = true
+        e.submit("screen padho", fromVoice = true)
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("स्क्रीन पर WhatsApp खुला है।"))
+        assertNull(e.lastError.value)
     }
 
     // ---------------------------------------------------------------- Smart Contact Brain: calls

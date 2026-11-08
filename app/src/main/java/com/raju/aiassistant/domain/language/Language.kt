@@ -86,6 +86,24 @@ fun detectLatinLanguage(text: String): SeemaLanguage? {
     }
 }
 
+private val ENGLISH_FUNCTION_WORDS = setOf(
+    "the", "a", "an", "is", "are", "was", "were", "i", "you", "your", "it", "this", "that", "of", "to",
+    "in", "on", "for", "and", "or", "with", "have", "has", "will", "can", "do", "does", "not", "what",
+    "how", "my", "me", "we", "be", "at", "from", "please", "thank", "thanks", "there", "here",
+)
+
+/**
+ * A Roman-script sentence that is plain English (not Hinglish): at least three words, half of them
+ * common English words, and no Hindi/Bengali word. Short or doubtful text is not English.
+ */
+fun isLikelyEnglish(text: String): Boolean {
+    val words = text.lowercase().split(Regex("[^a-z']+")).filter { it.isNotBlank() }
+    if (words.size < 3) return false
+    // "the" is also Hinglish (थे): words that are English as well do not count against English.
+    if (words.any { (it in ROMAN_HINDI_WORDS || it in ROMAN_BENGALI_WORDS) && it !in ENGLISH_FUNCTION_WORDS }) return false
+    return words.count { it in ENGLISH_FUNCTION_WORDS } * 2 >= words.size
+}
+
 /**
  * The language of the conversation after the user said [text]:
  * a fixed choice in Settings always wins; in Auto, Bengali/Hindi script switches the language,

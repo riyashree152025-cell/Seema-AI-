@@ -649,6 +649,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         }
     }
 
+    override fun beaconHardware(): com.raju.aiassistant.domain.tools.BeaconHardware = AndroidBeaconHardware(context)
+
     override fun findMyPhone(): ToolOutcome {
         val am = context.getSystemService(AudioManager::class.java) ?: return ToolOutcome.Failed("Audio service is not available.")
         return try {

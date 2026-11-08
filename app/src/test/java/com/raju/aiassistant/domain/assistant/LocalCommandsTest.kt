@@ -125,6 +125,9 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.Screenshot, p("ek screenshot le lo na"))
         assertEquals(AssistantAction.Screenshot, p("स्क्रीनशॉट लो"))
         assertEquals(AssistantAction.FindPhone, p("mera phone dhundo"))
+        assertEquals(AssistantAction.FindPhone, p("kahan ho seema"))
+        assertEquals(AssistantAction.FindPhone, p("Seema, kahan ho?"))
+        assertEquals(AssistantAction.FindPhone, p("सीमा कहाँ हो"))
         assertEquals(AssistantAction.FindPhone, p("फोन की घंटी बजाओ"))
         assertEquals(AssistantAction.LastCall, p("last call kiska tha"))
         assertEquals(AssistantAction.LastCall, p("kiska call aaya tha"))
@@ -191,5 +194,13 @@ class LocalCommandsTest {
         assertNull(p("WhatsApp kholo aur Riya ko message bhejo"))
         assertNull(p("WhatsApp par usko hello bhejo")) // who is "usko"? the AI knows the conversation
         assertEquals(AssistantAction.OpenApp("whatsapp"), p("WhatsApp kholo"))
+    }
+
+    @Test
+    fun readingTheScreen() {
+        for (q in listOf("screen padho", "Seema, screen par kya hai?", "ye screen padh ke sunao", "स्क्रीन पर क्या लिखा है", "स्क्रीन पढ़ो")) {
+            assertEquals(q, AssistantAction.ReadScreen(null), p(q))
+        }
+        assertNull(p("screen par kya likha hai Riya ne")) // a question about the screen: the AI reads it with the question
     }
 }

@@ -20,7 +20,7 @@ object LocalCommands {
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
             ?: battery(t) ?: home(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
-            ?: openSeema(t) ?: clock(t) ?: openApp(t)
+            ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: openApp(t)
     }
 
     // ------------------------------------------------------------------ text clean-up
@@ -262,7 +262,9 @@ object LocalCommands {
 
     private fun screenshot(t: String): AssistantAction? = if (SCREENSHOT.matches(t)) AssistantAction.Screenshot else null
 
-    private fun findPhone(t: String): AssistantAction? = if (FIND_PHONE.matches(t)) AssistantAction.FindPhone else null
+    private val WHERE_ARE_YOU = Regex("^(?:(?:seema|सीमा) )?(?:kahan|kaha|kidhar|कहाँ|कहां|किधर) (?:ho|hai|हो|है)(?: (?:seema|सीमा))?$")
+
+    private fun findPhone(t: String): AssistantAction? = if (FIND_PHONE.matches(t) || WHERE_ARE_YOU.matches(t)) AssistantAction.FindPhone else null
 
     private fun lastCall(t: String): AssistantAction? = if (LAST_CALL.matches(t)) AssistantAction.LastCall else null
 
@@ -298,6 +300,16 @@ object LocalCommands {
     private fun back(t: String): AssistantAction? = if (BACK.matches(t)) AssistantAction.ScreenBack else null
 
     private fun openSeema(t: String): AssistantAction? = if (SEEMA.matches(t)) AssistantAction.OpenSeema else null
+
+    // ------------------------------------------------------------------ the screen
+
+    private const val SCREEN = "(?:screen|स्क्रीन)"
+    private val READ_SCREEN = Regex(
+        "^(?:(?:ye|yeh|is|meri|ये|यह|इस|मेरी) )?$SCREEN(?: (?:ko|को))? (?:padho|padh do|padh ke sunao|padhke sunao|padh kar sunao|read karo|पढ़ो|पढ़ दो|पढ़ के सुनाओ|पढ़के सुनाओ|पढ़कर सुनाओ)$|" +
+            "^$SCREEN (?:par|pe|पर|पे) (?:kya|क्या) (?:hai|he|likha hai|likha he|dikh raha hai|है|लिखा है|दिख रहा है)$",
+    )
+
+    private fun readScreen(t: String): AssistantAction? = if (READ_SCREEN.matches(t)) AssistantAction.ReadScreen(null) else null
 
     // ------------------------------------------------------------------ time and date
 

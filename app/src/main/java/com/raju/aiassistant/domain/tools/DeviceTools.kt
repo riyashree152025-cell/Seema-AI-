@@ -78,6 +78,8 @@ interface DeviceTools {
      */
     suspend fun awaitCallStarted(timeoutMs: Long): Boolean? = null
     fun findMyPhone(): ToolOutcome = ToolOutcome.Failed("Finding phone is not supported here.")
+    /** Loudness, chime and "found" signals for the continuous find-my-phone beacon; null = not here. */
+    fun beaconHardware(): BeaconHardware? = null
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
     /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */

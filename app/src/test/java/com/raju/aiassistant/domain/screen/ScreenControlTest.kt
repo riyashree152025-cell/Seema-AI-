@@ -107,4 +107,23 @@ class ScreenControlTest {
         assertTrue(RiskyButtons.isRisky("भुगतान करें"))
         assertFalse(RiskyButtons.isRisky("Send"))
     }
+
+    @Test
+    fun theLocalSummaryReadsInScreenOrderAndMasksCardNumbers() {
+        val s = ScreenSnapshot(
+            "com.irctc", "IRCTC Rail Connect",
+            listOf(
+                ScreenElement("IRCTC Rail Connect", ElementKind.TEXT),
+                ScreenElement("PNR 4512345678", ElementKind.TEXT),
+                ScreenElement("Status: CNF S4 32", ElementKind.TEXT),
+                ScreenElement("Card 4111 1111 1111 1234", ElementKind.TEXT),
+                ScreenElement("", ElementKind.INPUT, editable = true, hint = "Search"),
+                ScreenElement("Book", ElementKind.BUTTON, clickable = true),
+            ),
+        )
+        assertEquals("स्क्रीन पर IRCTC Rail Connect खुला है। लिखा है: PNR 4512345678। Status: CNF S4 32। Card ••••1234। Book", s.localSummary())
+        assertTrue(s.describeForAi().contains("Card ••••1234"))
+        assertTrue(s.describeForAi().contains("PNR 4512345678")) // a 10-digit PNR is not a card number
+        assertEquals("স্ক্রিনে Camera খোলা। পড়ার মতো লেখা নেই।", ScreenSnapshot("x", "Camera", emptyList()).localSummary(bengali = true))
+    }
 }

@@ -34,6 +34,9 @@ import com.raju.aiassistant.domain.tools.DeviceTools
 import com.raju.aiassistant.domain.tools.ToolOutcome
 import com.raju.aiassistant.domain.tools.distinctContacts
 import com.raju.aiassistant.domain.tools.MediaCommand
+import com.raju.aiassistant.domain.tools.BeaconStop
+import com.raju.aiassistant.domain.tools.PhoneBeacon
+import com.raju.aiassistant.domain.tools.saysPhoneFound
 import com.raju.aiassistant.domain.screen.FlowOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -71,6 +74,7 @@ import com.raju.aiassistant.domain.screen.ScreenSnapshot
 import com.raju.aiassistant.domain.screen.SensitiveScreens
 import com.raju.aiassistant.domain.screen.confirmReply
 import com.raju.aiassistant.domain.screen.describeForAi
+import com.raju.aiassistant.domain.screen.localSummary
 import com.raju.aiassistant.domain.tools.ContactMatch
 import com.raju.aiassistant.domain.tools.PhoneNumbers
 import com.raju.aiassistant.domain.tools.normalizeForWhatsApp
@@ -610,6 +614,7 @@ class AssistantEngine(
 
     /** Stop button: immediately stops listening, speech, pending questions and any running request. */
     fun stop() {
+        beacon.stop(BeaconStop.STOPPED)
         handsFree = false
         _handsFreeActive.value = false
         leaveSleep()
@@ -774,6 +779,20 @@ class AssistantEngine(
         turnStartedAt = clock()
         _lastError.value = null
         voiceTurn = fromVoice
+        if (beacon.active.value) {
+            // While the phone rings to be found the microphone mostly hears the ringing itself:
+            // only "mil gaya / bas / ruko" counts, nothing else goes to the AI.
+            if (!saysPhoneFound(text)) {
+                trace("beacon ringing: ignored \"${text.take(40)}\"")
+                finishTurn()
+                return
+            }
+            if (recordUser) record(ChatRole.USER, text)
+            beacon.stop(BeaconStop.FOUND_SAID)
+            say(phrase(lang(), "बढ़िया राजू जी, फोन मिल गया!", "দারুণ রাজু, ফোন পাওয়া গেছে!"))
+            finishTurn()
+            return
+        }
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
 
@@ -783,7 +802,14 @@ class AssistantEngine(
         if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
         }
+        var screenQuestion: AssistantAction.ReadScreen? = null
         LocalCommands.parse(text)?.let { action ->
+            if (action is AssistantAction.ReadScreen && isOnline()) {
+                // "Screen padho": the screen goes to the AI in one request (no routing request first).
+                trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, one AI request)")
+                screenQuestion = action
+                return@let
+            }
             // Fast route: a plain phone command is done on the phone, with no AI request at all.
             trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, no AI)")
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
@@ -843,6 +869,12 @@ class AssistantEngine(
             language = lang(), languageUnclear = languageUnclear, documents = documents,
         )
         val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context)
+        screenQuestion?.let { action ->
+            readScreenAction(action, provider, model, system, speak = fromVoice || s.autoSpeakReplies)
+            if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
+            finishTurn()
+            return
+        }
         val turns = historyTurns(model)
 
         trace("ai request ${providerId.shortName}")
@@ -1008,6 +1040,8 @@ class AssistantEngine(
     private val _latencies = MutableStateFlow<List<TurnLatency>>(emptyList())
     /** Response times of the last replies (Tools → Response time). */
     val latencies: StateFlow<List<TurnLatency>> = _latencies.asStateFlow()
+    private val beacon = PhoneBeacon(scope, speakLine = { speaker.speak(it) }, onStopped = { trace("beacon stopped: ${it.name}") })
+
     private var turnStartedAt = 0L
     @Volatile private var turnFirstAudioAt: Long? = null
     @Volatile private var turnActive = false
@@ -1227,9 +1261,7 @@ class AssistantEngine(
             }
             is AssistantAction.FindPhone -> {
                 trace("offline command: find phone")
-                val outcome = tools.findMyPhone()
-                report(action, outcome)
-                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
+                findPhone(action, speak)
             }
             is AssistantAction.LastCall -> {
                 trace("offline command: last call")
@@ -1253,6 +1285,15 @@ class AssistantEngine(
                 val outcome = tools.openSeema()
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "हाँ राजू, मैं अपनी स्क्रीन पर वापस आ गई!", "হ্যাঁ রাজু, আমি আমার স্ক্রিনে ফিরে এসেছি!"))
+            }
+            is AssistantAction.ReadScreen -> {
+                // Offline: the phone reads the screen out by itself.
+                trace("offline command: read screen")
+                val snap = screenOrSay(action, speak) ?: return true.also { finishTurn() }
+                val msg = snap.localSummary(bengali = lang() == SeemaLanguage.BENGALI)
+                report(action, ActionStatus.SUCCESS, "Screen padhi (bina AI): ${snap.appLabel}")
+                record(ChatRole.ASSISTANT, msg)
+                if (speak) say(msg)
             }
             is AssistantAction.WhatsApp -> {
                 // Same path as when the AI asks for it: contacts first, WhatsApp's own search second.
@@ -1589,11 +1630,7 @@ class AssistantEngine(
                 // Informational result: in a voice conversation the user expects to hear it.
                 if (speak && outcome is ToolOutcome.Done) say(outcome.message)
             }
-            is AssistantAction.FindPhone -> {
-                val outcome = tools.findMyPhone()
-                report(action, outcome)
-                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
-            }
+            is AssistantAction.FindPhone -> findPhone(action, speak)
             is AssistantAction.AnswerCall -> report(action, tools.answerCall())
             is AssistantAction.TakePhoto -> camera(action, action.front, question = null, speak = speak)
             is AssistantAction.LookCamera -> camera(action, action.front, question = action.question, speak = speak)
@@ -1680,6 +1717,27 @@ class AssistantEngine(
             is AssistantAction.SaveFile -> report(action, tools.shareTextFile(action.name, action.content))
             is AssistantAction.Research -> research(action, provider, model, system, speak)
         }
+    }
+
+    /**
+     * "Mera phone dhundo": a chime every 2 s and "राजू जी, फोन यहाँ है!" at full volume until the phone
+     * is picked up, unlocked, a volume key is pressed or "mil gaya" is said (3 minutes at most).
+     */
+    private suspend fun findPhone(action: AssistantAction.FindPhone, speak: Boolean) {
+        val hardware = tools.beaconHardware()
+        if (hardware == null) {
+            val outcome = tools.findMyPhone()
+            report(action, outcome)
+            if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
+            return
+        }
+        val line = phrase(lang(), "राजू जी, फोन यहाँ है!", "রাজু, ফোন এখানে!")
+        if (!beacon.start(hardware, line)) {
+            report(action, ActionStatus.FAILED, "फोन की आवाज़ चालू नहीं हो पाई।")
+            return
+        }
+        trace("beacon started")
+        report(action, ActionStatus.SUCCESS, "घंटी बज रही है — फोन उठाते, अनलॉक करते, आवाज़ का बटन दबाते या \"मिल गया\" बोलते ही बंद हो जाएगी।")
     }
 
     /** What Seema says after a media key (it used to say "गाना बंद कर दिया" for every key, next too). */
@@ -2160,9 +2218,12 @@ class AssistantEngine(
                 if (speak) say(text)
             }
             else -> {
+                // The AI could not answer: the phone's own summary of the screen instead of nothing.
                 val why = (r as? AiResult.Failure)?.message
-                val msg = phrase(lang(), "स्क्रीन पढ़ ली, पर समझा नहीं पाई" + (why?.let { ": $it" } ?: "।"), "স্ক্রিন পড়েছি, কিন্তু বোঝাতে পারিনি।")
-                report(action, ActionStatus.FAILED, msg)
+                trace("screen read: AI failed (${why ?: "timeout"}), local summary")
+                val msg = snap.localSummary(bengali = lang() == SeemaLanguage.BENGALI)
+                report(action, ActionStatus.SUCCESS, "Screen padhi (bina AI): ${snap.appLabel}")
+                record(ChatRole.ASSISTANT, msg)
                 if (speak) say(msg)
             }
         }

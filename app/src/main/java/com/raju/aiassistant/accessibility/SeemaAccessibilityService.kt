@@ -145,11 +145,13 @@ class SeemaAccessibilityService : AccessibilityService() {
     /** Elements of the screen with the node each came from (for tapping / typing). */
     private fun collect(root: AccessibilityNodeInfo): List<Pair<ScreenElement, AccessibilityNodeInfo>> {
         val out = ArrayList<Pair<ScreenElement, AccessibilityNodeInfo>>()
-        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
-        queue.add(root to false)
+        // Depth first, children in order: the elements come out in reading order (top to bottom,
+        // a row's texts together), not level by level.
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
+        stack.addLast(root to false)
         var visited = 0
-        while (queue.isNotEmpty() && visited < MAX_NODES && out.size < MAX_ELEMENTS) {
-            val (n, parentClickable) = queue.removeFirst()
+        while (stack.isNotEmpty() && visited < MAX_NODES && out.size < MAX_ELEMENTS) {
+            val (n, parentClickable) = stack.removeLast()
             visited++
             if (!n.isVisibleToUser) continue
             val clickable = n.isClickable || parentClickable
@@ -167,7 +169,7 @@ class SeemaAccessibilityService : AccessibilityService() {
             if (text.isNotEmpty() || n.isEditable || password || n.isScrollable) {
                 out += ScreenElement(text, kind, clickable = clickable, editable = n.isEditable, scrollable = n.isScrollable, password = password, hint = hint, id = n.viewIdResourceName.orEmpty()) to n
             }
-            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it to clickable) }
+            for (i in n.childCount - 1 downTo 0) n.getChild(i)?.let { stack.addLast(it to clickable) }
         }
         return out
     }
