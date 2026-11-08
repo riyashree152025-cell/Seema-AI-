@@ -378,6 +378,10 @@ class AppContainer(context: Context) {
             // Auto fallback: the other AI providers whose keys are saved, tried when the chosen one fails.
             fallbackProviders = { val configured = secureKeyStore.configured.value; listOf(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, com.raju.aiassistant.domain.ai.ProviderId.GROQ, com.raju.aiassistant.domain.ai.ProviderId.CEREBRAS, com.raju.aiassistant.domain.ai.ProviderId.OPENROUTER, com.raju.aiassistant.domain.ai.ProviderId.DEEPSEEK).filter { it.secret in configured } + if (com.raju.aiassistant.domain.model.SecretId.OLLAMA_ENDPOINT in configured) listOf(com.raju.aiassistant.domain.ai.ProviderId.OLLAMA) else emptyList() },
             nowDescription = { SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a (yyyy-MM-dd'T'HH:mm, z)", Locale.ENGLISH).format(Date()) },
-        ).also { e -> appScope.launch { e.load() } }
+        ).also { e ->
+            appScope.launch { e.load() }
+            // Compile the fast router's patterns now, off the main thread, so the first voice command is fast too.
+            appScope.launch(Dispatchers.Default) { com.raju.aiassistant.domain.assistant.LocalCommands.parse("torch on") }
+        }
     }
 }

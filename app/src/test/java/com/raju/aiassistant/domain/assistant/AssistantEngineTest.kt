@@ -104,7 +104,10 @@ class AssistantEngineTest {
         override fun hasPermission(permission: String): Boolean = if (permission.endsWith("CALL_PHONE")) canCallDirectly else true
         override suspend fun awaitCallStarted(timeoutMs: Long): Boolean? = callStarts
         override fun openApp(name: String) = ToolOutcome.Failed("App \"$name\" is not installed")
-        override fun openSettings(page: SettingsPage) = ToolOutcome.Done("Opened")
+        val settingsOpened = mutableListOf<SettingsPage>()
+        override fun openSettings(page: SettingsPage): ToolOutcome { settingsOpened += page; return ToolOutcome.Done("Opened") }
+        val media = mutableListOf<com.raju.aiassistant.domain.tools.MediaCommand>()
+        override fun mediaControl(command: com.raju.aiassistant.domain.tools.MediaCommand): ToolOutcome { media += command; return ToolOutcome.Done("ok") }
         override fun batteryStatus() = ToolOutcome.Done("Battery 80%")
         override fun playMusic(query: String, service: MusicService): ToolOutcome { music += query to service; return ToolOutcome.Done("Opened ${service.label}") }
         val whatsApps = mutableListOf<Pair<String?, String>>()
@@ -436,6 +439,46 @@ class AssistantEngineTest {
         assertTrue(e.transcript.value.any { it.text.startsWith("✅") })
         assertTrue(speaker.spoken.last().contains("5 मिनट का टाइमर"))
         assertNull(e.lastError.value)
+    }
+
+    @Test
+    fun theTimeAndDateAreAnsweredOnThePhoneWithoutAnAiRequest() = runTest {
+        val e = engine(AiResult.Success("unused"))
+        e.submit("kitne baje hain", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("अभी") && speaker.spoken.last().contains("बज"))
+        e.submit("aaj kya date hai", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("आज") && Regex("19(69|70)").containsMatchIn(speaker.spoken.last()))
+        assertNull(e.lastError.value)
+    }
+
+    @Test
+    fun musicKeysAndSettingsPagesRunWithoutAiAndSayWhatWasDone() = runTest {
+        val e = engine(AiResult.Success("unused"))
+        e.submit("agla gaana", fromVoice = true)
+        settle()
+        e.submit("gaana band karo", fromVoice = true)
+        settle()
+        e.submit("wifi settings kholo", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertEquals(listOf(com.raju.aiassistant.domain.tools.MediaCommand.NEXT, com.raju.aiassistant.domain.tools.MediaCommand.PAUSE), tools.media)
+        assertEquals(listOf(SettingsPage.WIFI), tools.settingsOpened)
+        assertTrue(speaker.spoken.any { it.contains("अगला गाना") }) // not "गाना बंद" for every key
+        assertTrue(speaker.spoken.any { it.contains("गाना रोक") })
+    }
+
+    @Test
+    fun aFastCommandThePhoneCannotDoIsReportedAsFailedNotDone() = runTest {
+        // Screenshot is not supported by FakeTools: reported honestly, no AI needed, no false "done".
+        val e = engine(AiResult.Success("unused"))
+        e.submit("screenshot lo", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
     }
 
     @Test
@@ -1856,7 +1899,7 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
             onModelReplaced = { id, m -> remembered = id to m },
         )
-        e.submit("time kya hua?")
+        e.submit("mausam kaisa rahega?")
         settle()
         assertEquals(listOf("gemini-2.0-flash", "gemini-3.8-flash-lite"), asked)
         assertEquals("Saade paanch baje hain.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)

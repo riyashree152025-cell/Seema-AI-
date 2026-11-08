@@ -1,5 +1,6 @@
 package com.raju.aiassistant.domain.assistant
 
+import com.raju.aiassistant.domain.tools.MediaCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -94,5 +95,79 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.ReadNotification, p("kiska message aaya"))
         assertEquals(AssistantAction.ReadNotification, p("मैसेज पढ़ो"))
         assertNull(p("mummy ko message bhejo"))
+    }
+
+    // ---------------------------------------------------------------- Phase 2: fast intent router
+
+    @Test
+    fun musicKeys() {
+        assertEquals(AssistantAction.Media(MediaCommand.PAUSE), p("gaana band karo"))
+        assertEquals(AssistantAction.Media(MediaCommand.PAUSE), p("गाना रोको"))
+        assertEquals(AssistantAction.Media(MediaCommand.PAUSE), p("music pause kar do"))
+        assertEquals(AssistantAction.Media(MediaCommand.PAUSE), p("pause"))
+        assertEquals(AssistantAction.Media(MediaCommand.PLAY), p("gaana phir se chalao"))
+        assertEquals(AssistantAction.Media(MediaCommand.PLAY), p("गाना फिर से चलाओ"))
+        assertEquals(AssistantAction.Media(MediaCommand.PLAY), p("resume"))
+        assertEquals(AssistantAction.Media(MediaCommand.NEXT), p("agla gaana chalao"))
+        assertEquals(AssistantAction.Media(MediaCommand.NEXT), p("अगला गाना"))
+        assertEquals(AssistantAction.Media(MediaCommand.NEXT), p("next song"))
+        assertEquals(AssistantAction.Media(MediaCommand.NEXT), p("gaana skip karo"))
+        assertEquals(AssistantAction.Media(MediaCommand.PREVIOUS), p("pichla gaana"))
+        // A song by name needs the AI (search + the user's music app).
+        assertNull(p("arijit ka gaana chalao"))
+        assertNull(p("play kesariya"))
+        assertNull(p("gaana chalao"))
+    }
+
+    @Test
+    fun screenshotFindPhoneAndLastCall() {
+        assertEquals(AssistantAction.Screenshot, p("screenshot lo"))
+        assertEquals(AssistantAction.Screenshot, p("ek screenshot le lo na"))
+        assertEquals(AssistantAction.Screenshot, p("स्क्रीनशॉट लो"))
+        assertEquals(AssistantAction.FindPhone, p("mera phone dhundo"))
+        assertEquals(AssistantAction.FindPhone, p("फोन की घंटी बजाओ"))
+        assertEquals(AssistantAction.LastCall, p("last call kiska tha"))
+        assertEquals(AssistantAction.LastCall, p("kiska call aaya tha"))
+        assertEquals(AssistantAction.LastCall, p("आखिरी कॉल किसका था"))
+        assertNull(p("mummy ka phone kahan hai")) // not my phone
+    }
+
+    @Test
+    fun settingsPages() {
+        assertEquals(AssistantAction.OpenSettings(SettingsPage.WIFI), p("wifi settings kholo"))
+        assertEquals(AssistantAction.OpenSettings(SettingsPage.BLUETOOTH), p("ब्लूटूथ सेटिंग खोलो"))
+        assertEquals(AssistantAction.OpenSettings(SettingsPage.BATTERY), p("battery settings"))
+        assertEquals(AssistantAction.OpenSettings(SettingsPage.DISPLAY), p("display ki settings kholo"))
+        assertEquals(AssistantAction.OpenSettings(SettingsPage.GENERAL), p("settings kholo"))
+        assertEquals(AssistantAction.Battery, p("battery kitni hai")) // still the battery level, not its settings page
+    }
+
+    @Test
+    fun backAndSeemasOwnScreen() {
+        assertEquals(AssistantAction.ScreenBack, p("peeche jao"))
+        assertEquals(AssistantAction.ScreenBack, p("पीछे जाओ"))
+        assertEquals(AssistantAction.OpenSeema, p("apni screen par aao"))
+        assertEquals(AssistantAction.OpenSeema, p("apna app kholo"))
+        assertNull(p("peeche jao aur send dabao"))
+    }
+
+    @Test
+    fun timeAndDate() {
+        assertEquals(AssistantAction.TellTime(date = false), p("kitne baje hain"))
+        assertEquals(AssistantAction.TellTime(date = false), p("abhi kitne baje hai?"))
+        assertEquals(AssistantAction.TellTime(date = false), p("कितने बजे हैं"))
+        assertEquals(AssistantAction.TellTime(date = false), p("time kya hua"))
+        assertEquals(AssistantAction.TellTime(date = true), p("aaj kya date hai"))
+        assertEquals(AssistantAction.TellTime(date = true), p("आज कौन सा दिन है"))
+        assertEquals(AssistantAction.TellTime(date = true), p("aaj kaun si tarikh hai"))
+        assertNull(p("delhi mein kitne baje hain")) // another city's time needs the AI
+        assertNull(p("aaj kya khana banau"))
+    }
+
+    @Test
+    fun conversationStillGoesToTheAi() {
+        for (q in listOf("kaise ho", "gaane ke baare mein batao", "bharat ki rajdhani kya hai", "ek kahani sunao", "time management kaise karu")) {
+            assertNull(q, p(q))
+        }
     }
 }

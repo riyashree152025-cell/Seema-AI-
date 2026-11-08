@@ -1,9 +1,12 @@
 package com.raju.aiassistant.domain.assistant
 
+import com.raju.aiassistant.domain.tools.MediaCommand
+
 /**
  * Simple phone commands understood on the phone itself, without asking an AI: torch, volume,
- * timer, alarm, photo / selfie, camera, call, answer / end a call, battery, home screen and
- * opening an app. They cost no tokens, answer at once and also work without internet.
+ * timer, alarm, photo / selfie, camera, call, answer / end a call, battery, home screen, music
+ * (pause / play / next / previous), screenshot, find my phone, last call, a settings page, back,
+ * Seema's own screen, the time and the date, and opening an app. They cost no tokens, answer at once and also work without internet.
  *
  * Only a sentence that is nothing but such a command matches ("torch on karo", "Mummy ko call
  * karo", "6:30 baje subah ka alarm"). Anything more ("torch on karo aur gaana chalao"), anything
@@ -15,7 +18,8 @@ object LocalCommands {
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
-            ?: battery(t) ?: home(t) ?: openApp(t)
+            ?: battery(t) ?: home(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
+            ?: openSeema(t) ?: clock(t) ?: openApp(t)
     }
 
     // ------------------------------------------------------------------ text clean-up
@@ -178,6 +182,99 @@ object LocalCommands {
     private fun battery(t: String): AssistantAction? = if (BATTERY.matches(t)) AssistantAction.Battery else null
 
     private fun home(t: String): AssistantAction? = if (HOME.matches(t)) AssistantAction.GoHome else null
+
+    // ------------------------------------------------------------------ music
+
+    private const val SONG = "(?:gaana|gana|gaane|gane|music|song|गाना|गाने|म्यूजिक|म्यूज़िक|सॉन्ग)"
+    private const val PLAY = "(?:chalao|chala do|chala de|bajao|baja do|baja de|play karo|play|चलाओ|चला दो|चला दे|बजाओ|बजा दो|प्ले करो)"
+    private val MEDIA_PAUSE = Regex(
+        "^(?:$SONG(?: (?:ko|को))? (?:band|rok|roko|rok do|ruko|pause|stop|बंद|रोको|रोक दो|रोक|पॉज़|पॉज|स्टॉप)|pause|पॉज़|पॉज)$DO$",
+    )
+    private val MEDIA_PLAY = Regex(
+        "^(?:$SONG (?:phir se|fir se|phir|fir|wapas|dobara|फिर से|फिर|वापस|दोबारा) $PLAY|$SONG (?:resume|play)$DO|resume|play)$",
+    )
+    private val MEDIA_NEXT = Regex("^(?:(?:agla|next|अगला|नेक्स्ट) $SONG(?: $PLAY)?|$SONG (?:skip|badlo|बदलो)$DO|skip|next)$")
+    private val MEDIA_PREVIOUS = Regex("^(?:pichla|pichhla|previous|पिछला|प्रीवियस) $SONG(?: $PLAY)?$")
+
+    /** Pause / play / next / previous of whatever is playing. A song by name ("Arijit ka gaana chalao") goes to the AI. */
+    private fun media(t: String): AssistantAction? = when {
+        MEDIA_PAUSE.matches(t) -> AssistantAction.Media(MediaCommand.PAUSE)
+        MEDIA_PLAY.matches(t) -> AssistantAction.Media(MediaCommand.PLAY)
+        MEDIA_NEXT.matches(t) -> AssistantAction.Media(MediaCommand.NEXT)
+        MEDIA_PREVIOUS.matches(t) -> AssistantAction.Media(MediaCommand.PREVIOUS)
+        else -> null
+    }
+
+    // ------------------------------------------------------------------ screenshot, find phone, last call
+
+    private val SCREENSHOT = Regex(
+        "^(?:ek )?(?:screenshot|screen shot|स्क्रीनशॉट|स्क्रीन शॉट)(?: (?:lo|le lo|lelo|le|khincho|kheencho|khicho|lijiye|लो|ले लो|लेलो|ले|खींचो|लीजिए|लो ना))?$DO$",
+    )
+    private const val MOBILE = "(?:phone|fone|mobile|mobail|फोन|फ़ोन|मोबाइल)"
+    private val FIND_PHONE = Regex(
+        "^(?:mera |मेरा )?$MOBILE (?:dhundo|dhoondo|dhundho|dhoondho|khojo|dhund do|dhoond do|kahan hai|kaha hai|ki ghanti bajao|ki ring bajao|bajao|ढूंढो|ढूँढो|खोजो|ढूंढ दो|कहाँ है|कहां है|की घंटी बजाओ|बजाओ)$",
+    )
+    private val LAST_CALL = Regex(
+        "^(?:(?:last|aakhri|akhri|aakhiri|pichla|आखिरी|आख़िरी|पिछला) $PHONE (?:kiska|kis ka|kiska tha|kis ka tha|किसका|किसका था|किस का था)(?: (?:tha|aaya tha|था|आया था))?|" +
+            "(?:abhi |अभी )?(?:kiska|kis ka|किसका|किस का) $PHONE (?:aaya tha|aya tha|tha|आया था|था))$",
+    )
+
+    private fun screenshot(t: String): AssistantAction? = if (SCREENSHOT.matches(t)) AssistantAction.Screenshot else null
+
+    private fun findPhone(t: String): AssistantAction? = if (FIND_PHONE.matches(t)) AssistantAction.FindPhone else null
+
+    private fun lastCall(t: String): AssistantAction? = if (LAST_CALL.matches(t)) AssistantAction.LastCall else null
+
+    // ------------------------------------------------------------------ settings pages, back, Seema
+
+    private val SETTINGS = Regex(
+        "^(wifi|wi fi|wi-fi|वाईफाई|वाई फाई|bluetooth|ब्लूटूथ|display|डिस्प्ले|sound|साउंड|battery|बैटरी|notification|notifications|नोटिफिकेशन)" +
+            "(?: (?:ki|ka|की|का))? (?:settings|setting|सेटिंग|सेटिंग्स)(?: (?:kholo|khol do|open karo|open kar do|open|dikhao|खोलो|खोल दो|ओपन करो|दिखाओ))?$|" +
+            "^(?:settings|setting|सेटिंग|सेटिंग्स) (?:kholo|khol do|open karo|open kar do|खोलो|खोल दो|ओपन करो)$",
+    )
+
+    private fun openSettings(t: String): AssistantAction? {
+        val m = SETTINGS.matchEntire(t) ?: return null
+        val what = m.groupValues[1]
+        val page = when {
+            what.isEmpty() -> SettingsPage.GENERAL
+            what.startsWith("w") || what.startsWith("वा") -> SettingsPage.WIFI
+            what.startsWith("bl") || what.startsWith("ब्लू") -> SettingsPage.BLUETOOTH
+            what.startsWith("d") || what.startsWith("डि") -> SettingsPage.DISPLAY
+            what.startsWith("so") || what.startsWith("सा") -> SettingsPage.SOUND
+            what.startsWith("ba") || what.startsWith("बै") -> SettingsPage.BATTERY
+            else -> SettingsPage.NOTIFICATION_ACCESS
+        }
+        return AssistantAction.OpenSettings(page)
+    }
+
+    /** "peeche jao": the screen's back button (Seema still asks before pressing it). */
+    private val BACK = Regex("^(?:(?:ek )?(?:peeche|piche|pichhe|पीछे|back|बैक) (?:jao|chalo|jaao|karo|जाओ|चलो|करो)|go back|back)$")
+    private val SEEMA = Regex(
+        "^(?:(?:apni|apne|अपनी|अपने) (?:screen|app|स्क्रीन|ऐप) (?:par|pe|पर|पे) (?:aao|aa jao|wapas aao|आओ|आ जाओ|वापस आओ)|(?:apna|apni|अपना|अपनी) (?:app|ऐप) (?:kholo|khol do|open karo|खोलो|खोल दो))$",
+    )
+
+    private fun back(t: String): AssistantAction? = if (BACK.matches(t)) AssistantAction.ScreenBack else null
+
+    private fun openSeema(t: String): AssistantAction? = if (SEEMA.matches(t)) AssistantAction.OpenSeema else null
+
+    // ------------------------------------------------------------------ time and date
+
+    private val TIME_Q = Regex(
+        "^(?:abhi |अभी )?(?:(?:kitne|kitna|कितने|कितना) (?:baje|baj|बजे|बज)(?: (?:gaye|gye|rahe|गए|गये|रहे))?(?: (?:hain|hai|he|हैं|है))?|" +
+            "(?:time|samay|टाइम|समय) (?:kya|kitna|क्या|कितना) (?:hua|hai|ho gaya|hua hai|हुआ|है|हो गया|हुआ है)|what time is it|time batao|टाइम बताओ|समय बताओ)$",
+    )
+    private val DATE_Q = Regex(
+        "^(?:aaj|aj|आज) (?:kya|kaun si|kaunsi|kitni|क्या|कौन सी|कौनसी|कितनी) (?:date|tarikh|tareekh|तारीख|तारीख़|डेट)(?: (?:hai|he|है))?$|" +
+            "^(?:aaj|aj|आज) (?:kaun sa|kaunsa|kya|कौन सा|कौनसा|क्या) (?:din|वार|दिन|day)(?: (?:hai|he|है))?$|" +
+            "^(?:date|tarikh|तारीख|डेट) (?:batao|bata do|बताओ|बता दो)$",
+    )
+
+    private fun clock(t: String): AssistantAction? = when {
+        TIME_Q.matches(t) -> AssistantAction.TellTime(date = false)
+        DATE_Q.matches(t) -> AssistantAction.TellTime(date = true)
+        else -> null
+    }
 
     // ------------------------------------------------------------------ open an app
 

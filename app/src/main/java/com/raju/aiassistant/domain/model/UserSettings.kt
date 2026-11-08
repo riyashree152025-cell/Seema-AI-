@@ -117,10 +117,11 @@ data class UserSettings(
     /** While asleep, wake only when called by name ("Seema …"); off = any speech wakes her. */
     val wakeWord: Boolean = true,
     /**
-     * Phase 1 (MicHub): the wake listener takes the shared microphone instead of its own recorder.
-     * Off by default: the original recorder runs exactly as before until this is switched on.
+     * Phase 1 (MicHub): wake word, KWS, speech-to-text and barge-in share one microphone reader
+     * instead of each opening its own recorder. On by default since Phase 1 was sealed; switching it
+     * off in Settings ("Shared Mic Engine") brings back the original per-listener recorders unchanged.
      */
-    val micHub: Boolean = false,
+    val micHub: Boolean = true,
     /** Morning briefing (journeys, yesterday's spending) and the Sunday expense report as notifications. */
     val businessReminders: Boolean = true,
     /** Smart power: animations slow down and stop when nobody is using the app. */

@@ -158,6 +158,10 @@ sealed interface AssistantAction {
     data object Screenshot : AssistantAction {
         override val label get() = "Take screenshot"
     }
+    /** The time ([date] = false) or today's date, answered from the phone's clock. Never asked of the AI. */
+    data class TellTime(val date: Boolean) : AssistantAction {
+        override val label get() = if (date) "Tell the date" else "Tell the time"
+    }
 
     // ---- Screen control (Seema Accessibility): read first, act only after the user says yes
     data class ReadScreen(val question: String?) : AssistantAction {

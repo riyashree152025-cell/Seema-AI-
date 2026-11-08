@@ -33,6 +33,7 @@ import com.raju.aiassistant.domain.tools.ContactLookup
 import com.raju.aiassistant.domain.tools.DeviceTools
 import com.raju.aiassistant.domain.tools.ToolOutcome
 import com.raju.aiassistant.domain.tools.distinctContacts
+import com.raju.aiassistant.domain.tools.MediaCommand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -782,7 +783,10 @@ class AssistantEngine(
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
         }
         LocalCommands.parse(text)?.let { action ->
+            // Fast route: a plain phone command is done on the phone, with no AI request at all.
+            trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, no AI)")
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
+            trace("fast route declined: ${action.label}; asking the AI")
         }
 
         if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
@@ -1209,6 +1213,50 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "लीजिए राजू, होम स्क्रीन पर आ गए।", "এই যে রাজু, হোম স্ক্রিনে চলে এসেছি।"))
             }
+            is AssistantAction.Media -> {
+                trace("offline command: media ${action.command}")
+                val outcome = tools.mediaControl(action.command)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(mediaSpoken(action.command))
+            }
+            is AssistantAction.Screenshot -> {
+                trace("offline command: screenshot")
+                _state.value = AssistantState.Executing
+                takeScreenshot(action, speak)
+            }
+            is AssistantAction.FindPhone -> {
+                trace("offline command: find phone")
+                val outcome = tools.findMyPhone()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
+            }
+            is AssistantAction.LastCall -> {
+                trace("offline command: last call")
+                _state.value = AssistantState.Executing
+                checkLastCall(action, speak)
+            }
+            is AssistantAction.OpenSettings -> {
+                trace("offline command: settings ${action.page}")
+                val outcome = tools.openSettings(action.page)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "सेटिंग्स खोल दी है।", "সেটিংস খুলে দিয়েছি।"))
+            }
+            is AssistantAction.ScreenBack -> {
+                // Still asks "पीछे जाऊँ?" first, exactly as when the AI asks for it.
+                trace("offline command: back")
+                _state.value = AssistantState.Executing
+                screenBack(action, speak)
+            }
+            is AssistantAction.OpenSeema -> {
+                trace("offline command: open seema")
+                val outcome = tools.openSeema()
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "हाँ राजू, मैं अपनी स्क्रीन पर वापस आ गई!", "হ্যাঁ রাজু, আমি আমার স্ক্রিনে ফিরে এসেছি!"))
+            }
+            is AssistantAction.TellTime -> {
+                trace("offline command: ${if (action.date) "date" else "time"}")
+                informational(action, spokenClock(action), speak)
+            }
             else -> return false
         }
         if (_state.value != AssistantState.Error) {
@@ -1570,8 +1618,9 @@ class AssistantEngine(
             is AssistantAction.Media -> {
                 val outcome = tools.mediaControl(action.command)
                 report(action, outcome)
-                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "गाना बंद कर दिया गया है राजू।", "গান বন্ধ করে দেওয়া হয়েছে রাজু।"))
+                if (speak && outcome is ToolOutcome.Done) say(mediaSpoken(action.command))
             }
+            is AssistantAction.TellTime -> informational(action, spokenClock(action), speak)
             is AssistantAction.Sms -> sendSms(action)
             is AssistantAction.AddEvent -> addEvent(action)
             is AssistantAction.Navigate -> report(action, tools.navigate(action.destination, action.mode))
@@ -1624,6 +1673,21 @@ class AssistantEngine(
             is AssistantAction.SaveFile -> report(action, tools.shareTextFile(action.name, action.content))
             is AssistantAction.Research -> research(action, provider, model, system, speak)
         }
+    }
+
+    /** What Seema says after a media key (it used to say "गाना बंद कर दिया" for every key, next too). */
+    private fun mediaSpoken(command: MediaCommand): String = when (command) {
+        MediaCommand.PAUSE -> phrase(lang(), "गाना रोक दिया है राजू।", "গান থামিয়ে দিয়েছি রাজু।")
+        MediaCommand.PLAY -> phrase(lang(), "गाना फिर से चला दिया है।", "গান আবার চালিয়ে দিয়েছি।")
+        MediaCommand.NEXT -> phrase(lang(), "अगला गाना लगा दिया है।", "পরের গান চালিয়ে দিয়েছি।")
+        MediaCommand.PREVIOUS -> phrase(lang(), "पिछला गाना लगा दिया है।", "আগের গান চালিয়ে দিয়েছি।")
+    }
+
+    /** The phone's own clock, said in the conversation language. */
+    private fun spokenClock(action: AssistantAction.TellTime): String {
+        val now = Instant.ofEpochMilli(clock()).atZone(zone())
+        val bengali = lang() == SeemaLanguage.BENGALI
+        return if (action.date) SpokenClock.date(now.toLocalDate(), bengali) else SpokenClock.time(now.hour, now.minute, bengali)
     }
 
     /** A result the user asked to know (summary, list): shown, logged and, in a voice turn, spoken. */
