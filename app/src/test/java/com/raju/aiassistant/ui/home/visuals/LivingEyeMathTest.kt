@@ -83,4 +83,33 @@ class LivingEyeMathTest {
             }
         }
     }
+
+    @Test
+    fun thePupilBreathesWithTheVoiceBetween092And108() {
+        assertEquals(0.92f, pupilDilation(0f), 1e-4f)
+        assertEquals(1.08f, pupilDilation(1f), 1e-4f)
+        assertTrue(pupilScale(2f, 1f, AssistantState.Speaking) > pupilScale(2f, 0f, AssistantState.Speaking))
+        assertTrue(pupilScale(2f, 1f, AssistantState.Listening) > pupilScale(2f, 0f, AssistantState.Listening))
+    }
+
+    @Test
+    fun microSaccadesJumpQuicklyThenRest() {
+        val start = SACCADE_EVERY_S * 3
+        val a = microSaccade(start + 0.2f)
+        val b = microSaccade(start + 1.0f)
+        assertEquals(a.first, b.first, 1e-5f) // resting between jumps
+        val before = microSaccade(start - 0.01f)
+        val after = microSaccade(start + SACCADE_JUMP_S + 0.01f)
+        assertTrue(before != after) // a jump happened in under 0.1 s
+        (0 until 200).forEach { k -> val (x, y) = microSaccade(k * 0.05f); assertTrue(abs(x) <= 0.031f && abs(y) <= 0.031f) }
+    }
+
+    @Test
+    fun theEyeTurnsTowardsATouchThenComesBack() {
+        val (x, y, w) = touchGaze(dx = 2f, dy = 0f, secondsSinceTouch = 1f)
+        assertTrue(x > 0f && abs(y) < 1e-5f && w == 1f)
+        assertTrue(x <= TOUCH_GAZE_MAX)
+        assertEquals(0f, touchGaze(2f, 0f, TOUCH_GAZE_HOLD_S + 1f).third, 0f)
+        assertTrue(touchGaze(2f, 0f, 0.05f).third < 1f) // turns smoothly, not instantly
+    }
 }

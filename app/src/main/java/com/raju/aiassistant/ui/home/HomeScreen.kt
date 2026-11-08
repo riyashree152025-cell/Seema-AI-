@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 
@@ -199,6 +200,8 @@ fun HomeScreen(
     // Where the eye area and the canvas are on screen: read only while drawing (no recomposition).
     val eyeBounds = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val canvasOrigin = remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    // The last touch on the eye (canvas position, animation time): the eye looks towards it.
+    val eyeTouch = remember { mutableStateOf<Pair<androidx.compose.ui.geometry.Offset, Float>?>(null) }
 
     LaunchedEffect(state.paused, assistantState) {
         when {
@@ -264,6 +267,7 @@ fun HomeScreen(
                 com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
             },
             eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
+            lastTouch = { eyeTouch.value },
         )
 
         Column(
@@ -514,7 +518,23 @@ fun HomeScreen(
 
                     // The eye is drawn by the full-screen canvas behind; this box only marks where it goes
                     // (and stays the tap target).
-                    Box(Modifier.fillMaxSize().onGloballyPositioned { eyeBounds.value = it.boundsInRoot() })
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { eyeBounds.value = it.boundsInRoot() }
+                            // Watch touches (without taking them: the tap still toggles listening) so the
+                            // eye can turn towards the finger.
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                        val change = event.changes.firstOrNull() ?: continue
+                                        val box = eyeBounds.value ?: continue
+                                        eyeTouch.value = (box.topLeft + change.position - canvasOrigin.value) to timeProvider.floatValue
+                                    }
+                                }
+                            }
+                    )
 
                 }
 

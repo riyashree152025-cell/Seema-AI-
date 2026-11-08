@@ -43,8 +43,64 @@ fun eyeBreath(t: Float): Float = 1f + 0.035f * sin(2f * PI.toFloat() * t / EYE_B
 fun pupilScale(t: Float, energy: Float, state: AssistantState): Float {
     if (state == AssistantState.Sleeping || state == AssistantState.Offline) return 0.26f
     val micro = 0.025f * sin(t * 1.7f) + 0.015f * sin(t * 3.3f + 1.1f)
-    val base = if (state == AssistantState.Listening) 0.42f else 0.36f
-    return (base + micro - 0.10f * energy.coerceIn(0f, 1f)).coerceIn(0.2f, 0.5f)
+    val e = energy.coerceIn(0f, 1f)
+    return when (state) {
+        // Listening / speaking: the pupil breathes with the voice, 0.92x (quiet) … 1.08x (loud).
+        // (Listening starts a little wider: she is paying attention.)
+        AssistantState.Listening -> ((0.40f + micro) * pupilDilation(e)).coerceIn(0.2f, 0.5f)
+        AssistantState.Speaking -> ((0.38f + micro) * pupilDilation(e)).coerceIn(0.2f, 0.5f)
+        else -> (0.36f + micro - 0.10f * e).coerceIn(0.2f, 0.5f)
+    }
+}
+
+/** Pupil dilation with the voice while listening or speaking: 0.92 at silence, 1.08 at full voice. */
+fun pupilDilation(energy: Float): Float = 0.92f + 0.16f * energy.coerceIn(0f, 1f)
+
+/** A stable pseudo-random number in -1..1 for saccade [n] on axis [axis]. */
+private fun saccadeNoise(n: Int, axis: Int): Float {
+    var h = n * 374_761_393 + axis * 668_265_263
+    h = (h xor (h ushr 13)) * 1_274_126_177
+    h = h xor (h ushr 16)
+    return (h and 0xFFFF) / 32_767.5f - 1f
+}
+
+/** Seconds between micro-saccades of the idle eye, and how long each quick jump takes. */
+const val SACCADE_EVERY_S = 1.4f
+const val SACCADE_JUMP_S = 0.09f
+
+/**
+ * Micro-saccades: every [SACCADE_EVERY_S] the eye jumps quickly (in [SACCADE_JUMP_S]) to a new nearby
+ * point and rests there — the small, sudden movements that make a real eye look alive.
+ */
+fun microSaccade(t: Float, amount: Float = 0.03f): Pair<Float, Float> {
+    val n = kotlin.math.floor(t / SACCADE_EVERY_S).toInt()
+    val since = t - n * SACCADE_EVERY_S
+    val k = (since / SACCADE_JUMP_S).coerceIn(0f, 1f)
+    val ease = k * k * (3f - 2f * k)
+    val x = saccadeNoise(n - 1, 0) + (saccadeNoise(n, 0) - saccadeNoise(n - 1, 0)) * ease
+    val y = saccadeNoise(n - 1, 1) + (saccadeNoise(n, 1) - saccadeNoise(n - 1, 1)) * ease
+    return (x * amount) to (y * amount * 0.7f)
+}
+
+/** How far (in eye radii) the eye turns towards a touch, and for how long it keeps looking there. */
+const val TOUCH_GAZE_MAX = 0.12f
+const val TOUCH_GAZE_HOLD_S = 2.5f
+
+/**
+ * Looking at a touch: [dx], [dy] is the touch relative to the eye centre in eye radii; the eye turns
+ * that way (at most [TOUCH_GAZE_MAX]) and drifts back after [TOUCH_GAZE_HOLD_S]. 0..1 weight returned
+ * with the offset so it can blend with the idle gaze.
+ */
+fun touchGaze(dx: Float, dy: Float, secondsSinceTouch: Float): Triple<Float, Float, Float> {
+    if (secondsSinceTouch < 0f || secondsSinceTouch > TOUCH_GAZE_HOLD_S + 0.6f) return Triple(0f, 0f, 0f)
+    val len = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1e-3f)
+    val reach = minOf(TOUCH_GAZE_MAX, len * 0.12f)
+    val w = when {
+        secondsSinceTouch < 0.15f -> secondsSinceTouch / 0.15f
+        secondsSinceTouch < TOUCH_GAZE_HOLD_S -> 1f
+        else -> 1f - (secondsSinceTouch - TOUCH_GAZE_HOLD_S) / 0.6f
+    }.coerceIn(0f, 1f)
+    return Triple(dx / len * reach, dy / len * reach, w)
 }
 
 /**
@@ -57,7 +113,11 @@ fun eyeGaze(t: Float, state: AssistantState): Pair<Float, Float> = when (state) 
     AssistantState.Thinking, AssistantState.Executing -> (0.09f * sin(t * 0.9f)) to (-0.06f + 0.02f * sin(t * 1.7f))
     AssistantState.Speaking -> (0.03f * sin(t * 1.3f)) to (0.02f * sin(t * 1.9f + 0.5f))
     AssistantState.Sleeping, AssistantState.Offline -> 0f to 0.02f
-    else -> (0.07f * sin(t * 0.37f) + 0.02f * sin(t * 1.1f)) to (0.045f * sin(t * 0.53f + 1f))
+    else -> {
+        // A slow drift plus quick micro-saccades.
+        val (sx, sy) = microSaccade(t)
+        (0.06f * sin(t * 0.37f) + sx) to (0.04f * sin(t * 0.53f + 1f) + sy)
+    }
 }
 
 /** Sharp spikes turn around the iris while she listens, thinks, works or speaks. */
