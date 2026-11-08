@@ -161,7 +161,7 @@ class AppContainer(context: Context) {
     }
     /** Standby: offline "Hey Seema" when downloaded and "wake by name" is on; otherwise the voice detector (+ Deepgram name check). */
     /** The one shared microphone reader (Phase 1). Only used while the micHub setting is on. */
-    val micHub by lazy {
+    val micHub: com.raju.aiassistant.data.voice.MicHub by lazy {
         com.raju.aiassistant.data.voice.MicHub(
             appScope,
             { com.raju.aiassistant.data.voice.AudioRecordFrameSource(enhance = { audioInterruptions.ringing() }) },
@@ -177,7 +177,7 @@ class AppContainer(context: Context) {
         ) { currentSettings.value.wakeWord }
     }
     /** Phone calls and headphone disconnects (started in RajuApp). */
-    val audioInterruptions by lazy {
+    val audioInterruptions: com.raju.aiassistant.core.audio.AudioInterruptions by lazy {
         com.raju.aiassistant.core.audio.AudioInterruptions(
             appContext,
             onCall = { phase ->
