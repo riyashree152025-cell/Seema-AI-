@@ -723,7 +723,7 @@ class AssistantEngineTest {
     fun quietForAMinuteSheSleepsAndHerNameWakesHer() = runTest {
         settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()
-        val e = sleepyEngine(wake, FakeTranscriber("Seema, time kya hua?"), AiResult.Success("Saade paanch baje hain."))
+        val e = sleepyEngine(wake, FakeTranscriber("Seema, mausam kaisa hai?"), AiResult.Success("Saade paanch baje hain."))
         e.startHandsFree()
         now = 30_000
         voice.onError!!(VoiceError("silence", noSpeech = true))
@@ -736,7 +736,7 @@ class AssistantEngineTest {
         assertEquals(1, wake.starts)
         wake.onUtterance!!(ByteArray(10))
         settle()
-        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time kya hua?" })
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "mausam kaisa hai?" })
         assertEquals("Saade paanch baje hain.", speaker.spoken.last())
     }
 
@@ -800,7 +800,7 @@ class AssistantEngineTest {
         assertEquals(AssistantState.Sleeping, e.state.value) // not open listening to the other app
         assertEquals(3, wake.starts) // asleep, kept listening during the name check, asleep again
 
-        heard.text = "Hey Seema, time kya hua" // right after her answer (same clock): not thrown away
+        heard.text = "Hey Seema, mausam kaisa hai" // right after her answer (same clock): not thrown away
         wake.onUtterance!!(ByteArray(10))
         settle()
         assertEquals("Saade paanch baje hain.", speaker.spoken.last())
