@@ -47,8 +47,9 @@ import java.util.Date
 /** Phone actions via public APIs and visible system UI only (dialer, launcher intents, settings screens). */
 private const val A11Y_READ_MS = 3_000L
 private const val A11Y_ACT_MS = 3_000L
-private const val WHATSAPP_FLOW_MS = 30_000L
-private const val WHATSAPP_DOCUMENT_FLOW_MS = 60_000L
+// Each step may take ~14 s on a slow phone or network; the whole flow still has a hard ceiling.
+private const val WHATSAPP_FLOW_MS = 60_000L
+private const val WHATSAPP_DOCUMENT_FLOW_MS = 90_000L
 
 class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
@@ -620,10 +621,13 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override suspend fun awaitAutoAction(timeoutMs: Long): Boolean? {
         if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) return null
         var waited = 0L
+        var step = 200L
         while (waited < timeoutMs) {
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.autoResult?.let { return it }
-            kotlinx.coroutines.delay(200)
-            waited += 200
+            // Quick checks first (most presses land within a second), then every 500 ms.
+            kotlinx.coroutines.delay(step)
+            waited += step
+            step = minOf(500L, step + 100L)
         }
         return com.raju.aiassistant.accessibility.SeemaAccessibilityService.autoResult
     }

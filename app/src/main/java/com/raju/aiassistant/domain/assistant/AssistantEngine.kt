@@ -108,7 +108,8 @@ private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
-private const val AUTO_ACTION_WAIT_MS = 9_000L
+/** How long a WhatsApp Send / Call press is waited for (slow networks, a dialog in between). */
+private const val AUTO_ACTION_WAIT_MS = 14_000L
 /** How long a spoken "haan / nahi" is listened for after "ये बटन दबा दूँ?". */
 private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 /** Time the app on screen gets to react before Seema checks that the action really happened. */
@@ -763,6 +764,21 @@ class AssistantEngine(
         trace("wake audio: ${pcm.size} bytes")
         val t = transcriber
         if (t != null && t.isAvailable()) {
+            // Battery and data: a faint sound, or the 5th noise in a row without her name, is not
+            // sent online at all (the offline detector, when installed, never needs this).
+            when (wakeGate.decide(pcm)) {
+                com.raju.aiassistant.domain.voice.WakeCheckGate.Decision.TOO_QUIET -> {
+                    trace("wake: too quiet, not checked online")
+                    armWakeListener()
+                    return
+                }
+                com.raju.aiassistant.domain.voice.WakeCheckGate.Decision.BACKING_OFF -> {
+                    trace("wake: noise again and again, online checks paused")
+                    armWakeListener()
+                    return
+                }
+                com.raju.aiassistant.domain.voice.WakeCheckGate.Decision.CHECK -> Unit
+            }
             // Keep listening while her name is checked online (1-3 s on a slow connection): a
             // "Hey Seema" said during the check used to fall into that gap and was never heard.
             armWakeListener()
@@ -777,6 +793,7 @@ class AssistantEngine(
             if (!asleep) return
             val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
             trace("wake request: $request")
+            if (raw != null) wakeGate.onChecked(nameHeard = request != null)
             when {
                 request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
                 request.isBlank() -> { onWake(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
@@ -1109,6 +1126,9 @@ class AssistantEngine(
     private val _latencies = MutableStateFlow<List<TurnLatency>>(emptyList())
     /** Response times of the last replies (Tools → Response time). */
     val latencies: StateFlow<List<TurnLatency>> = _latencies.asStateFlow()
+    /** Which standby sounds are worth an online name check (faint ones and noise streaks are not). */
+    private val wakeGate = com.raju.aiassistant.domain.voice.WakeCheckGate(clock)
+
     private val beacon = PhoneBeacon(scope, speakLine = { speaker.speak(it) }, onStopped = { trace("beacon stopped: ${it.name}") })
 
     private var turnStartedAt = 0L
@@ -2590,12 +2610,14 @@ class AssistantEngine(
             FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "WhatsApp में पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई। कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি। কিছু পাঠাইনি।")
             FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp ने समय पर वो नहीं दिखाया जो चाहिए था, इसलिए मैं रुक गई। मैसेज नहीं गया।", "হোয়াটসঅ্যাপ সময়মতো ঠিক স্ক্রিন দেখায়নি, তাই থেমে গেছি। মেসেজ যায়নি।")
             FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है, मैसेज नहीं भेज पाई।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই, মেসেজ পাঠাতে পারিনি।")
+            FlowOutcome.INTERRUPTED -> Triple(ActionStatus.FAILED, "WhatsApp के ऊपर बार-बार कोई और संदेश (permission / update / system) आ गया, इसलिए मैं रुक गई और वापस आ गई। कुछ नहीं भेजा — वो संदेश देखकर फिर कहिए।", "হোয়াটসঅ্যাপের উপর বারবার অন্য বার্তা (permission / update) এসেছে, তাই থেমে ফিরে এসেছি। কিছু পাঠাইনি।")
             // Document outcomes never come from a text message.
             FlowOutcome.FILE_NOT_FOUND, FlowOutcome.SEVERAL_FILES -> Triple(ActionStatus.FAILED, "मैसेज नहीं भेज पाई।", "মেসেজ পাঠাতে পারিনি।")
         }
         val msg = phrase(lang(), hi, bn)
         report(action, status, msg)
-        if (r.outcome == FlowOutcome.SENT) tools.openSeema()
+        // Sent, stuck or interrupted: back to Seema with the honest status (not left hanging in WhatsApp).
+        if (r.outcome == FlowOutcome.SENT || r.outcome == FlowOutcome.STUCK || r.outcome == FlowOutcome.INTERRUPTED) tools.openSeema()
         if (speak) say(msg)
     }
 
@@ -2643,10 +2665,12 @@ class AssistantEngine(
             FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई।", "পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি।")
             FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp में अटैच या फाइल वाला हिस्सा समय पर नहीं दिखा, मैं रुक गई। फाइल नहीं गई।", "হোয়াটসঅ্যাপে অ্যাটাচ বা ফাইলের অংশ সময়মতো দেখা যায়নি, থেমে গেছি। ফাইল যায়নি।")
             FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই।")
+            FlowOutcome.INTERRUPTED -> Triple(ActionStatus.FAILED, "WhatsApp के ऊपर बार-बार कोई और संदेश (permission / update / system) आ गया, इसलिए मैं रुक गई और वापस आ गई। कुछ नहीं भेजा — वो संदेश देखकर फिर कहिए।", "হোয়াটসঅ্যাপের উপর বারবার অন্য বার্তা (permission / update) এসেছে, তাই থেমে ফিরে এসেছি। কিছু পাঠাইনি।")
         }
         val msg = phrase(lang(), hi, bn)
         report(action, status, msg)
-        if (r.outcome == FlowOutcome.SENT) tools.openSeema()
+        // Sent, stuck or interrupted: back to Seema with the honest status (not left hanging in WhatsApp).
+        if (r.outcome == FlowOutcome.SENT || r.outcome == FlowOutcome.STUCK || r.outcome == FlowOutcome.INTERRUPTED) tools.openSeema()
         if (speak) say(msg)
     }
 

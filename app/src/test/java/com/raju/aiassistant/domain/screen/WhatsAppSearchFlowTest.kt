@@ -2,6 +2,7 @@ package com.raju.aiassistant.domain.screen
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -181,5 +182,52 @@ class WhatsAppSearchFlowTest {
             override suspend fun back() = false
         }
         assertEquals(FlowOutcome.UNSAFE_SCREEN, flow(w).send("Office", "ok").outcome)
+    }
+
+    @Test
+    fun aPermissionPromptIsBackedOutOfAndAPersistentOneStopsTheFlow() = runTest {
+        // A permission dialog shows once over WhatsApp: backed out of, and the message still goes.
+        val once = FakeWhatsApp(listOf("Office"))
+        var shown = false
+        val hands = object : ScreenHands by once {
+            override suspend fun read(): ScreenSnapshot? {
+                if (once.screen == "search" && !shown) {
+                    shown = true
+                    return ScreenSnapshot("com.google.android.permissioncontroller", "Permissions", listOf(ScreenElement("Allow WhatsApp to access contacts?", ElementKind.TEXT)))
+                }
+                return once.read()
+            }
+        }
+        assertEquals(FlowOutcome.SENT, flow(hands).send("Office", "ok").outcome)
+        assertTrue(once.actions.contains("back"))
+
+        // An update screen that keeps coming back: the flow stops as INTERRUPTED, nothing is sent.
+        val stuck = object : ScreenHands {
+            var backs = 0
+            override suspend fun openWhatsApp() = true
+            override suspend fun read() = ScreenSnapshot("com.android.vending", "Play Store", listOf(ScreenElement("Update WhatsApp", ElementKind.BUTTON, clickable = true)))
+            override suspend fun tap(element: ScreenElement) = error("must not tap")
+            override suspend fun type(element: ScreenElement, text: String) = error("must not type")
+            override suspend fun back(): Boolean { backs++; return true }
+        }
+        val r = flow(stuck).send("Office", "ok")
+        assertEquals(FlowOutcome.INTERRUPTED, r.outcome)
+        assertEquals(MAX_BACK_OUTS, stuck.backs)
+    }
+
+    @Test
+    fun whatsAppsOwnUpdateDialogIsAnInterruptionButTheSendDialogIsNot() {
+        val update = ScreenSnapshot(wa, "WhatsApp", listOf(
+            ScreenElement("This version of WhatsApp is out of date. Please update.", ElementKind.TEXT),
+            ScreenElement("UPDATE", ElementKind.BUTTON, clickable = true, id = "android:id/button1"),
+            ScreenElement("Not now", ElementKind.BUTTON, clickable = true, id = "android:id/button2"),
+        ))
+        val sendTo = ScreenSnapshot(wa, "WhatsApp", listOf(
+            ScreenElement("Send ticket.pdf to Riya?", ElementKind.TEXT),
+            ScreenElement("SEND", ElementKind.BUTTON, clickable = true, id = "android:id/button1"),
+        ))
+        assertTrue(WhatsAppScreen.isInterruption(update))
+        assertFalse(WhatsAppScreen.isInterruption(sendTo))
+        assertFalse(WhatsAppScreen.isInterruption(ScreenSnapshot(wa, "WhatsApp", listOf(ScreenElement("Riya", ElementKind.TEXT)))))
     }
 }

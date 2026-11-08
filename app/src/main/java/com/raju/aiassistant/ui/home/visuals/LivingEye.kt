@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -47,6 +48,11 @@ fun LivingEyeVisualizer(
     drawEye: Boolean = true,
     /** Where the waves run, as a share of the height (the eye's height on Home). */
     waveCenterY: Float = 0.5f,
+    /**
+     * Where the eye sits on this canvas (Home: the area above the buttons, measured by layout), or
+     * null for the canvas centre. Read while drawing, so a layout change needs no recomposition.
+     */
+    eyeArea: () -> Rect? = { null },
 ) {
     val accent by animateColorAsState(Color(accentArgb), tween(450), label = "eyeAccent")
     // Energy carried between frames so the waves swell and fade instead of jumping.
@@ -56,8 +62,11 @@ fun LivingEyeVisualizer(
         val target = waveEnergy(state, speechLevel(), micLevel())
         energy[0] = smoothEnergy(energy[0], target)
         val e = energy[0]
-        if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, waveCenterY)
-        if (drawEye) drawLivingEye(t, e, state, accent, richEffects)
+        // One pass: the atmosphere and waves first, then the iris and pupil over them.
+        val area = eyeArea()
+        val centerY = area?.let { (it.center.y / size.height).coerceIn(0.1f, 0.9f) } ?: waveCenterY
+        if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, centerY)
+        if (drawEye) drawLivingEye(t, e, state, accent, richEffects, area)
     }
 }
 
@@ -120,10 +129,11 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
     drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.10f + 0.12f * energy), Color.Transparent), glowCenter, glowR), glowR, glowCenter)
 }
 
-private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantState, accent: Color, richEffects: Boolean) {
-    val c = center
+private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantState, accent: Color, richEffects: Boolean, area: Rect?) {
+    val c = area?.center ?: center
     val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
-    val r = minOf(size.width, size.height) * EYE_RADIUS_SHARE * eyeBreath(t) * (1f + 0.05f * energy)
+    val side = area?.let { minOf(it.width, it.height) } ?: minOf(size.width, size.height)
+    val r = side * EYE_RADIUS_SHARE * eyeBreath(t) * (1f + 0.05f * energy)
     val dim = if (asleep) 0.45f else 1f
 
     // Glow around the eye.

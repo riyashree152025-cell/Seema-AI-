@@ -33,6 +33,8 @@ enum class FlowOutcome {
     STUCK,
     /** Seema's Accessibility is off or WhatsApp is not installed. */
     UNAVAILABLE,
+    /** A permission prompt, an update screen or a system dialog kept coming over WhatsApp. */
+    INTERRUPTED,
     /** No file matching the name in the document list (the list is left open for the user). */
     FILE_NOT_FOUND,
     /** More than one file matches ([WhatsAppFlowResult.choices]). Nothing was sent. */
@@ -57,10 +59,10 @@ data class WhatsAppFlowResult(
 class WhatsAppSearchFlow(
     private val hands: ScreenHands,
     private val pause: suspend (Long) -> Unit = { delay(it) },
-    /** Time the app gets to react between reads. */
+    /** Longest wait between reads; the first waits are shorter (200, 300, 400 ms, then this). */
     private val settleMs: Long = 500,
     /** Reads per stage before giving up (patience × settleMs ≈ the wait). */
-    private val patience: Int = 10,
+    private val patience: Int = PATIENCE_FOR_14_S,
 ) {
     private val log = mutableListOf<String>()
 
@@ -78,9 +80,9 @@ class WhatsAppSearchFlow(
         var tappedSearch = false
         for (i in 0 until patience) {
             val s = readSafe()
-            if (s == null) { pause(settleMs); continue }
+            if (s == null) { pause(stepDelay(i)); continue }
             if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen while looking for search")
-            if (!s.isWhatsApp()) { pause(settleMs); continue }
+            if (!s.isWhatsApp()) { pause(stepDelay(i)); continue }
             searchBox = WhatsAppScreen.searchBox(s)
             if (searchBox != null) break
             val button = WhatsAppScreen.searchButton(s)
@@ -88,7 +90,7 @@ class WhatsAppSearchFlow(
                 button != null && !tappedSearch -> { tappedSearch = hands.tap(button); step("tapped search: ${button.text.ifBlank { button.id }}") }
                 WhatsAppScreen.chatEntry(s) != null && backs < 2 -> { hands.back(); backs++; step("left an open chat") }
             }
-            pause(settleMs)
+            pause(stepDelay(i))
         }
         val box = searchBox ?: return done(FlowOutcome.STUCK, "WhatsApp search box not found")
 
@@ -99,7 +101,7 @@ class WhatsAppSearchFlow(
         // 3. Exactly one matching result.
         var chosen: ScreenElement? = null
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in search")
             val matches = WhatsAppScreen.results(s, name)
@@ -115,7 +117,7 @@ class WhatsAppSearchFlow(
         var entry: ScreenElement? = null
         var sawChat = false
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in chat")
             val e = WhatsAppScreen.chatEntry(s) ?: continue
@@ -134,8 +136,21 @@ class WhatsAppSearchFlow(
         return OpenChat(input, result.text)
     }
 
-    suspend fun send(name: String, text: String): WhatsAppFlowResult {
+    suspend fun send(name: String, text: String): WhatsAppFlowResult = guarded { sendImpl(name, text) }
+
+    suspend fun sendDocument(name: String, fileQuery: String): WhatsAppFlowResult = guarded { sendDocumentImpl(name, fileQuery) }
+
+    private suspend fun guarded(run: suspend () -> WhatsAppFlowResult): WhatsAppFlowResult {
         log.clear()
+        interruptions = 0
+        return try {
+            run()
+        } catch (e: FlowInterrupted) {
+            done(FlowOutcome.INTERRUPTED, "kept being interrupted by ${e.by}")
+        }
+    }
+
+    private suspend fun sendImpl(name: String, text: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty() || text.isBlank()) return done(FlowOutcome.STUCK, "nothing to send")
         val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
         val input = chat.entry
@@ -153,7 +168,7 @@ class WhatsAppSearchFlow(
 
         // 6. After a real send WhatsApp empties the box.
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (!ScreenMatch.showsTyped(s, text.take(40))) return done(FlowOutcome.SENT, "box emptied", chat = result.text)
         }
@@ -164,8 +179,7 @@ class WhatsAppSearchFlow(
      * Sends a document to [name]: chat → attach (📎) → Document → the one file matching [fileQuery]
      * ("ticket", "invoice pdf"; empty = the newest) → Send → the file shows in the chat.
      */
-    suspend fun sendDocument(name: String, fileQuery: String): WhatsAppFlowResult {
-        log.clear()
+    private suspend fun sendDocumentImpl(name: String, fileQuery: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
         val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
 
@@ -182,7 +196,7 @@ class WhatsAppSearchFlow(
         // 3. The one matching file in WhatsApp's document list (or the system file picker).
         var file: ScreenElement? = null
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in the file list")
             if (!s.isWhatsApp() && s.packageName !in WhatsAppScreen.FILE_PICKERS) continue
@@ -212,7 +226,7 @@ class WhatsAppSearchFlow(
         fun inChat(s: ScreenSnapshot?) = s?.elements?.count { !it.editable && DocumentMatch.normalize(it.text).contains(fileName) } ?: 0
         val before = inChat(chatBefore)
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (WhatsAppScreen.chatEntry(s) == null) continue
             if (inChat(s) > before) return done(FlowOutcome.SENT, "file is in the chat", chat = chat.name)
@@ -223,7 +237,7 @@ class WhatsAppSearchFlow(
     /** Waits up to patience × settleMs for [find] to see something on a WhatsApp screen. */
     private suspend fun awaitElement(what: String, find: (ScreenSnapshot) -> ScreenElement?): ScreenElement? {
         for (i in 0 until patience) {
-            pause(settleMs)
+            pause(stepDelay(i))
             val s = readSafe() ?: continue
             if (s.isUnsafe()) return null
             find(s)?.let { return it }
@@ -232,7 +246,30 @@ class WhatsAppSearchFlow(
         return null
     }
 
-    private suspend fun readSafe(): ScreenSnapshot? = runCatching { hands.read() }.getOrNull()
+    /**
+     * The screen, or null when it cannot be read. Something that is not part of the flow — a
+     * permission prompt, a Play Store update, a system dialog, a WhatsApp update / permission dialog —
+     * is backed out of; if it keeps coming back the flow stops as INTERRUPTED instead of waiting on.
+     */
+    private suspend fun readSafe(): ScreenSnapshot? {
+        val s = runCatching { hands.read() }.getOrNull() ?: return null
+        if (!WhatsAppScreen.isInterruption(s)) {
+            interruptions = 0
+            return s
+        }
+        interruptions++
+        step("interrupted by ${s.appLabel} (${s.packageName})")
+        if (interruptions > MAX_BACK_OUTS) throw FlowInterrupted(s.appLabel)
+        hands.back()
+        return null
+    }
+
+    private var interruptions = 0
+
+    private class FlowInterrupted(val by: String) : Exception()
+
+    /** Waits grow 200 → 300 → 400 → [settleMs] ms (0 in tests). */
+    private fun stepDelay(i: Int): Long = if (settleMs <= 0) 0 else minOf(settleMs, 200L + 100L * i)
 
     private fun ScreenSnapshot.isWhatsApp() = packageName in WhatsAppScreen.PACKAGES
 
@@ -246,9 +283,37 @@ class WhatsAppSearchFlow(
     }
 }
 
+/** Reads per step: 200 + 300 + 400 ms, then 500 ms each — about 14 s before a step gives up. */
+const val PATIENCE_FOR_14_S = 30
+/** Dialogs backed out of before the flow stops as INTERRUPTED. */
+const val MAX_BACK_OUTS = 3
+
 /** How WhatsApp's screens are recognised: its view ids first, its visible words as a fallback. */
 object WhatsAppScreen {
     val PACKAGES = setOf("com.whatsapp", "com.whatsapp.w4b")
+
+    /** Apps that put prompts over WhatsApp: Android's permission dialog, Play Store updates, system dialogs. */
+    private val INTERRUPTERS = setOf(
+        "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+        "com.android.vending", "android", "com.android.systemui",
+    )
+    private val DIALOG_WORDS = Regex(
+        "\\b(update|allow|permission|not now|later|restart|try again|isn.t responding)\\b|अपडेट|अनुमति|बाद में|আপডেট|অনুমতি",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * A prompt that is not part of sending: another app's dialog over WhatsApp, or a WhatsApp dialog
+     * (update / permission) with its own buttons and none of the chat or search boxes.
+     */
+    fun isInterruption(s: ScreenSnapshot): Boolean {
+        if (s.packageName in INTERRUPTERS) return true
+        if (s.packageName !in PACKAGES) return false
+        val dialogButtons = s.elements.any { it.id == "android:id/button1" || it.id == "android:id/button2" }
+        if (!dialogButtons) return false
+        val partOfFlow = s.elements.any { it.editable } || confirmSend(s) != null
+        return !partOfFlow && s.elements.any { DIALOG_WORDS.containsMatchIn(it.text) }
+    }
 
     private val SEARCH_IDS = listOf(":id/menuitem_search", ":id/my_search_bar", ":id/search_bar", ":id/search_button")
     private val SEARCH_WORDS = setOf("search", "खोजें", "खोजो", "सर्च", "খুঁজুন", "ask meta ai or search").map { ScreenMatch.normalize(it) }

@@ -666,8 +666,9 @@ class AssistantEngineTest {
     }
 
     private class FakeTranscriber(var text: String?) : Transcriber {
+        var calls = 0
         override fun isAvailable() = true
-        override suspend fun transcribe(pcm16k: ByteArray) = text
+        override suspend fun transcribe(pcm16k: ByteArray): String? { calls++; return text }
     }
 
     /** Call-style audio with the phone's echo canceller (always on here). */
@@ -802,6 +803,9 @@ class AssistantEngineTest {
 
     private var now = 0L
 
+    /** 0.3 s of clear speech-level sound: what the wake listener hands over when someone talks. */
+    private fun speech() = ByteArray(9_600) { i -> if (i % 2 == 0) (3_000 and 0xFF).toByte() else (3_000 shr 8).toByte() }
+
     private fun TestScope.sleepyEngine(wake: WakeListener, transcriber: Transcriber?, vararg replies: AiResult<String>): AssistantEngine {
         provider = FakeProvider(ArrayDeque(replies.toList()))
         return AssistantEngine(
@@ -811,6 +815,34 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
             transcriber = transcriber, wakeListener = wake,
         )
+    }
+
+    @Test
+    fun standbyNoiseDoesNotKeepTheInternetBusy() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS, wakeWord = true)
+        val wake = FakeWake()
+        val tv = FakeTranscriber("aaj ki taaza khabar")
+        val e = sleepyEngine(wake, tv)
+        e.startHandsFree()
+        now = 61_000
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        wake.onUtterance!!(ByteArray(9_600)) // a faint sound: never sent online
+        settle()
+        assertEquals(0, tv.calls)
+        repeat(6) { i -> // the TV talking on and on
+            now = 70_000L + i * 1_000L
+            wake.onUtterance!!(speech())
+            settle()
+        }
+        assertEquals(4, tv.calls) // after 4 misses in a row the online checks pause
+        tv.text = "Seema, time batao"
+        now = 90_000L // the pause is over
+        wake.onUtterance!!(speech())
+        settle()
+        assertEquals(5, tv.calls)
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time batao" })
     }
 
     @Test
@@ -871,7 +903,7 @@ class AssistantEngineTest {
         runCurrent()
         assertEquals(AssistantState.Sleeping, e.state.value)
         assertEquals(1, wake.starts)
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "mausam kaisa hai?" })
         assertEquals("Saade paanch baje hain.", speaker.spoken.last())
@@ -886,7 +918,7 @@ class AssistantEngineTest {
         now = 61_000
         voice.onError!!(VoiceError("silence", noSpeech = true))
         runCurrent()
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertEquals(AssistantState.Sleeping, e.state.value)
         assertEquals(2, wake.starts) // listening for her name again
@@ -902,7 +934,7 @@ class AssistantEngineTest {
         now = 61_000
         voice.onError!!(VoiceError("silence", noSpeech = true))
         runCurrent()
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertEquals("हाँ जी, बोलिए?", speaker.spoken.last())
         assertEquals(AssistantState.Listening, e.state.value)
@@ -931,14 +963,14 @@ class AssistantEngineTest {
         assertEquals(AssistantState.Sleeping, e.state.value)
         assertEquals(1, wake.starts)
 
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertEquals("Badhiya hoon.", speaker.spoken.last())
         assertEquals(AssistantState.Sleeping, e.state.value) // not open listening to the other app
         assertEquals(3, wake.starts) // asleep, kept listening during the name check, asleep again
 
         heard.text = "Hey Seema, mausam kaisa hai" // right after her answer (same clock): not thrown away
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertEquals("Saade paanch baje hain.", speaker.spoken.last())
         assertEquals(AssistantState.Sleeping, e.state.value)
@@ -951,7 +983,7 @@ class AssistantEngineTest {
         val e = sleepyEngine(wake, FakeTranscriber("Seema, message bhejo"), AiResult.Success("किसको भेजना है?"))
         e.startVoice()
         e.suspendListening()
-        wake.onUtterance!!(ByteArray(10))
+        wake.onUtterance!!(speech())
         settle()
         assertEquals(AssistantState.Listening, e.state.value) // waits for the answer
         voice.onError!!(VoiceError("silence", noSpeech = true))
@@ -2111,7 +2143,7 @@ class AssistantEngineTest {
         val spokenBefore = speaker.spoken.size
         repeat(5) { i ->
             now = 70_000L + i * 10_000L
-            wake.onUtterance!!(ByteArray(10)) // TV / talk / noise
+            wake.onUtterance!!(speech()) // TV / talk / noise
             settle()
         }
         assertEquals(spokenBefore, speaker.spoken.size) // not a word

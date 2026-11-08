@@ -16,6 +16,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 
 import androidx.compose.foundation.background
 
@@ -194,6 +198,9 @@ fun HomeScreen(
     }
 
     var lastOrbTap by remember { mutableLongStateOf(0L) }
+    // Where the eye area and the canvas are on screen: read only while drawing (no recomposition).
+    val eyeBounds = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val canvasOrigin = remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     LaunchedEffect(state.paused, assistantState) {
         when {
@@ -240,16 +247,25 @@ fun HomeScreen(
 
     ) {
 
-        // Ambient fluid waves: the whole screen, edge to edge, behind everything (no side padding).
+        // One canvas, one draw pass, edge to edge behind everything: the ambient waves first, then the
+        // Living Eye over them, placed where the eye area (above the buttons) is laid out.
         com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
             time = { timeProvider.floatValue },
             speechLevel = { speechLevel },
             micLevel = { micLevel },
             state = assistantState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
             richEffects = profile.richEffects,
-            drawEye = false,
             waveCenterY = 0.42f,
+            // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
+            accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
+                com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
+            } else {
+                com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
+            },
+            eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
         )
 
         Column(
@@ -498,22 +514,9 @@ fun HomeScreen(
 
 
 
-                    // The Living Eye in the middle (the waves are drawn once, full screen, behind everything).
-                    com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
-                        drawWaves = false,
-                        time = { timeProvider.floatValue },
-                        speechLevel = { speechLevel },
-                        micLevel = { micLevel },
-                        state = assistantState,
-                        modifier = Modifier.fillMaxSize(),
-                        richEffects = profile.richEffects,
-                        // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
-                        accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
-                            com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
-                        } else {
-                            com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
-                        },
-                    )
+                    // The eye is drawn by the full-screen canvas behind; this box only marks where it goes
+                    // (and stays the tap target).
+                    Box(Modifier.fillMaxSize().onGloballyPositioned { eyeBounds.value = it.boundsInRoot() })
 
                 }
 
