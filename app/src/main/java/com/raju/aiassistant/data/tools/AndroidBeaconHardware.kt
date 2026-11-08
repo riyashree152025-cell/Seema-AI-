@@ -70,7 +70,7 @@ class AndroidBeaconHardware(private val context: Context) : BeaconHardware {
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-        if (proximity != null) sensors.registerListener(listener, proximity, SensorManager.SENSOR_DELAY_NORMAL)
+        if (proximity != null) sensors?.registerListener(listener, proximity, SensorManager.SENSOR_DELAY_NORMAL)
 
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
