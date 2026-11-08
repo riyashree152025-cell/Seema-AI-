@@ -330,7 +330,10 @@ class AppContainer(context: Context) {
             speaker = speaker,
             voice = assistantVoiceInput,
             isOnline = { online.value },
-            bargeIn = MicBargeIn(appContext, appScope, playbackLevel = { audioPlayer.levelNow() }, callStyle = { conversationAudio.active }),
+            bargeIn = MicBargeIn(
+                appContext, appScope, playbackLevel = { audioPlayer.levelNow() }, callStyle = { conversationAudio.active },
+                hub = micHub, useHub = { currentSettings.value.micHub },
+            ),
             conversationMode = conversationAudio,
             transcriber = deepgramTranscriber,
             wakeListener = wakeListener,

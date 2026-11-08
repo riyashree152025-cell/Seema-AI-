@@ -11,6 +11,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.ceil
 
@@ -58,6 +60,14 @@ interface MicLease {
     fun release()
 }
 
+/** The microphone handed to a recorder outside the hub (barge-in). [release] is idempotent. */
+interface MicExclusive {
+    fun release()
+}
+
+/** How long [MicHub.takeExclusive] waits for the hub's recorder to stop (a blocked read ends within 20 ms). */
+const val MIC_EXCLUSIVE_WAIT_MS = 1_000L
+
 /** Counters for the phone log (what the hub did), read with [MicHub.stats]. */
 data class MicHubStats(
     val opens: Int,
@@ -68,6 +78,8 @@ data class MicHubStats(
     val consumerErrors: Long,
     val leases: Int,
     val recording: Boolean,
+    /** Someone outside the hub (barge-in) has the microphone: the hub does not record. */
+    val exclusive: Boolean = false,
 )
 
 /**
@@ -116,8 +128,10 @@ class MicHub(
     private val leases = mutableListOf<LeaseImpl>() // guarded by lock
     private val pool = ArrayDeque<Frame>().apply { repeat(ringFrames) { add(Frame(ByteArray(MIC_FRAME_BYTES))) } } // guarded by lock
     private var reader: Job? = null // guarded by lock; non-null while the recorder is running
+    private val stopping = mutableListOf<Job>() // guarded by lock: cancelled readers that may still be inside a read
     private var closeJob: Job? = null // guarded by lock
     private var suspended = false // guarded by lock: a phone call holds the microphone
+    private var exclusiveHolders = 0 // guarded by lock: recorders outside the hub (barge-in) holding the mic
 
     private var opens = 0 // guarded by lock
     private var framesRead = 0L
@@ -167,6 +181,47 @@ class MicHub(
         }
     }
 
+    /**
+     * Hands the microphone to a recorder outside the hub (barge-in with its own call-style recorder and
+     * echo canceller). The hub's recorder is closed and this returns only once it has really stopped,
+     * so the two never record at the same time. Until [MicExclusive.release] no lease opens a recorder;
+     * leases keep their place and get frames again afterwards. Cancelling the caller while it waits
+     * gives the microphone back.
+     */
+    suspend fun takeExclusive(waitMs: Long = MIC_EXCLUSIVE_WAIT_MS): MicExclusive {
+        val running = synchronized(lock) {
+            exclusiveHolders++
+            closeJob?.cancel()
+            closeJob = null
+            closeRecorderLocked()
+            stopping.filter { !it.isCompleted } // a cancelled reader is not "active" but may still be reading
+        }
+        val hold = ExclusiveImpl()
+        try {
+            if (running.isNotEmpty() && withTimeoutOrNull(waitMs) { running.forEach { it.join() } } == null) {
+                log("mic: shared recorder did not stop within $waitMs ms")
+            }
+        } catch (e: CancellationException) {
+            hold.release()
+            throw e
+        }
+        log("mic: exclusive on (shared recorder closed)")
+        return hold
+    }
+
+    private inner class ExclusiveImpl : MicExclusive {
+        private val released = AtomicBoolean(false)
+
+        override fun release() {
+            if (!released.compareAndSet(false, true)) return
+            synchronized(lock) {
+                exclusiveHolders--
+                startRecorderLocked()
+            }
+            log("mic: exclusive off")
+        }
+    }
+
     /** A phone call is using the microphone: stop reading now. Leases stay, they just get no frames. */
     fun pauseForCall() {
         synchronized(lock) {
@@ -197,6 +252,7 @@ class MicHub(
             consumerErrors = consumerErrors,
             leases = leases.size,
             recording = reader != null,
+            exclusive = exclusiveHolders > 0,
         )
     }
 
@@ -245,16 +301,26 @@ class MicHub(
         }
     }
 
-    /** Starts the reader when someone wants the microphone and no phone call holds it. Caller holds [lock]. */
+    /** Starts the reader when someone wants the microphone and neither a call nor barge-in holds it. Caller holds [lock]. */
     private fun startRecorderLocked() {
-        if (reader != null || suspended || leases.isEmpty()) return
-        val job = scope.launch(ioDispatcher, start = CoroutineStart.LAZY) { record() }
+        if (reader != null || suspended || exclusiveHolders > 0 || leases.isEmpty()) return
+        // A cancelled reader can still be inside a blocking read (up to a frame): the new recorder opens
+        // only after every earlier one has closed, so two never record at the same time.
+        stopping.retainAll { !it.isCompleted }
+        val earlier = stopping.toList()
+        val job = scope.launch(ioDispatcher, start = CoroutineStart.LAZY) {
+            earlier.forEach { it.join() }
+            record()
+        }
         reader = job
         job.start()
     }
 
     private fun closeRecorderLocked() {
-        reader?.cancel()
+        reader?.let {
+            it.cancel()
+            stopping += it
+        }
         reader = null
     }
 

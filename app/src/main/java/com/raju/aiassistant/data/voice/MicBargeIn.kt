@@ -37,6 +37,9 @@ class MicBargeIn(
     private val playbackLevel: () -> Float,
     /** True while call-style audio is on: then the echo-cancelled microphone path is used. */
     private val callStyle: () -> Boolean = { false },
+    /** The shared microphone (MicHub): while [useHub] is true it is closed before this recorder opens. */
+    private val hub: MicHub? = null,
+    private val useHub: () -> Boolean = { false },
 ) : BargeIn {
     private var job: Job? = null
 
@@ -45,7 +48,11 @@ class MicBargeIn(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
         job = scope.launch(Dispatchers.IO) {
             var delivered = false
+            var exclusive: MicExclusive? = null
             try {
+                // Shared mic on: the hub's recorder must have really stopped before this one opens
+                // (call-style source + echo canceller), so two recorders never run at once.
+                if (hub != null && useHub()) exclusive = hub.takeExclusive()
                 val pcm = runCatching { watch(capture, onInterrupt) }.getOrNull()
                 if (capture) {
                     delivered = true
@@ -53,6 +60,8 @@ class MicBargeIn(
                 }
             } finally {
                 if (capture && !delivered) onUtterance(null) // stopped early: never leave the engine waiting
+                // watch() has already released its own recorder: only now may the hub record again.
+                exclusive?.release()
             }
         }
     }
