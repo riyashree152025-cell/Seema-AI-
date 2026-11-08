@@ -19,10 +19,11 @@ class LivingEyeMathTest {
     @Test
     fun thePupilMovesALittleAndReactsToSound() {
         val calm = (0 until 50).map { pupilScale(it * 0.1f, 0f, AssistantState.Idle) }
-        assertTrue(calm.max() - calm.min() > 0.02f) // micro-adjustments, never frozen
+        assertTrue(calm.max() - calm.min() > 0.015f) // micro-adjustments, never frozen
         assertTrue(pupilScale(1f, 1f, AssistantState.Idle) < pupilScale(1f, 0f, AssistantState.Idle))
         assertTrue(pupilScale(1f, 0f, AssistantState.Listening) > pupilScale(1f, 0f, AssistantState.Idle))
-        assertEquals(0.26f, pupilScale(3f, 1f, AssistantState.Sleeping), 0f)
+        assertEquals(0.18f, pupilScale(3f, 1f, AssistantState.Sleeping), 0f)
+        assertEquals(PUPIL_SHARE, pupilScale(0f, 0f, AssistantState.Idle), 0.02f) // pupil ≈ 0.24 of the eye
     }
 
     @Test
@@ -85,9 +86,9 @@ class LivingEyeMathTest {
     }
 
     @Test
-    fun thePupilBreathesWithTheVoiceBetween092And108() {
-        assertEquals(0.92f, pupilDilation(0f), 1e-4f)
-        assertEquals(1.08f, pupilDilation(1f), 1e-4f)
+    fun thePupilBreathesWithTheVoiceBetween094And106() {
+        assertEquals(0.94f, pupilDilation(0f), 1e-4f)
+        assertEquals(1.06f, pupilDilation(1f), 1e-4f)
         assertTrue(pupilScale(2f, 1f, AssistantState.Speaking) > pupilScale(2f, 0f, AssistantState.Speaking))
         assertTrue(pupilScale(2f, 1f, AssistantState.Listening) > pupilScale(2f, 0f, AssistantState.Listening))
     }
@@ -111,5 +112,14 @@ class LivingEyeMathTest {
         assertTrue(x <= TOUCH_GAZE_MAX)
         assertEquals(0f, touchGaze(2f, 0f, TOUCH_GAZE_HOLD_S + 1f).third, 0f)
         assertTrue(touchGaze(2f, 0f, 0.05f).third < 1f) // turns smoothly, not instantly
+    }
+
+    @Test
+    fun theBiColourIrisIsLaidOutAsDesigned() {
+        assertTrue(PUPIL_SHARE < BLUE_INNER_SHARE && BLUE_INNER_SHARE < HAZEL_OUTER_SHARE && HAZEL_OUTER_SHARE < LIMBUS_SHARE)
+        assertEquals(1.0f, INNER_PARALLAX, 0f)
+        assertEquals(0.65f, OUTER_PARALLAX, 0f)
+        assertEquals(120, irisLineCount(true))
+        assertEquals(1.5f, SACCADE_EVERY_S, 0f)
     }
 }

@@ -40,21 +40,31 @@ fun eyeBreath(t: Float): Float = 1f + 0.035f * sin(2f * PI.toFloat() * t / EYE_B
  * Pupil radius as a share of the iris: small restless micro-adjustments always; wider while she
  * listens, narrower on loud sound (a real pupil reacting to intensity), small and still asleep.
  */
+/** The bi-colour iris, in eye radii: pupil, hazel collar, blue outer iris, limbal ring. */
+const val PUPIL_SHARE = 0.24f
+const val HAZEL_OUTER_SHARE = 0.45f
+const val BLUE_INNER_SHARE = 0.42f
+const val LIMBUS_SHARE = 0.92f
+
+/** Parallax: the pupil and hazel collar move with the full gaze, the blue outer iris with 0.65 of it. */
+const val INNER_PARALLAX = 1.0f
+const val OUTER_PARALLAX = 0.65f
+
 fun pupilScale(t: Float, energy: Float, state: AssistantState): Float {
-    if (state == AssistantState.Sleeping || state == AssistantState.Offline) return 0.26f
-    val micro = 0.025f * sin(t * 1.7f) + 0.015f * sin(t * 3.3f + 1.1f)
+    if (state == AssistantState.Sleeping || state == AssistantState.Offline) return 0.18f
+    val micro = 0.012f * sin(t * 1.7f) + 0.006f * sin(t * 3.3f + 1.1f)
     val e = energy.coerceIn(0f, 1f)
     return when (state) {
-        // Listening / speaking: the pupil breathes with the voice, 0.92x (quiet) … 1.08x (loud).
+        // Listening / speaking: the pupil breathes with the voice, 0.94x (quiet) … 1.06x (loud).
         // (Listening starts a little wider: she is paying attention.)
-        AssistantState.Listening -> ((0.40f + micro) * pupilDilation(e)).coerceIn(0.2f, 0.5f)
-        AssistantState.Speaking -> ((0.38f + micro) * pupilDilation(e)).coerceIn(0.2f, 0.5f)
-        else -> (0.36f + micro - 0.10f * e).coerceIn(0.2f, 0.5f)
+        AssistantState.Listening -> ((0.26f + micro) * pupilDilation(e)).coerceIn(0.15f, 0.32f)
+        AssistantState.Speaking -> ((PUPIL_SHARE + micro) * pupilDilation(e)).coerceIn(0.15f, 0.32f)
+        else -> (PUPIL_SHARE + micro - 0.04f * e).coerceIn(0.15f, 0.32f)
     }
 }
 
-/** Pupil dilation with the voice while listening or speaking: 0.92 at silence, 1.08 at full voice. */
-fun pupilDilation(energy: Float): Float = 0.92f + 0.16f * energy.coerceIn(0f, 1f)
+/** Pupil dilation with the voice while listening or speaking: 0.94 at silence, 1.06 at full voice. */
+fun pupilDilation(energy: Float): Float = 0.94f + 0.12f * energy.coerceIn(0f, 1f)
 
 /** A stable pseudo-random number in -1..1 for saccade [n] on axis [axis]. */
 private fun saccadeNoise(n: Int, axis: Int): Float {
@@ -65,7 +75,7 @@ private fun saccadeNoise(n: Int, axis: Int): Float {
 }
 
 /** Seconds between micro-saccades of the idle eye, and how long each quick jump takes. */
-const val SACCADE_EVERY_S = 1.4f
+const val SACCADE_EVERY_S = 1.5f
 const val SACCADE_JUMP_S = 0.09f
 
 /**
@@ -172,4 +182,4 @@ fun waveShape(x: Float, t: Float, layer: Int, energy: Float): Float {
 /** Fewer wave layers, wave points and iris lines in battery saver / on a hot phone. */
 fun waveLayerCount(richEffects: Boolean): Int = if (richEffects) 4 else 2
 fun wavePointCount(richEffects: Boolean): Int = if (richEffects) 96 else 48
-fun irisLineCount(richEffects: Boolean): Int = if (richEffects) 72 else 36
+fun irisLineCount(richEffects: Boolean): Int = if (richEffects) 120 else 60

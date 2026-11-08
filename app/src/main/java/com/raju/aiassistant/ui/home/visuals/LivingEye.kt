@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -22,14 +21,19 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val EYE_WHITE = Color(0xFFF2FBFF)
-private val IRIS_DEEP = Color(0xFF061A3A)
-private val PUPIL_ABYSS = Color(0xFF030712)
-private val FIBER_CYAN = Color(0xFF00E5FF)
-private val FIBER_COBALT = Color(0xFF2346D8)
-private val FIBER_VIOLET = Color(0xFFB388FF)
-private val LIMBUS = Color(0xFF02040C)
-private val SHEEN = Color(0xFFD8F7FF)
+// The bi-colour iris: a hazel-brown collar around the pupil, electric blue outside.
+private val PUPIL_CORE = Color(0xFF02040A)
+private val HAZEL_BROWN = Color(0xFF8B4513)
+private val HAZEL_ORANGE = Color(0xFFD2691E)
+private val HAZEL_GOLD = Color(0xFFB8860B)
+private val CYAN = Color(0xFF00E5FF)
+private val COBALT = Color(0xFF1D4ED8)
+private val COBALT_BRIGHT = Color(0xFF3B82F6)
+private val COBALT_DEEP = Color(0xFF0B1E5B)
+private val SKY = Color(0xFF7DD3FC)
+private val LIMBUS = Color(0xFF030712)
+private val EYEBALL = Color(0xFF061A3A)
+private val SHEEN = Color(0xFFFFFFFF)
 
 /**
  * Home's visualizer, one canvas: ambient fluid waves (cyan → neon blue → purple) across the whole
@@ -143,89 +147,108 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
     val side = area?.let { minOf(it.width, it.height) } ?: minOf(size.width, size.height)
     val r = side * EYE_RADIUS_SHARE * eyeBreath(t) * (1f + 0.05f * energy)
     val dim = if (asleep) 0.45f else 1f
+    val twoPi = 2f * PI.toFloat()
 
-    // Glow around the eye.
+    // Glow around the eye in the state colour, and the dark eyeball the iris sits in.
     drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f * dim), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
+    drawCircle(Brush.radialGradient(listOf(EYEBALL.copy(alpha = 0.95f), Color.Transparent), c, r * 1.08f), r * 1.08f, c)
 
-    // Iris: bright near the pupil, deep blue at the edge. It sits in a dark eyeball and looks around
-    // (eyeGaze): the iris, its fibres and the pupil move together, like a real eye.
-    drawCircle(Brush.radialGradient(listOf(IRIS_DEEP.copy(alpha = 0.9f), Color.Transparent), c, r * 1.08f), r * 1.08f, c)
+    // Gaze: own drift + micro-saccades, or towards a touch for a moment. Parallax: the pupil and hazel
+    // collar move with the full gaze, the blue outer iris with 0.65 of it, the corneal sheen not at all.
     val (ix, iy) = eyeGaze(t, state)
-    // A touch on the eye: it turns towards the finger for a moment, then goes back to its own gaze.
     val (tx, ty, tw) = touch?.let { (p, at) -> touchGaze((p.x - c.x) / r, (p.y - c.y) / r, t - at) } ?: Triple(0f, 0f, 0f)
     val gx = ix * (1f - tw) + tx * tw
     val gy = iy * (1f - tw) + ty * tw
-    val ec = Offset(c.x + gx * r, c.y + gy * r)
-    drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.9f * dim), accent.copy(alpha = dim), IRIS_DEEP), ec, r), r * 0.94f, ec)
-
-    // Iris fibres from the pupil outwards, gently shimmering; while she listens, thinks, works or
-    // speaks the whole iris turns (no rings, ticks or arcs around it).
+    val outer = Offset(c.x + gx * r * OUTER_PARALLAX, c.y + gy * r * OUTER_PARALLAX)
+    val inner = Offset(c.x + gx * r * INNER_PARALLAX, c.y + gy * r * INNER_PARALLAX)
     val pupilR = r * pupilScale(t, energy, state)
-    val lines = irisLineCount(richEffects)
-    val turn = if (eyeSpikesActive(state)) t * eyeSpinSpeed(state) * 2f * PI.toFloat() else 0f
-    for (i in 0 until lines) {
-        val a = turn + i * 2f * PI.toFloat() / lines + 0.04f * sin(t * 0.8f + i)
-        val inner = pupilR * 1.08f
-        val outer = r * (0.82f + 0.08f * sin(i * 2.3f))
-        // Trabeculae in three tones — electric cyan, deep cobalt, a hint of violet — over the state colour.
-        val shade = when (i % 3) { 0 -> FIBER_CYAN; 1 -> FIBER_COBALT; else -> FIBER_VIOLET }
-        val shimmer = (0.22f + 0.18f * sin(t * 2f + i * 0.9f)).coerceIn(0.05f, 0.5f) * dim
-        drawLine(
+
+    // ---- Outer iris: electric cyan, royal cobalt and sky-blue, with 120 curly radial trabeculae.
+    drawCircle(
+        Brush.radialGradient(
+            0f to COBALT.copy(alpha = dim), 0.55f to COBALT.copy(alpha = dim), 0.78f to CYAN.copy(alpha = 0.85f * dim), 1f to COBALT_DEEP.copy(alpha = dim),
+            center = outer, radius = r * LIMBUS_SHARE,
+        ),
+        r * LIMBUS_SHARE, outer,
+    )
+    val fibres = irisLineCount(richEffects)
+    val path = Path()
+    for (i in 0 until fibres) {
+        val a = i * twoPi / fibres + 0.03f * sin(t * 0.6f + i * 1.3f)
+        val from = r * BLUE_INNER_SHARE
+        val to = r * (LIMBUS_SHARE - 0.02f - 0.05f * (0.5f + 0.5f * sin(i * 2.7f)))
+        val curl = r * 0.035f * sin(i * 1.7f + t * 0.4f)
+        val mid = (from + to) / 2f
+        path.reset()
+        path.moveTo(outer.x + cos(a) * from, outer.y + sin(a) * from)
+        // A gentle curl: the control point sits off the straight line, sideways.
+        path.quadraticBezierTo(
+            outer.x + cos(a) * mid - sin(a) * curl, outer.y + sin(a) * mid + cos(a) * curl,
+            outer.x + cos(a) * to, outer.y + sin(a) * to,
+        )
+        val tone = when (i % 3) { 0 -> CYAN; 1 -> COBALT_BRIGHT; else -> SKY }
+        val shimmer = (0.35f + 0.25f * sin(t * 1.6f + i * 0.7f)).coerceIn(0.1f, 0.65f) * dim
+        drawPath(
+            path,
             Brush.linearGradient(
-                listOf(shade.copy(alpha = shimmer * 1.3f), accent.copy(alpha = shimmer), shade.copy(alpha = shimmer * 0.3f)),
-                start = Offset(ec.x + cos(a) * inner, ec.y + sin(a) * inner),
-                end = Offset(ec.x + cos(a) * outer, ec.y + sin(a) * outer),
+                listOf(HAZEL_GOLD.copy(alpha = shimmer * 0.6f), tone.copy(alpha = shimmer), tone.copy(alpha = shimmer * 0.25f)),
+                start = Offset(outer.x + cos(a) * from, outer.y + sin(a) * from),
+                end = Offset(outer.x + cos(a) * to, outer.y + sin(a) * to),
             ),
-            Offset(ec.x + cos(a) * inner, ec.y + sin(a) * inner),
-            Offset(ec.x + cos(a) * outer, ec.y + sin(a) * outer),
-            strokeWidth = (if (i % 3 == 1) 1.4f else 1f) * density,
+            style = Stroke((if (i % 4 == 0) 1.5f else 1f) * density, cap = StrokeCap.Round),
         )
     }
-    // The collarette: a brighter ring of short fibres around the pupil.
-    drawCircle(
-        Brush.radialGradient(
-            0f to Color.Transparent, 0.55f to Color.Transparent, 0.75f to EYE_WHITE.copy(alpha = 0.16f * dim), 1f to Color.Transparent,
-            center = ec, radius = pupilR * 1.9f,
-        ),
-        pupilR * 1.9f, ec,
-    )
-    // Limbal ring: the darker border of the iris that makes it stand out from the eyeball.
-    drawCircle(
-        Brush.radialGradient(
-            0f to Color.Transparent, 0.80f to Color.Transparent, 0.93f to LIMBUS.copy(alpha = 0.55f), 1f to LIMBUS.copy(alpha = 0.92f),
-            center = ec, radius = r * 0.94f,
-        ),
-        r * 0.94f, ec,
-    )
-
-    // While she processes, a soft light circles inside the iris (a moving glow, not an arc).
+    // While she processes, a soft light circles inside the blue iris.
     if (eyeRadarActive(state)) {
         val a = t * 3.8f
-        val glow = Offset(ec.x + cos(a) * r * 0.6f, ec.y + sin(a) * r * 0.6f)
-        drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.45f), Color.Transparent), glow, r * 0.35f), r * 0.35f, glow)
+        val glow = Offset(outer.x + cos(a) * r * 0.62f, outer.y + sin(a) * r * 0.62f)
+        drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.40f), Color.Transparent), glow, r * 0.3f), r * 0.3f, glow)
+    }
+    // Limbal ring: the dark border of the iris at 0.92 of the eye radius.
+    drawCircle(
+        Brush.radialGradient(
+            0f to Color.Transparent, 0.86f to Color.Transparent, 0.95f to LIMBUS.copy(alpha = 0.85f), 1f to LIMBUS.copy(alpha = 0.95f),
+            center = outer, radius = r * 0.97f,
+        ),
+        r * 0.97f, outer,
+    )
+
+    // ---- Inner iris: the warm hazel-brown collar around the pupil, melting into the blue.
+    val hazelR = r * HAZEL_OUTER_SHARE
+    drawCircle(
+        Brush.radialGradient(
+            0f to HAZEL_GOLD.copy(alpha = dim), (pupilR / hazelR) to HAZEL_GOLD.copy(alpha = dim),
+            ((pupilR / hazelR) + 1f) / 2f to HAZEL_ORANGE.copy(alpha = 0.9f * dim), 0.88f to HAZEL_BROWN.copy(alpha = 0.6f * dim), 1f to Color.Transparent,
+            center = inner, radius = hazelR,
+        ),
+        hazelR, inner,
+    )
+    val striae = if (richEffects) 90 else 45
+    for (i in 0 until striae) {
+        val a = i * twoPi / striae + 0.05f * sin(i * 3.1f)
+        val from = pupilR * 1.02f
+        val to = hazelR * (0.82f + 0.16f * (0.5f + 0.5f * sin(i * 1.9f)))
+        val tone = when (i % 3) { 0 -> HAZEL_BROWN; 1 -> HAZEL_ORANGE; else -> HAZEL_GOLD }
+        drawLine(
+            tone.copy(alpha = (0.45f + 0.2f * sin(t * 1.2f + i)).coerceIn(0.2f, 0.7f) * dim),
+            Offset(inner.x + cos(a) * from, inner.y + sin(a) * from),
+            Offset(inner.x + cos(a) * to, inner.y + sin(a) * to),
+            strokeWidth = 1.1f * density,
+        )
     }
 
-    // The pupil: an abyss-deep core with a soft, feathered margin into the iris (no hard vector edge),
-    // and the iris colour glowing faintly at that margin.
+    // ---- Pupil: deepest black, its edge feathered (~3 dp) into the hazel tissue.
+    val feather = 3f * density
     drawCircle(
         Brush.radialGradient(
-            0f to Color.Transparent, 0.70f to Color.Transparent, 0.86f to accent.copy(alpha = 0.32f * dim), 1f to Color.Transparent,
-            center = ec, radius = pupilR * 1.35f,
+            0f to PUPIL_CORE, (pupilR / (pupilR + feather)) to PUPIL_CORE, 1f to Color.Transparent,
+            center = inner, radius = pupilR + feather,
         ),
-        pupilR * 1.35f, ec,
-    )
-    drawCircle(
-        Brush.radialGradient(
-            0f to PUPIL_ABYSS, 0.72f to PUPIL_ABYSS, 0.88f to PUPIL_ABYSS.copy(alpha = 0.85f), 1f to Color.Transparent,
-            center = ec, radius = pupilR * 1.15f,
-        ),
-        pupilR * 1.15f, ec,
+        pupilR + feather, inner,
     )
 
-    // The wet, curved cornea: a soft transparent crescent of light on the upper left (no white dots).
-    // It belongs to the eyeball, so it stays put while the iris looks around.
-    val sheenBox = Size(r * 1.5f, r * 1.5f)
-    val sheenAt = Offset(c.x - r * 0.75f, c.y - r * 0.75f)
-    drawArc(SHEEN.copy(alpha = 0.08f * dim), 198f, 74f, false, sheenAt, sheenBox, style = Stroke(r * 0.17f, cap = StrokeCap.Round))
-    drawArc(SHEEN.copy(alpha = 0.25f * dim), 204f, 62f, false, sheenAt, sheenBox, style = Stroke(r * 0.06f, cap = StrokeCap.Round))
+    // ---- Cornea: a soft wet-glass reflection in the upper left; it belongs to the eyeball, so it never
+    // moves with the gaze. A radial falloff only — no strokes, no dots.
+    val sheenAt = Offset(c.x - r * 0.25f, c.y - r * 0.28f)
+    drawCircle(Brush.radialGradient(listOf(SHEEN.copy(alpha = 0.35f * dim), SHEEN.copy(alpha = 0.10f * dim), Color.Transparent), sheenAt, r * 0.32f), r * 0.32f, sheenAt)
 }
