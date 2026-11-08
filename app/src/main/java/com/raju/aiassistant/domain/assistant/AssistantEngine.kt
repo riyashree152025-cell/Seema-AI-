@@ -1161,7 +1161,7 @@ class AssistantEngine(
      */
     private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean): Boolean {
         val s = settings.value
-        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp)) return false
+        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp || action is AssistantAction.WhatsAppFile)) return false
         when (action) {
             is AssistantAction.OpenApp -> {
                 val outcome = tools.openApp(action.name)
@@ -1294,6 +1294,11 @@ class AssistantEngine(
                 report(action, ActionStatus.SUCCESS, "Screen padhi (bina AI): ${snap.appLabel}")
                 record(ChatRole.ASSISTANT, msg)
                 if (speak) say(msg)
+            }
+            is AssistantAction.WhatsAppFile -> {
+                trace("offline command: whatsapp file")
+                _state.value = AssistantState.Executing
+                whatsAppFile(action, speak)
             }
             is AssistantAction.WhatsApp -> {
                 // Same path as when the AI asks for it: contacts first, WhatsApp's own search second.
@@ -1601,7 +1606,7 @@ class AssistantEngine(
     private suspend fun execute(action: AssistantAction, provider: AiProvider, model: String, system: String, speak: Boolean) {
         val s = settings.value
         val sensitive = action is AssistantAction.Call || action is AssistantAction.WhatsApp ||
-            action is AssistantAction.WhatsAppCall ||
+            action is AssistantAction.WhatsAppCall || action is AssistantAction.WhatsAppFile ||
             action is AssistantAction.OpenApp || action is AssistantAction.PlayMusic || action is AssistantAction.Sms ||
             action is AssistantAction.ScreenTap || action is AssistantAction.ScreenType
         if (s.safetyMode && sensitive) {
@@ -1613,6 +1618,7 @@ class AssistantEngine(
             is AssistantAction.Call -> callContact(action, speak)
             is AssistantAction.WhatsApp -> whatsApp(action, speak)
             is AssistantAction.WhatsAppCall -> whatsAppCall(action, speak)
+            is AssistantAction.WhatsAppFile -> whatsAppFile(action, speak)
             is AssistantAction.FindContact -> findContact(action, speak)
             is AssistantAction.LastCall -> checkLastCall(action, speak)
             is AssistantAction.ReadNotification -> readNotification(action, speak)
@@ -2440,6 +2446,57 @@ class AssistantEngine(
             FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "WhatsApp में पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई। कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি। কিছু পাঠাইনি।")
             FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp ने समय पर वो नहीं दिखाया जो चाहिए था, इसलिए मैं रुक गई। मैसेज नहीं गया।", "হোয়াটসঅ্যাপ সময়মতো ঠিক স্ক্রিন দেখায়নি, তাই থেমে গেছি। মেসেজ যায়নি।")
             FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है, मैसेज नहीं भेज पाई।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই, মেসেজ পাঠাতে পারিনি।")
+        }
+        val msg = phrase(lang(), hi, bn)
+        report(action, status, msg)
+        if (r.outcome == FlowOutcome.SENT) tools.openSeema()
+        if (speak) say(msg)
+    }
+
+    /**
+     * "WhatsApp par Riya ko ticket wali PDF bhejo": Riya's chat → 📎 → Document → the one file whose
+     * name matches → Send, after a yes. The chat is found by the contact's saved name (or the name as
+     * said, for a group); any doubt about the chat or the file means nothing is sent.
+     */
+    private suspend fun whatsAppFile(action: AssistantAction.WhatsAppFile, speak: Boolean) {
+        if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+            val msg = phrase(lang(), "फाइल भेजने के लिए Seema की Accessibility चालू करनी होगी (Settings → Accessibility → Seema AI)।", "ফাইল পাঠাতে Seema-র Accessibility চালু করতে হবে।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        // The saved name is what WhatsApp shows; a group or WhatsApp-only name is searched as said.
+        val found = lookup(action.contact).orEmpty()
+        val chat = when {
+            found.size == 1 -> found[0].name
+            found.size > 1 -> chooseContact(
+                "Send file on WhatsApp?", "Kis ko file bhejni hai?", found, action.contact, speak,
+                verbHi = "इन्हें फाइल भेजूँ", verbBn = "একে ফাইল পাঠাব",
+            )?.name ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp file cancelled."); return }
+            else -> action.contact
+        }
+        val what = action.file.ifBlank { phrase(lang(), "सबसे नई", "সবচেয়ে নতুন") }
+        val question = phrase(lang(), "WhatsApp पर \"$chat\" को \"$what\" वाली फाइल भेज दूँ?", "হোয়াটসঅ্যাপে \"$chat\" কে \"$what\" ফাইল পাঠাব?")
+        if (!confirmScreenAction("Send file on WhatsApp?", question, speak)) {
+            report(action, ActionStatus.CANCELLED, "WhatsApp file cancelled.")
+            if (speak) say(phrase(lang(), "ठीक है, नहीं भेजी।", "ঠিক আছে, পাঠাইনি।"))
+            return
+        }
+        _state.value = AssistantState.Executing
+        val r = tools.whatsAppSendDocument(chat, action.file)
+        r.log.forEach { trace("whatsapp file: $it") }
+        val to = r.chat ?: chat
+        val (status, hi, bn) = when (r.outcome) {
+            FlowOutcome.SENT -> Triple(ActionStatus.SUCCESS, "हो गया, \"$to\" को फाइल भेज दी।", "হয়ে গেছে, \"$to\" কে ফাইল পাঠিয়ে দিয়েছি।")
+            FlowOutcome.SEVERAL_FILES -> Triple(ActionStatus.CANCELLED, "ऐसी कई फाइलें हैं: ${r.choices.take(4).joinToString(", ")}। नाम का कोई और शब्द बोलिए, कुछ नहीं भेजा।", "এমন কয়েকটা ফাইল আছে: ${r.choices.take(4).joinToString(", ")}। নামের আর একটা শব্দ বলুন, কিছু পাঠাইনি।")
+            FlowOutcome.FILE_NOT_FOUND -> Triple(ActionStatus.FAILED, "\"$what\" नाम की फाइल नहीं दिखी। फाइलों की लिस्ट खुली है, आप खुद चुन लीजिए।", "\"$what\" নামে ফাইল দেখিনি। ফাইলের তালিকা খোলা আছে, আপনি বেছে নিন।")
+            FlowOutcome.TYPED_NOT_SENT -> Triple(ActionStatus.FAILED, "फाइल चुन ली, पर भेजना पक्का नहीं हुआ — WhatsApp में एक बार देख लीजिए।", "ফাইল বেছেছি, কিন্তু পাঠানো নিশ্চিত হয়নি — একবার দেখে নিন।")
+            FlowOutcome.CHAT_NOT_FOUND -> Triple(ActionStatus.FAILED, "WhatsApp में \"$chat\" की चैट नहीं मिली, कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে \"$chat\" এর চ্যাট পাইনি, কিছু পাঠাইনি।")
+            FlowOutcome.SEVERAL_CHATS -> Triple(ActionStatus.CANCELLED, "\"$chat\" नाम की कई चैट हैं: ${r.choices.take(4).joinToString(", ")}। पूरा नाम बोलिए।", "\"$chat\" নামে কয়েকটা চ্যাট আছে: ${r.choices.take(4).joinToString(", ")}। পুরো নাম বলুন।")
+            FlowOutcome.WRONG_CHAT -> Triple(ActionStatus.FAILED, "जो चैट खुली उसका नाम पक्का नहीं हुआ, इसलिए कुछ नहीं भेजा।", "যে চ্যাট খুলেছে তার নাম নিশ্চিত হয়নি, তাই কিছু পাঠাইনি।")
+            FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई।", "পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি।")
+            FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp में अटैच या फाइल वाला हिस्सा समय पर नहीं दिखा, मैं रुक गई। फाइल नहीं गई।", "হোয়াটসঅ্যাপে অ্যাটাচ বা ফাইলের অংশ সময়মতো দেখা যায়নি, থেমে গেছি। ফাইল যায়নি।")
+            FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই।")
         }
         val msg = phrase(lang(), hi, bn)
         report(action, status, msg)

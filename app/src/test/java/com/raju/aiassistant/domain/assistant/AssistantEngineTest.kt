@@ -533,6 +533,23 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aWhatsAppFileWithoutAccessibilitySaysHowToTurnItOnAndSendsNothing() = runTest {
+        val e = engine(AiResult.Success("unused"))
+        e.submit("WhatsApp par Riya ko ticket wali pdf bhejo", fromVoice = true)
+        settle()
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(tools.whatsApps.isEmpty())
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Accessibility"))
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
+    }
+
+    @Test
+    fun theAiCanAskForAWhatsAppFileToo() {
+        val parsed = parseReply("""Bhej rahi hoon. <action>{"type":"whatsapp_file","contact":"Riya","file":"ticket"}</action>""")
+        assertEquals(listOf<AssistantAction>(AssistantAction.WhatsAppFile("Riya", "ticket")), parsed.actions)
+    }
+
+    @Test
     fun aCommandThatIsMoreThanAPhoneCommandStillGoesToTheAi() = runTest {
         val e = engine(AiResult.Success("Theek hai."))
         e.submit("5 minute ka timer lagao aur gaana bhi chalao")

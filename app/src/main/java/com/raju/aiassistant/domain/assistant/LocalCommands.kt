@@ -210,6 +210,10 @@ object LocalCommands {
         "^(.{1,40}?) (?:ko|को) $WA (?:par|pe|पर|पे)(?: $MSG_WORD)? $SEND (?:ki|कि) (.{1,300})$",
         RegexOption.IGNORE_CASE,
     )
+    private val FILE_REQUEST = Regex(
+        "^(?:[\\p{L}\\p{M}\\p{N}_.-]+ ){0,4}(?:wali |waali |vali |wala |waala |वाली |वाला )?(?:pdf|file|document|doc|फाइल|फ़ाइल|पीडीएफ|डॉक्यूमेंट)$",
+        RegexOption.IGNORE_CASE,
+    )
     private val SEEMA_START = Regex("^(?:(?:hey|hi|हे) )?(?:seema|सीमा)[,\\s]+", RegexOption.IGNORE_CASE)
 
     private fun whatsApp(text: String): AssistantAction? {
@@ -221,6 +225,8 @@ object LocalCommands {
         if (who.isEmpty() || msg.isEmpty() || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(normalize(who))) return null
         // "message bhejo" with nothing to say is not a message: the AI asks what to write.
         if (Regex("^$MSG_WORD$", RegexOption.IGNORE_CASE).matches(msg)) return null
+        // "ticket wali PDF", "wo document", "latest file": a document, not words to type.
+        if (FILE_REQUEST.matches(msg)) return AssistantAction.WhatsAppFile(contact = who, file = msg)
         return AssistantAction.WhatsApp(contact = who, text = msg)
     }
 

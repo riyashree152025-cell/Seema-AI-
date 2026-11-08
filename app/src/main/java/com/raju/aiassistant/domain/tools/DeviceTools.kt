@@ -72,6 +72,9 @@ interface DeviceTools {
      */
     suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
         com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+    /** Like [whatsAppSearchAndSend], with a document from the phone (📎 → Document → the matching file). */
+    suspend fun whatsAppSendDocument(chat: String, fileQuery: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
+        com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
     /**
      * Waits until the phone reports a call in progress (the call Seema placed has started):
      * true = started, false = not within [timeoutMs], null = cannot be checked here.

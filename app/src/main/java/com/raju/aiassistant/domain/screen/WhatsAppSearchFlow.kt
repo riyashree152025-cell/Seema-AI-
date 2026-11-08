@@ -33,6 +33,10 @@ enum class FlowOutcome {
     STUCK,
     /** Seema's Accessibility is off or WhatsApp is not installed. */
     UNAVAILABLE,
+    /** No file matching the name in the document list (the list is left open for the user). */
+    FILE_NOT_FOUND,
+    /** More than one file matches ([WhatsAppFlowResult.choices]). Nothing was sent. */
+    SEVERAL_FILES,
 }
 
 data class WhatsAppFlowResult(
@@ -60,10 +64,11 @@ class WhatsAppSearchFlow(
 ) {
     private val log = mutableListOf<String>()
 
-    suspend fun send(name: String, text: String): WhatsAppFlowResult {
-        log.clear()
-        val wanted = ScreenMatch.normalize(name)
-        if (wanted.isEmpty() || text.isBlank()) return done(FlowOutcome.STUCK, "nothing to send")
+    /** The chat is open and confirmed by name: its message box and the name WhatsApp shows. */
+    private class OpenChat(val entry: ScreenElement, val name: String)
+
+    /** Opens [name]'s chat (search → one match → title checked), or says why not. */
+    private suspend fun openChat(name: String): Any {
         if (!hands.openWhatsApp()) return done(FlowOutcome.UNAVAILABLE, "WhatsApp did not open")
         step("opened WhatsApp")
 
@@ -126,6 +131,15 @@ class WhatsAppSearchFlow(
             if (sawChat) FlowOutcome.WRONG_CHAT else FlowOutcome.STUCK,
             if (sawChat) "could not confirm the chat's name" else "chat did not open",
         )
+        return OpenChat(input, result.text)
+    }
+
+    suspend fun send(name: String, text: String): WhatsAppFlowResult {
+        log.clear()
+        if (ScreenMatch.normalize(name).isEmpty() || text.isBlank()) return done(FlowOutcome.STUCK, "nothing to send")
+        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        val input = chat.entry
+        val result = ScreenElement(chat.name, ElementKind.TEXT)
 
         // 5. Type, check it is there, press Send.
         if (!hands.type(input, text)) return done(FlowOutcome.STUCK, "could not type the message", chat = result.text)
@@ -144,6 +158,78 @@ class WhatsAppSearchFlow(
             if (!ScreenMatch.showsTyped(s, text.take(40))) return done(FlowOutcome.SENT, "box emptied", chat = result.text)
         }
         return done(FlowOutcome.TYPED_NOT_SENT, "message still in the box after Send", chat = result.text)
+    }
+
+    /**
+     * Sends a document to [name]: chat → attach (📎) → Document → the one file matching [fileQuery]
+     * ("ticket", "invoice pdf"; empty = the newest) → Send → the file shows in the chat.
+     */
+    suspend fun sendDocument(name: String, fileQuery: String): WhatsAppFlowResult {
+        log.clear()
+        if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
+        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+
+        // What the chat showed before: the file must appear one more time after sending.
+        val chatBefore = readSafe()
+        // 1. The attach button, 2. "Document".
+        val attach = awaitElement("attach button") { WhatsAppScreen.attachButton(it) } ?: return done(FlowOutcome.STUCK, "attach button not found", chat = chat.name)
+        if (!hands.tap(attach)) return done(FlowOutcome.STUCK, "attach button did not react", chat = chat.name)
+        step("tapped attach")
+        val document = awaitElement("Document option") { WhatsAppScreen.documentOption(it) } ?: return done(FlowOutcome.STUCK, "Document option not found", chat = chat.name)
+        if (!hands.tap(document)) return done(FlowOutcome.STUCK, "Document option did not react", chat = chat.name)
+        step("tapped Document")
+
+        // 3. The one matching file in WhatsApp's document list (or the system file picker).
+        var file: ScreenElement? = null
+        for (i in 0 until patience) {
+            pause(settleMs)
+            val s = readSafe() ?: continue
+            if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in the file list")
+            if (!s.isWhatsApp() && s.packageName !in WhatsAppScreen.FILE_PICKERS) continue
+            // Still the chat (a file sent earlier shows there too): wait for the document list.
+            if (WhatsAppScreen.chatEntry(s) != null) continue
+            val files = WhatsAppScreen.files(s)
+            if (files.isEmpty()) continue
+            val matches = DocumentMatch.pick(files, fileQuery)
+            val names = matches.map { it.text.trim() }.distinct()
+            if (names.size > 1) return done(FlowOutcome.SEVERAL_FILES, "several files: ${names.joinToString()}", chat = chat.name, choices = names)
+            if (matches.isEmpty()) return done(FlowOutcome.FILE_NOT_FOUND, "no file like \"$fileQuery\" among ${files.size}", chat = chat.name)
+            file = matches.first()
+            break
+        }
+        val chosen = file ?: return done(FlowOutcome.FILE_NOT_FOUND, "the file list did not show", chat = chat.name)
+        if (!hands.tap(chosen)) return done(FlowOutcome.STUCK, "the file did not react", chat = chat.name)
+        step("picked \"${chosen.text}\"")
+
+        // 4. "Send to …?" / the preview's Send button.
+        val send = awaitElement("Send after picking") { WhatsAppScreen.sendButton(it) ?: WhatsAppScreen.confirmSend(it) }
+            ?: return done(FlowOutcome.TYPED_NOT_SENT, "Send not found after picking the file", chat = chat.name)
+        if (!hands.tap(send)) return done(FlowOutcome.TYPED_NOT_SENT, "Send could not be pressed", chat = chat.name)
+        step("pressed Send")
+
+        // 5. Back in the chat with the file in it.
+        val fileName = DocumentMatch.normalize(chosen.text)
+        fun inChat(s: ScreenSnapshot?) = s?.elements?.count { !it.editable && DocumentMatch.normalize(it.text).contains(fileName) } ?: 0
+        val before = inChat(chatBefore)
+        for (i in 0 until patience) {
+            pause(settleMs)
+            val s = readSafe() ?: continue
+            if (WhatsAppScreen.chatEntry(s) == null) continue
+            if (inChat(s) > before) return done(FlowOutcome.SENT, "file is in the chat", chat = chat.name)
+        }
+        return done(FlowOutcome.TYPED_NOT_SENT, "the file did not show in the chat", chat = chat.name)
+    }
+
+    /** Waits up to patience × settleMs for [find] to see something on a WhatsApp screen. */
+    private suspend fun awaitElement(what: String, find: (ScreenSnapshot) -> ScreenElement?): ScreenElement? {
+        for (i in 0 until patience) {
+            pause(settleMs)
+            val s = readSafe() ?: continue
+            if (s.isUnsafe()) return null
+            find(s)?.let { return it }
+        }
+        step("not found: $what")
+        return null
     }
 
     private suspend fun readSafe(): ScreenSnapshot? = runCatching { hands.read() }.getOrNull()
@@ -198,6 +284,30 @@ object WhatsAppScreen {
         return t.isNotEmpty() && (t == c || t.startsWith("$c ") || c.startsWith("$t "))
     }
 
+    /** The system file picker WhatsApp may open for "Document". */
+    val FILE_PICKERS = setOf("com.google.android.documentsui", "com.android.documentsui")
+
+    private val ATTACH_WORDS = setOf("attach", "attachment", "attach file", "अटैच", "संलग्न", "সংযুক্ত").map { ScreenMatch.normalize(it) }
+    private val DOCUMENT_WORDS = setOf("document", "documents", "डॉक्यूमेंट", "दस्तावेज़", "दस्तावेज", "ডকুমেন্ট", "নথি").map { ScreenMatch.normalize(it) }
+    private val CONFIRM_WORDS = setOf("send", "ok", "भेजें", "ठीक है", "পাঠান").map { ScreenMatch.normalize(it) }
+    private val FILE_NAME = Regex("\\.[A-Za-z0-9]{2,5}$")
+
+    fun attachButton(s: ScreenSnapshot): ScreenElement? =
+        s.elements.firstOrNull { it.clickable && it.id.endsWith(":id/input_attach_button") }
+            ?: s.elements.firstOrNull { it.clickable && !it.editable && ScreenMatch.normalize(it.text) in ATTACH_WORDS }
+
+    fun documentOption(s: ScreenSnapshot): ScreenElement? =
+        s.elements.firstOrNull { it.clickable && (it.id.endsWith(":id/pick_document") || it.id.endsWith(":id/pickfiletype_document_holder")) }
+            ?: s.elements.firstOrNull { it.clickable && !it.editable && ScreenMatch.normalize(it.text) in DOCUMENT_WORDS }
+
+    /** Rows of a document list that are files ("IRCTC_ticket.pdf"). */
+    fun files(s: ScreenSnapshot): List<ScreenElement> =
+        s.elements.filter { it.clickable && !it.editable && !it.password && FILE_NAME.containsMatchIn(it.text.trim()) }
+
+    /** The "Send to Riya?" dialog's own button. */
+    fun confirmSend(s: ScreenSnapshot): ScreenElement? =
+        s.elements.firstOrNull { it.clickable && it.id == "android:id/button1" && ScreenMatch.normalize(it.text) in CONFIRM_WORDS }
+
     fun sendButton(s: ScreenSnapshot): ScreenElement? =
         s.elements.firstOrNull { it.clickable && it.id.endsWith(":id/send") }
             ?: s.elements.firstOrNull { it.clickable && !it.editable && ScreenMatch.normalize(it.text) in SEND_WORDS }
@@ -219,5 +329,32 @@ object WhatsAppScreen {
             val t = ScreenMatch.normalize(e.text)
             t.startsWith("$n ") && t.split(' ').size <= nameWords + 2 && (e.id.isEmpty() || e.id.contains("name"))
         }
+    }
+}
+
+/** Which file the user means: "ticket" → "IRCTC_Ticket_12345.pdf"; "pdf" alone or nothing → the newest. */
+object DocumentMatch {
+    private val FILLER = setOf(
+        "pdf", "file", "files", "document", "documents", "doc", "wali", "waali", "vali", "wala", "waala", "the", "my", "meri", "mera",
+        "latest", "recent", "nayi", "naya", "new", "last", "aakhri", "akhri", "abhi", "wo", "woh", "vo", "ye", "yeh", "ek",
+        "वाली", "वाला", "फाइल", "फ़ाइल", "पीडीएफ", "डॉक्यूमेंट", "मेरी", "मेरा", "नई", "नया", "आखिरी", "वो", "ये", "एक",
+    )
+    private val EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "jpg", "jpeg", "png", "zip", "apk")
+
+    fun normalize(s: String): String = s.lowercase().replace(Regex("[_\\-.()\\[\\]]"), " ").replace(Regex("\\s+"), " ").trim()
+
+    fun words(s: String): List<String> = normalize(s).split(' ').filter { it.isNotBlank() && it !in FILLER && it !in EXTENSIONS }
+
+    /**
+     * Files matching [query]: every meaningful word of it appears in the file name. A query with no
+     * such word means the newest file (the list's first), of the named type when one was said.
+     */
+    fun pick(files: List<ScreenElement>, query: String): List<ScreenElement> {
+        val q = normalize(query).split(' ').filter { it.isNotBlank() }
+        val type = q.firstOrNull { it in EXTENSIONS }
+        val ofType = if (type == null) files else files.filter { normalize(it.text).endsWith(" $type") }
+        val wanted = q.filter { it !in FILLER && it !in EXTENSIONS }
+        if (wanted.isEmpty()) return ofType.take(1)
+        return ofType.filter { f -> val n = normalize(f.text); wanted.all { n.contains(it) } }
     }
 }

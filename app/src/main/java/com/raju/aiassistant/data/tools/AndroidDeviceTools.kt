@@ -48,6 +48,7 @@ import java.util.Date
 private const val A11Y_READ_MS = 3_000L
 private const val A11Y_ACT_MS = 3_000L
 private const val WHATSAPP_FLOW_MS = 30_000L
+private const val WHATSAPP_DOCUMENT_FLOW_MS = 60_000L
 
 class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
@@ -585,7 +586,17 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             if (ok) ToolOutcome.Done(message) else ToolOutcome.Failed(message)
         }
 
-    override suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult {
+    override suspend fun whatsAppSearchAndSend(chat: String, text: String) =
+        whatsAppFlow(WHATSAPP_FLOW_MS) { it.send(chat, text) }
+
+    override suspend fun whatsAppSendDocument(chat: String, fileQuery: String) =
+        whatsAppFlow(WHATSAPP_DOCUMENT_FLOW_MS) { it.sendDocument(chat, fileQuery) }
+
+    /** Runs a WhatsApp flow with Seema's Accessibility as its hands; every step and the whole flow are time-bounded. */
+    private suspend fun whatsAppFlow(
+        limitMs: Long,
+        run: suspend (com.raju.aiassistant.domain.screen.WhatsAppSearchFlow) -> com.raju.aiassistant.domain.screen.WhatsAppFlowResult,
+    ): com.raju.aiassistant.domain.screen.WhatsAppFlowResult {
         val service = com.raju.aiassistant.accessibility.SeemaAccessibilityService
         val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
         if (pkg == null || !service.isRunning()) {
@@ -602,8 +613,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             override suspend fun back() = bounded(A11Y_ACT_MS, false) { service.goBack() }
         }
         // The whole flow has a hard ceiling too, whatever WhatsApp does.
-        return withTimeoutOrNull(WHATSAPP_FLOW_MS) { com.raju.aiassistant.domain.screen.WhatsAppSearchFlow(hands).send(chat, text) }
-            ?: com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.STUCK, log = listOf("STUCK: flow took over ${WHATSAPP_FLOW_MS / 1000} s"))
+        return withTimeoutOrNull(limitMs) { run(com.raju.aiassistant.domain.screen.WhatsAppSearchFlow(hands)) }
+            ?: com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.STUCK, log = listOf("STUCK: flow took over ${limitMs / 1000} s"))
     }
 
     override suspend fun awaitAutoAction(timeoutMs: Long): Boolean? {

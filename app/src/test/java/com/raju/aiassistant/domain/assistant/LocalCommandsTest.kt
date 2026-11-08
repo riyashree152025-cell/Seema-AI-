@@ -203,4 +203,14 @@ class LocalCommandsTest {
         }
         assertNull(p("screen par kya likha hai Riya ne")) // a question about the screen: the AI reads it with the question
     }
+
+    @Test
+    fun whatsAppDocuments() {
+        assertEquals(AssistantAction.WhatsAppFile("Riya", "ticket wali PDF"), p("WhatsApp par Riya ko ticket wali PDF bhejo"))
+        assertEquals(AssistantAction.WhatsAppFile("Sharma ji", "invoice file"), p("Sharma ji ko WhatsApp par invoice file bhej do"))
+        assertEquals(AssistantAction.WhatsAppFile("मम्मी", "टिकट वाली फाइल"), p("व्हाट्सएप पर मम्मी को टिकट वाली फाइल भेजो"))
+        assertEquals(AssistantAction.WhatsAppFile("Riya", "latest pdf"), p("WhatsApp par Riya ko latest pdf bhejo"))
+        // A sentence that only mentions a file is a message.
+        assertEquals(AssistantAction.WhatsApp("Riya", "file mil gayi kya"), p("WhatsApp par Riya ko file mil gayi kya bhejo"))
+    }
 }

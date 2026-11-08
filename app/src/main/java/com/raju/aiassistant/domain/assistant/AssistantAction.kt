@@ -51,6 +51,10 @@ sealed interface AssistantAction {
     data class WhatsApp(val contact: String?, val text: String) : AssistantAction {
         override val label get() = "WhatsApp draft" + (contact?.let { " to $it" } ?: "")
     }
+    /** A document from the phone ("ticket", "invoice pdf"; empty = the newest) sent in [contact]'s WhatsApp chat. */
+    data class WhatsAppFile(val contact: String, val file: String) : AssistantAction {
+        override val label get() = "Send file on WhatsApp: ${file.ifBlank { "newest" }}"
+    }
     data class WhatsAppCall(val contact: String?, val number: String?, val video: Boolean = false) : AssistantAction {
         override val label get() = "WhatsApp " + (if (video) "video call" else "call") + (contact?.let { " to $it" } ?: number?.let { " to $it" } ?: "")
     }
@@ -262,6 +266,7 @@ private fun parseAction(json: String): AssistantAction? {
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
         "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact") ?: str("name"), it) }
+        "whatsapp_file", "whatsapp_document", "whatsapp_pdf" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppFile(it, str("file") ?: str("query") ?: "") }
         "whatsapp_call", "wa_call", "whatsapp_audio_call", "whatsapp_voice_call" -> {
             AssistantAction.WhatsAppCall(str("contact") ?: str("name"), str("number"), video = false)
         }
