@@ -10,6 +10,9 @@ import kotlin.math.sin
  * breathing, pupil, how strongly the waves move, and the wave shape itself.
  */
 
+/** The eye's radius as a share of the smaller screen side (1.35x the earlier 0.21 — it commands the viewport). */
+const val EYE_RADIUS_SHARE = 0.21f * 1.35f
+
 /** Seconds per breath of the idle eye. */
 const val EYE_BREATH_SECONDS = 2.6f
 
@@ -88,7 +91,8 @@ fun waveShape(x: Float, t: Float, layer: Int, energy: Float): Float {
     val twoPi = 2f * PI.toFloat()
     val a = sin(twoPi * k * x + t * speed + layer * 1.3f)
     val b = cos(twoPi * k * 0.53f * x - t * speed * 1.3f + layer * 0.7f)
-    val envelope = 0.55f + 0.45f * cos(PI.toFloat() * (x - 0.5f) * 1.6f)
+    // Stays clearly visible at the very edges, so the waves run the full width of the screen.
+    val envelope = 0.7f + 0.3f * cos(PI.toFloat() * (x - 0.5f) * 1.2f)
     return (0.7f * a + 0.3f * b) * envelope
 }
 

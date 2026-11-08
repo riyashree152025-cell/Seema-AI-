@@ -55,6 +55,15 @@ class LivingEyeMathTest {
     }
 
     @Test
+    fun theEyeIsOneAndAThirdTimesItsEarlierSizeAndTheWavesReachTheEdges() {
+        assertEquals(0.21f * 1.35f, EYE_RADIUS_SHARE, 1e-4f)
+        // The edge of the screen still moves with real amplitude, compared with the centre.
+        val edge = (0..400).maxOf { abs(waveShape(0f, it * 0.05f, 0, 0.5f)) }
+        val centre = (0..400).maxOf { abs(waveShape(0.5f, it * 0.05f, 0, 0.5f)) }
+        assertTrue(edge > 0.5f * centre)
+    }
+
+    @Test
     fun lessDetailInBatterySaver() {
         assertTrue(waveLayerCount(false) < waveLayerCount(true))
         assertTrue(wavePointCount(false) < wavePointCount(true))

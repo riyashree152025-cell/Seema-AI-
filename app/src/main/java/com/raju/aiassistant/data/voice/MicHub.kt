@@ -132,6 +132,7 @@ class MicHub(
     private var closeJob: Job? = null // guarded by lock
     private var suspended = false // guarded by lock: a phone call holds the microphone
     private var exclusiveHolders = 0 // guarded by lock: recorders outside the hub (barge-in) holding the mic
+    private var muted = false // guarded by lock: the user switched the assistant off; no recorder may run
 
     private var opens = 0 // guarded by lock
     private var framesRead = 0L
@@ -222,6 +223,42 @@ class MicHub(
         }
     }
 
+    /**
+     * The user switched the assistant OFF: every lease is dropped, the recorder stops at once and its
+     * buffers are flushed. Nothing reads the microphone again until [unmute]. Holders that still
+     * call release() later are harmless.
+     */
+    fun releaseAll() {
+        val dropped = synchronized(lock) {
+            muted = true
+            closeJob?.cancel()
+            closeJob = null
+            closeRecorderLocked()
+            val all = leases.toList()
+            leases.clear()
+            all
+        }
+        for (lease in dropped) {
+            synchronized(lock) { lease.released = true }
+            lease.channel.close()
+            lease.consumer?.cancel()
+            while (true) {
+                val frame = lease.channel.tryReceive().getOrNull() ?: break
+                releaseFrame(frame)
+            }
+        }
+        _level.value = 0f
+        log("mic: released for mute")
+    }
+
+    /** The user switched the assistant ON again: the microphone may be leased again. */
+    fun unmute() {
+        synchronized(lock) {
+            muted = false
+            startRecorderLocked()
+        }
+    }
+
     /** A phone call is using the microphone: stop reading now. Leases stay, they just get no frames. */
     fun pauseForCall() {
         synchronized(lock) {
@@ -308,7 +345,7 @@ class MicHub(
 
     /** Starts the reader when someone wants the microphone and neither a call nor barge-in holds it. Caller holds [lock]. */
     private fun startRecorderLocked() {
-        if (reader != null || suspended || exclusiveHolders > 0 || leases.isEmpty()) return
+        if (reader != null || suspended || muted || exclusiveHolders > 0 || leases.isEmpty()) return
         // A cancelled reader can still be inside a blocking read (up to a frame): the new recorder opens
         // only after every earlier one has closed, so two never record at the same time.
         stopping.retainAll { !it.isCompleted }

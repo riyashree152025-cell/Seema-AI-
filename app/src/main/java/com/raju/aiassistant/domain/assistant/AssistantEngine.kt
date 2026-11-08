@@ -352,6 +352,8 @@ class AssistantEngine(
      * joining word, the assistant keeps listening a few seconds and answers the whole sentence.
      */
     private fun onHeard(heard: String) {
+        // Switched off: nothing that was heard is acted on or answered.
+        if (settings.value.assistantPaused) { trace("off: heard result dropped"); return }
         trace("recognized (${heard.length} chars)")
         fastNoSpeech = 0
         if (handleVoiceConfirm(heard)) return

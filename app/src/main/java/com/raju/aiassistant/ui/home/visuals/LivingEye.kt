@@ -111,7 +111,7 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
 private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantState, accent: Color, richEffects: Boolean) {
     val c = center
     val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
-    val r = minOf(size.width, size.height) * 0.21f * eyeBreath(t) * (1f + 0.05f * energy)
+    val r = minOf(size.width, size.height) * EYE_RADIUS_SHARE * eyeBreath(t) * (1f + 0.05f * energy)
     val dim = if (asleep) 0.45f else 1f
 
     // Glow around the eye.

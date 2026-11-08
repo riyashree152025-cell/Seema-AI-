@@ -142,29 +142,16 @@ fun SciFiHomeNavButton(
     /** Shows a small status dot: green = on/working, null = nothing to show. */
     active: Boolean? = null,
 ) {
+    // Glass card in the Living Eye style: translucent navy, a cyan-to-violet edge, 16 dp corners.
     Box(
         modifier = modifier
             .height(92.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0x4D0C2755),
-                        Color(0x2E061735),
-                        Color(0x24030D20)
-                    )
-                )
-            )
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x1A14243B))
             .border(
-                1.5.dp,
-                Brush.linearGradient(
-                    listOf(
-                        iconColor.copy(alpha = 0.9f),
-                        Color(0xFF00E5FF),
-                        iconColor.copy(alpha = 0.8f)
-                    )
-                ),
-                RoundedCornerShape(18.dp)
+                1.dp,
+                Brush.linearGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.85f), Color(0xFFB388FF).copy(alpha = 0.75f))),
+                RoundedCornerShape(16.dp)
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -179,12 +166,12 @@ fun SciFiHomeNavButton(
             verticalArrangement = Arrangement.Center
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Soft glow behind the icon in its own colour.
+                // Soft radial illumination behind the icon in its own colour.
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(60.dp)
                         .background(
-                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.35f), Color.Transparent)),
+                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.45f), iconColor.copy(alpha = 0.12f), Color.Transparent)),
                             CircleShape
                         )
                 )

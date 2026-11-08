@@ -213,9 +213,14 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     fun toggleMute() {
         val next = !uiState.value.paused
         if (next) {
-            // OFF: stop speech, listening, "Hey Seema" and the background microphone service.
+            // OFF: stop speech, listening, "Hey Seema" and the background microphone service, and give
+            // every microphone lease back at once: the recorder stops and no audio is read until ON.
             c.stopEverything()
+            c.wakeListener.stop()
+            c.micHub.releaseAll()
             com.raju.aiassistant.voice.SeemaWakeService.stop(c.appContext)
+        } else {
+            c.micHub.unmute()
         }
         viewModelScope.launch {
             c.settingsRepository.setAssistantPaused(next)
