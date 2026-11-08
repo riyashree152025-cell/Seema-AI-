@@ -405,6 +405,25 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun smsToAContactWithTwoNumbersIsChosenByVoiceWithoutATap() = runTest {
+        // From the phone: "Firoz ko message karo …", Firoz has two numbers; the card waited for a tap.
+        tools.contacts = ContactLookup.Found(listOf(Contact("Firoz", "+919604686087"), Contact("Firoz", "+919711945150")))
+        val e = engine(AiResult.Success("""<action>{"type":"sms","contact":"Firoz","text":"Abhi tak payment nahi mila hai"}</action>"""))
+        e.submit("Firoz ko message karo ki abhi tak payment nahi mila hai", fromVoice = true)
+        advanceTimeBy(2_000); runCurrent()
+        val asked = speaker.spoken.last()
+        assertTrue(asked, asked.contains("2 नंबर") && asked.contains("6 0 8 7") && asked.contains("5 1 5 0"))
+        voice.onResult!!("doosra")
+        runCurrent()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("+919711945150"))
+        assertTrue(tools.sms.isEmpty()) // a spoken choice is confirmed once more
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf("+919711945150" to "Abhi tak payment nahi mila hai"), tools.sms)
+        assertTrue(speaker.spoken.any { it.contains("Firoz को SMS भेज दिया") })
+    }
+
+    @Test
     fun deniedSmsSendsNothingAndSafetyModeBlocksIt() = runTest {
         tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "9876543210")))
         val e = engine(AiResult.Success("""<action>{"type":"sms","contact":"Mom","text":"Hi"}</action>"""))

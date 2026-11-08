@@ -101,9 +101,33 @@ object ContactMatch {
         if (t.split(Regex("\\s+")).size <= 3) {
             ORDINALS.forEachIndexed { i, r -> if (r.containsMatchIn(t) && i < candidates.size) return candidates[i] }
         }
+        // "6087" / "chhe zero aath saat" as digits: the one number that ends with (or contains) them.
+        val digits = t.map { ch -> if (ch in '०'..'९') '0' + (ch - '०') else ch }.filter { it.isDigit() }.joinToString("")
+        if (digits.length >= 3) {
+            val byEnd = candidates.filter { it.number.filter(Char::isDigit).endsWith(digits) }
+            if (byEnd.size == 1) return byEnd[0]
+            val byPart = candidates.filter { it.number.filter(Char::isDigit).contains(digits) }
+            if (byPart.size == 1) return byPart[0]
+        }
         val found = best(t, candidates)
         return found.singleOrNull()
             ?: found.filter { normalize(it.name) == normalize(t) }.singleOrNull()
+    }
+
+    /**
+     * How a choice is read out: "1. Riya, 2. Rahul" — or, when the names are the same ("Firoz" twice),
+     * with each number's last 4 digits: "pehla Firoz, 6087 wala; doosra Firoz, 5150 wala".
+     */
+    fun spokenChoices(candidates: List<Contact>, hindi: Boolean = true): String {
+        val sameNames = candidates.map { normalize(it.name) }.distinct().size < candidates.size
+        val ordinals = if (hindi) listOf("पहला", "दूसरा", "तीसरा", "चौथा") else listOf("প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ")
+        return candidates.take(4).mapIndexed { i, c ->
+            if (!sameNames) "${i + 1}. ${c.name}"
+            else {
+                val last4 = c.number.filter(Char::isDigit).takeLast(4).toList().joinToString(" ")
+                if (hindi) "${ordinals[i]} ${c.name}, $last4 वाला" else "${ordinals[i]} ${c.name}, $last4"
+            }
+        }.joinToString("; ")
     }
 }
 

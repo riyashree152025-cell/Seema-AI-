@@ -105,6 +105,8 @@ private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
 private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
+/** Careful thinking (deep tier) may take longer before its first words: Gemini gets 25 s. */
+private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 25_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
@@ -976,6 +978,8 @@ class AssistantEngine(
         val turns = historyTurns(model, if (s.hybridBrain) tier else BrainTier.DEEP)
 
         trace("ai request ${providerId.shortName}")
+        // Silence allowed before switching to another AI: longer for careful thinking on Gemini.
+        val firstTextWait = if (s.hybridBrain && tier == BrainTier.DEEP && providerId == ProviderId.GEMINI) DEEP_FIRST_TEXT_TIMEOUT_MS else FIRST_TEXT_TIMEOUT_MS
         val speak = fromVoice || s.autoSpeakReplies
         // Streaming: the reply arrives piece by piece; as soon as its first sentence is complete
         // Seema starts speaking it while the rest is still being written.
@@ -1007,7 +1011,7 @@ class AssistantEngine(
                             }
                         }
                         val watchdog = if (canFallBack) launch {
-                            delay(FIRST_TEXT_TIMEOUT_MS)
+                            delay(firstTextWait)
                             if (firstTextAt.get() == NOT_YET) {
                                 silentTooLong = true
                                 call.cancel()
@@ -1026,7 +1030,7 @@ class AssistantEngine(
                     r ?: synchronized(buffer) {
                         // No full reply in time: keep what arrived, otherwise it is a timeout (Seema never hangs in "Thinking").
                         if (buffer.isNotBlank()) AiResult.Success(buffer.toString().trim() + "\n\n(जवाब पूरा नहीं आया — फिर से पूछें।)")
-                        else if (silentTooLong) AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not start answering within ${FIRST_TEXT_TIMEOUT_MS / 1000} seconds.")
+                        else if (silentTooLong) AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not start answering within ${firstTextWait / 1000} seconds.")
                         else AiResult.Failure(FailureKind.TIMEOUT, "${providerId.shortName} did not answer within ${AI_TIMEOUT_MS / 1000} seconds.")
                     }
                 }
@@ -1836,7 +1840,7 @@ class AssistantEngine(
                 if (speak && outcome is ToolOutcome.Done) say(mediaSpoken(action.command))
             }
             is AssistantAction.TellTime -> informational(action, spokenClock(action), speak)
-            is AssistantAction.Sms -> sendSms(action)
+            is AssistantAction.Sms -> sendSms(action, speak)
             is AssistantAction.AddEvent -> addEvent(action)
             is AssistantAction.Navigate -> report(action, tools.navigate(action.destination, action.mode))
             is AssistantAction.CopyText -> report(action, tools.copyToClipboard(action.text))
@@ -1906,8 +1910,14 @@ class AssistantEngine(
                 is com.raju.aiassistant.domain.business.PnrFetch.Ok -> lines += com.raju.aiassistant.domain.business.spokenPnrStatus(f.snapshot)
                 is com.raju.aiassistant.domain.business.PnrFetch.Failed -> lines += "PNR $pnr: ${f.message}"
                 com.raju.aiassistant.domain.business.PnrFetch.NotConfigured -> {
-                    // There is no free official PNR API: open the official page with the PNR ready to paste.
+                    // There is no free official PNR API: say so first, then open the official page with
+                    // the PNR ready to paste (not a silent jump into Chrome).
                     tools.copyToClipboard(pnr)
+                    if (speak) say(phrase(
+                        lang(),
+                        "मेरे पास रेलवे की official PNR सेवा जुड़ी नहीं है। मैंने PNR कॉपी करके रेलवे का पेज खोल दिया है — वहाँ PNR डालकर captcha भर दीजिए।",
+                        "আমার কাছে রেলের official PNR পরিষেবা নেই। PNR কপি করে রেলের পেজ খুলে দিচ্ছি — সেখানে PNR দিয়ে captcha পূরণ করুন।",
+                    ))
                     when (val o = tools.openWebPage(PNR_ENQUIRY_URL)) {
                         is ToolOutcome.Done -> report(action, ActionStatus.SUCCESS, "Official PNR page opened — PNR $pnr is copied, paste it there and fill the captcha. (Settings → PNR status service: set one up for spoken status.)")
                         else -> report(action, o)
@@ -2090,7 +2100,7 @@ class AssistantEngine(
         }
     }
 
-    private suspend fun sendSms(action: AssistantAction.Sms) {
+    private suspend fun sendSms(action: AssistantAction.Sms, speak: Boolean = false) {
         val candidates: List<Contact> = if (action.number != null && action.contact == null) {
             listOf(Contact(action.number, action.number))
         } else {
@@ -2103,18 +2113,30 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, "No contact named \"${action.contact}\" was found.")
             return
         }
-        val chosen = confirmContact(
-            title = "SMS bhejein?",
-            message = if (candidates.size == 1) "${candidates[0].name} (${candidates[0].number}) ko yeh SMS bheja jayega:\n\n\"${action.text}\""
-            else "Kis contact ko SMS bhejna hai?\n\n\"${action.text}\"",
-            candidates = candidates,
-        ) ?: run { report(action, ActionStatus.CANCELLED, "SMS cancelled."); return }
+        // The same Smart Contact Brain as calls and WhatsApp: asked out loud and answered by voice
+        // ("pehla", "doosra", the last digits, "haan") — or by a tap on the card.
+        val chosen = chooseContact(
+            "SMS bhejein?",
+            if (candidates.size == 1) "${candidates[0].name} (${candidates[0].number}) ko yeh SMS bheja jayega:\n\n\"${action.text}\""
+            else "Kis number par SMS bhejna hai?\n\n\"${action.text}\"",
+            candidates, action.contact, speak,
+            verbHi = "इन्हें SMS भेजूँ", verbBn = "একে SMS পাঠাব",
+        ) ?: run {
+            report(action, ActionStatus.CANCELLED, "SMS cancelled.")
+            if (speak) say(phrase(lang(), "ठीक है, SMS नहीं भेजा।", "ঠিক আছে, SMS পাঠাইনি।"))
+            return
+        }
         val smsPermission = "android.permission.SEND_SMS"
         if (!tools.hasPermission(smsPermission)) {
             val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "SMS permission", "SMS bhejne ke liye permission chahiye. SMS aapke SIM se jayega (carrier charges lag sakte hain).", permission = smsPermission))
             if (d !is Decision.PermissionResult || !d.granted) { report(action, ActionStatus.CANCELLED, "SMS permission was not granted, so nothing was sent."); return }
         }
-        report(action, tools.sendSms(chosen, action.text))
+        val outcome = tools.sendSms(chosen, action.text)
+        report(action, outcome)
+        if (speak) say(
+            if (outcome is ToolOutcome.Done) phrase(lang(), "${chosen.name} को SMS भेज दिया।", "${chosen.name}-কে SMS পাঠিয়ে দিয়েছি।")
+            else phrase(lang(), "SMS नहीं जा पाया।", "SMS যায়নি।"),
+        )
     }
 
     private suspend fun addEvent(action: AssistantAction.AddEvent) {
@@ -2311,8 +2333,13 @@ class AssistantEngine(
             ) { yesNo(it, c) }
             return (d as? Decision.Approve)?.let { it.option ?: c }
         }
-        val names = candidates.take(4).mapIndexed { i, c -> "${i + 1}. ${c.name}" }.joinToString(", ")
-        val q = phrase(
+        val sameNames = candidates.map { it.name.trim().lowercase() }.distinct().size < candidates.size
+        val names = ContactMatch.spokenChoices(candidates, hindi = lang() != SeemaLanguage.BENGALI)
+        val q = if (sameNames) phrase(
+            lang(),
+            "${candidates[0].name} के ${candidates.size} नंबर हैं: $names। किसमें? पहला, दूसरा, या नंबर के आख़िरी अंक बोलिए।",
+            "${candidates[0].name}-এর ${candidates.size}টা নম্বর: $names। কোনটায়? প্রথম, দ্বিতীয় বা শেষ সংখ্যাগুলো বলুন।",
+        ) else phrase(
             lang(),
             "\"${query.orEmpty()}\" से ${candidates.size} कॉन्टैक्ट मिले: $names। किसे? नाम या पहला, दूसरा बोलिए।",
             "\"${query.orEmpty()}\" নামে ${candidates.size} জন পেয়েছি: $names। কাকে? নাম বা প্রথম, দ্বিতীয় বলুন।",

@@ -102,4 +102,15 @@ class ContactMatchTest {
         assertEquals(null, ContactMatch.pick("rahul", rahuls)) // still all three: ask again
         assertEquals(null, ContactMatch.pick("haan kar do", rahuls))
     }
+
+    @Test
+    fun theSameNameTwiceIsToldApartByItsLastDigits() {
+        val firoz = listOf(Contact("Firoz", "+919604686087"), Contact("Firoz", "+919711945150"))
+        assertEquals("पहला Firoz, 6 0 8 7 वाला; दूसरा Firoz, 5 1 5 0 वाला", ContactMatch.spokenChoices(firoz))
+        assertEquals("1. Riya; 2. Rahul", ContactMatch.spokenChoices(listOf(Contact("Riya", "9800000001"), Contact("Rahul", "9800000002"))))
+        assertEquals(firoz[1], ContactMatch.pick("5150 wala", firoz))
+        assertEquals(firoz[0], ContactMatch.pick("६०८७", firoz))
+        assertEquals(firoz[1], ContactMatch.pick("doosra", firoz))
+        assertEquals(null, ContactMatch.pick("91", firoz)) // too few digits to choose
+    }
 }
