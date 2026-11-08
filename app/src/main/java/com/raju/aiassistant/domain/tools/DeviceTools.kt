@@ -66,6 +66,13 @@ interface DeviceTools {
      */
     suspend fun awaitAutoAction(timeoutMs: Long): Boolean? = null
     /**
+     * WhatsApp for a name that is not in the phone's contacts (a group, a WhatsApp-only name): opens
+     * WhatsApp, searches [chat], opens the one matching chat, types [text] and presses Send — only
+     * after the user said yes. Never hangs: a stuck step ends the flow with a reason.
+     */
+    suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
+        com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+    /**
      * Waits until the phone reports a call in progress (the call Seema placed has started):
      * true = started, false = not within [timeoutMs], null = cannot be checked here.
      */

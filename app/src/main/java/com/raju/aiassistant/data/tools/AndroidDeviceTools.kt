@@ -37,12 +37,18 @@ import com.raju.aiassistant.domain.tools.ToolOutcome
 import com.raju.aiassistant.domain.tools.TravelMode
 import com.raju.aiassistant.domain.tools.normalizeForWhatsApp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 import java.text.DateFormat
 import java.util.Date
 
 /** Phone actions via public APIs and visible system UI only (dialer, launcher intents, settings screens). */
+private const val A11Y_READ_MS = 3_000L
+private const val A11Y_ACT_MS = 3_000L
+private const val WHATSAPP_FLOW_MS = 30_000L
+
 class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     private fun granted(permission: String) =
@@ -552,13 +558,52 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         }
     }
 
-    override suspend fun readScreen(): com.raju.aiassistant.domain.screen.ScreenRead = withContext(Dispatchers.Default) {
-        com.raju.aiassistant.accessibility.SeemaAccessibilityService.readScreen()
+    /**
+     * Accessibility calls are IPC into the other app and can block when it hangs. They run on their
+     * own threads and are waited for at most [ms]: a stuck app gives [fallback], never a frozen Seema.
+     */
+    private suspend fun <T> bounded(ms: Long, fallback: T, block: () -> T): T {
+        val job = a11yScope.async { block() }
+        return try {
+            withTimeoutOrNull(ms) { job.await() } ?: fallback.also { job.cancel() }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            fallback
+        }
     }
 
-    override suspend fun screenAction(op: com.raju.aiassistant.domain.screen.ScreenOp): ToolOutcome = withContext(Dispatchers.Default) {
-        val (ok, message) = com.raju.aiassistant.accessibility.SeemaAccessibilityService.perform(op)
-        if (ok) ToolOutcome.Done(message) else ToolOutcome.Failed(message)
+    private val a11yScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+    override suspend fun readScreen(): com.raju.aiassistant.domain.screen.ScreenRead =
+        bounded(A11Y_READ_MS, com.raju.aiassistant.domain.screen.ScreenRead.Unavailable("स्क्रीन पढ़ने में ऐप ने जवाब नहीं दिया — थोड़ी देर बाद फिर कहिए।")) {
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.readScreen()
+        }
+
+    override suspend fun screenAction(op: com.raju.aiassistant.domain.screen.ScreenOp): ToolOutcome =
+        bounded<ToolOutcome>(A11Y_ACT_MS, ToolOutcome.Failed("ऐप ने समय पर जवाब नहीं दिया, काम नहीं हो पाया।")) {
+            val (ok, message) = com.raju.aiassistant.accessibility.SeemaAccessibilityService.perform(op)
+            if (ok) ToolOutcome.Done(message) else ToolOutcome.Failed(message)
+        }
+
+    override suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult {
+        val service = com.raju.aiassistant.accessibility.SeemaAccessibilityService
+        val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
+        if (pkg == null || !service.isRunning()) {
+            return com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+        }
+        val hands = object : com.raju.aiassistant.domain.screen.ScreenHands {
+            override suspend fun openWhatsApp(): Boolean {
+                val intent = context.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return false
+                return runCatching { context.startActivity(intent) }.isSuccess
+            }
+            override suspend fun read() = bounded(A11Y_READ_MS, null) { service.snapshot() }
+            override suspend fun tap(element: com.raju.aiassistant.domain.screen.ScreenElement) = bounded(A11Y_ACT_MS, false) { service.tap(element) }
+            override suspend fun type(element: com.raju.aiassistant.domain.screen.ScreenElement, text: String) = bounded(A11Y_ACT_MS, false) { service.type(element, text) }
+            override suspend fun back() = bounded(A11Y_ACT_MS, false) { service.goBack() }
+        }
+        // The whole flow has a hard ceiling too, whatever WhatsApp does.
+        return withTimeoutOrNull(WHATSAPP_FLOW_MS) { com.raju.aiassistant.domain.screen.WhatsAppSearchFlow(hands).send(chat, text) }
+            ?: com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.STUCK, log = listOf("STUCK: flow took over ${WHATSAPP_FLOW_MS / 1000} s"))
     }
 
     override suspend fun awaitAutoAction(timeoutMs: Long): Boolean? {

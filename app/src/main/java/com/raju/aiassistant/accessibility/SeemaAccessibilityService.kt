@@ -165,7 +165,7 @@ class SeemaAccessibilityService : AccessibilityService() {
                 else -> ElementKind.TEXT
             }
             if (text.isNotEmpty() || n.isEditable || password || n.isScrollable) {
-                out += ScreenElement(text, kind, clickable = clickable, editable = n.isEditable, scrollable = n.isScrollable, password = password, hint = hint) to n
+                out += ScreenElement(text, kind, clickable = clickable, editable = n.isEditable, scrollable = n.isScrollable, password = password, hint = hint, id = n.viewIdResourceName.orEmpty()) to n
             }
             for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it to clickable) }
         }
@@ -203,6 +203,22 @@ class SeemaAccessibilityService : AccessibilityService() {
             }
             ScreenOp.Back -> Outcome(false, "")
         }
+    }
+
+    /** The node of [element] on the screen as it is now (null when the screen changed meanwhile). */
+    private fun nodeOf(element: ScreenElement): AccessibilityNodeInfo? = read()?.second?.firstOrNull { it.first == element }?.second
+
+    private fun tapElement(element: ScreenElement): Boolean {
+        val node = nodeOf(element) ?: return false
+        return clickNode(node)
+    }
+
+    private fun typeInto(element: ScreenElement, text: String): Boolean {
+        val node = nodeOf(element) ?: return false
+        if (node.isPassword || !node.isEditable) return false
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
     private fun scroll(items: List<Pair<ScreenElement, AccessibilityNodeInfo>>, down: Boolean): Outcome {
@@ -352,6 +368,15 @@ class SeemaAccessibilityService : AccessibilityService() {
             return runCatching { service.read()?.first }.getOrNull()?.let { ScreenRead.Ok(it) }
                 ?: ScreenRead.Unavailable(NO_APP)
         }
+
+        /** The app in front as data, or null (service off, nothing readable). */
+        fun snapshot(): ScreenSnapshot? = instance?.let { s -> runCatching { s.read()?.first }.getOrNull() }
+
+        /** Taps exactly [element] (as read a moment ago); false when it is gone or does not react. */
+        fun tap(element: ScreenElement): Boolean = instance?.let { s -> runCatching { s.tapElement(element) }.getOrDefault(false) } ?: false
+
+        /** Writes [text] into the input box [element]; never into a password box. */
+        fun type(element: ScreenElement, text: String): Boolean = instance?.let { s -> runCatching { s.typeInto(element, text) }.getOrDefault(false) } ?: false
 
         /** Does [op] on the app in front. Returns (done, message). The engine has already asked the user. */
         fun perform(op: ScreenOp): Pair<Boolean, String> {

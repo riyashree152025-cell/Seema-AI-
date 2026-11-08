@@ -18,6 +18,8 @@ data class ScreenElement(
     val password: Boolean = false,
     /** Hint of an input box ("Type a message"). */
     val hint: String = "",
+    /** The app's own id for the view ("com.whatsapp:id/send"), empty when the app gives none. */
+    val id: String = "",
 )
 
 data class ScreenSnapshot(

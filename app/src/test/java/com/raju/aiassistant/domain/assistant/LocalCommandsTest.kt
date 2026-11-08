@@ -170,4 +170,26 @@ class LocalCommandsTest {
             assertNull(q, p(q))
         }
     }
+
+    // ---------------------------------------------------------------- Phase 3: WhatsApp message
+
+    @Test
+    fun whatsAppMessagesKeepTheWordsAsSaid() {
+        val wa = { who: String, msg: String -> AssistantAction.WhatsApp(contact = who, text = msg) }
+        assertEquals(wa("Mummy", "main 8 baje aaunga"), p("WhatsApp par Mummy ko main 8 baje aaunga bhejo"))
+        assertEquals(wa("Family Group", "Kal Milte Hain"), p("Hey Seema, WhatsApp pe Family Group ko 'Kal Milte Hain' bhej do."))
+        assertEquals(wa("Riya", "kal milte hain"), p("WhatsApp par Riya ko message bhejo ki kal milte hain"))
+        assertEquals(wa("Papa", "main pahunch gaya"), p("Papa ko WhatsApp par bolo ki main pahunch gaya"))
+        assertEquals(wa("Raju bhai", "late ho jaunga"), p("Raju bhai ko WhatsApp par late ho jaunga likh do"))
+        assertEquals(wa("मम्मी", "मैं आ रहा हूँ"), p("व्हाट्सएप पर मम्मी को मैं आ रहा हूँ भेजो"))
+        assertEquals(wa("दीदी", "खाना खा लिया"), p("दीदी को व्हाट्सएप पर बोलो कि खाना खा लिया"))
+    }
+
+    @Test
+    fun aWhatsAppRequestWithoutWordsOrAPersonGoesToTheAi() {
+        assertNull(p("WhatsApp par Riya ko message bhejo")) // what to write? the AI asks
+        assertNull(p("WhatsApp kholo aur Riya ko message bhejo"))
+        assertNull(p("WhatsApp par usko hello bhejo")) // who is "usko"? the AI knows the conversation
+        assertEquals(AssistantAction.OpenApp("whatsapp"), p("WhatsApp kholo"))
+    }
 }

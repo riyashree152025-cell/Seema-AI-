@@ -15,6 +15,7 @@ import com.raju.aiassistant.domain.tools.MediaCommand
 object LocalCommands {
 
     fun parse(text: String): AssistantAction? {
+        whatsApp(text)?.let { return it }
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
@@ -182,6 +183,46 @@ object LocalCommands {
     private fun battery(t: String): AssistantAction? = if (BATTERY.matches(t)) AssistantAction.Battery else null
 
     private fun home(t: String): AssistantAction? = if (HOME.matches(t)) AssistantAction.GoHome else null
+
+    // ------------------------------------------------------------------ WhatsApp message
+
+    private const val WA = "(?:whatsapp|whats app|watsapp|वॉट्सऐप|व्हाट्सएप|व्हाट्सऐप|वॉट्सएप)"
+    private const val SEND = "(?:bhejo|bhej do|bhej de|bhejiye|send karo|send kar do|likh do|likh ke bhejo|likhkar bhejo|bolo|bol do|भेजो|भेज दो|भेज दे|भेजिए|सेंड करो|लिख दो|लिख के भेजो|लिखकर भेजो|बोलो|बोल दो)"
+    private const val MSG_WORD = "(?:(?:ye|yeh|ek|यह|ये|एक) )?(?:message|msg|मैसेज|मेसेज|संदेश)"
+
+    /**
+     * "WhatsApp par Mummy ko 'main aa raha hoon' bhejo" / "Mummy ko WhatsApp par message bhejo ki …".
+     * Read from the original words (not lower-cased) so the message goes out as it was said.
+     */
+    private val WHATSAPP_A = Regex(
+        "^$WA (?:par|pe|पर|पे) (.{1,40}?) (?:ko|को) (?:$MSG_WORD )?(?:ki |कि )?(.{1,300}?)(?: (?:ka|का) $MSG_WORD)? $SEND$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val WHATSAPP_B = Regex(
+        "^(.{1,40}?) (?:ko|को) $WA (?:par|pe|पर|पे) (?:$MSG_WORD )?(?:ki |कि )?(.{1,300}?) $SEND$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val WHATSAPP_C = Regex(
+        "^$WA (?:par|pe|पर|पे) (.{1,40}?) (?:ko|को)(?: $MSG_WORD)? $SEND (?:ki|कि) (.{1,300})$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val WHATSAPP_D = Regex(
+        "^(.{1,40}?) (?:ko|को) $WA (?:par|pe|पर|पे)(?: $MSG_WORD)? $SEND (?:ki|कि) (.{1,300})$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val SEEMA_START = Regex("^(?:(?:hey|hi|हे) )?(?:seema|सीमा)[,\\s]+", RegexOption.IGNORE_CASE)
+
+    private fun whatsApp(text: String): AssistantAction? {
+        val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "").replace(Regex("^[,\\s]+"), "")
+        if (t.length > 360) return null
+        val m = WHATSAPP_A.matchEntire(t) ?: WHATSAPP_B.matchEntire(t) ?: WHATSAPP_C.matchEntire(t) ?: WHATSAPP_D.matchEntire(t) ?: return null
+        val who = m.groupValues[1].trim().trim('"', '\'', '“', '”')
+        val msg = m.groupValues[2].trim().trim('"', '\'', '“', '”').trim()
+        if (who.isEmpty() || msg.isEmpty() || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(normalize(who))) return null
+        // "message bhejo" with nothing to say is not a message: the AI asks what to write.
+        if (Regex("^$MSG_WORD$", RegexOption.IGNORE_CASE).matches(msg)) return null
+        return AssistantAction.WhatsApp(contact = who, text = msg)
+    }
 
     // ------------------------------------------------------------------ music
 

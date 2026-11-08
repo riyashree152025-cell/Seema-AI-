@@ -1082,7 +1082,9 @@ class AssistantEngineTest {
         assertTrue(tools.whatsApps.isEmpty())
         voice.onResult!!("haan")
         settle()
-        assertEquals(listOf<Pair<String?, String>>("98000 00002" to "Kal milte hain"), tools.whatsApps)
+        // The fast route sends the user's own words (no AI request was made).
+        assertEquals(listOf<Pair<String?, String>>("98000 00002" to "kal milte hain"), tools.whatsApps)
+        assertTrue(provider.calls.isEmpty())
     }
 
     @Test

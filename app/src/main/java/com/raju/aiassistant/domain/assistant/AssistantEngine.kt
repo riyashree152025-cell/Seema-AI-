@@ -34,6 +34,7 @@ import com.raju.aiassistant.domain.tools.DeviceTools
 import com.raju.aiassistant.domain.tools.ToolOutcome
 import com.raju.aiassistant.domain.tools.distinctContacts
 import com.raju.aiassistant.domain.tools.MediaCommand
+import com.raju.aiassistant.domain.screen.FlowOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -1126,7 +1127,7 @@ class AssistantEngine(
      */
     private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean): Boolean {
         val s = settings.value
-        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp)) return false
+        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp)) return false
         when (action) {
             is AssistantAction.OpenApp -> {
                 val outcome = tools.openApp(action.name)
@@ -1252,6 +1253,12 @@ class AssistantEngine(
                 val outcome = tools.openSeema()
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "हाँ राजू, मैं अपनी स्क्रीन पर वापस आ गई!", "হ্যাঁ রাজু, আমি আমার স্ক্রিনে ফিরে এসেছি!"))
+            }
+            is AssistantAction.WhatsApp -> {
+                // Same path as when the AI asks for it: contacts first, WhatsApp's own search second.
+                trace("offline command: whatsapp")
+                _state.value = AssistantState.Executing
+                whatsApp(action, speak)
             }
             is AssistantAction.TellTime -> {
                 trace("offline command: ${if (action.date) "date" else "time"}")
@@ -2273,6 +2280,12 @@ class AssistantEngine(
             if (found == null) {
                 note("Contacts permission not granted; WhatsApp will open without a recipient.")
             } else if (found.isEmpty()) {
+                // Not in the phone's contacts: a group or a WhatsApp-only name can still be found in
+                // WhatsApp's own search — with Seema's Accessibility, and only after a yes.
+                if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+                    whatsAppBySearch(action, action.contact, speak)
+                    return
+                }
                 // A person was named: an empty WhatsApp is not what was asked, so say so instead.
                 val missing = phrase(
                     lang(),
@@ -2336,6 +2349,41 @@ class AssistantEngine(
                 },
             )
         }
+    }
+
+    /**
+     * Phase 3 deep action: WhatsApp → search [name] → the one matching chat → type → Send, then say
+     * honestly what happened. Several matches, no match or a doubtful chat: nothing is sent.
+     */
+    private suspend fun whatsAppBySearch(action: AssistantAction.WhatsApp, name: String, speak: Boolean) {
+        val question = phrase(
+            lang(),
+            "Contacts में \"$name\" नहीं मिला। WhatsApp में \"$name\" खोजकर ये भेज दूँ: \"${action.text}\"?",
+            "কন্টাক্টে \"$name\" পাইনি। হোয়াটসঅ্যাপে \"$name\" খুঁজে এটা পাঠাব: \"${action.text}\"?",
+        )
+        if (!confirmScreenAction("Search WhatsApp and send?", question, speak)) {
+            report(action, ActionStatus.CANCELLED, "WhatsApp message cancelled.")
+            if (speak) say(phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।"))
+            return
+        }
+        _state.value = AssistantState.Executing
+        val r = tools.whatsAppSearchAndSend(name, action.text)
+        r.log.forEach { trace("whatsapp search: $it") }
+        val chat = r.chat ?: name
+        val (status, hi, bn) = when (r.outcome) {
+            FlowOutcome.SENT -> Triple(ActionStatus.SUCCESS, "हो गया राजू, \"$chat\" को व्हाट्सएप पर मैसेज भेज दिया।", "হয়ে গেছে রাজু, \"$chat\" কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি।")
+            FlowOutcome.TYPED_NOT_SENT -> Triple(ActionStatus.FAILED, "\"$chat\" की चैट में मैसेज लिख दिया है, पर Send पक्का नहीं हुआ — एक बार देखकर Send दबा दीजिए।", "\"$chat\" এর চ্যাটে মেসেজ লিখেছি, কিন্তু Send নিশ্চিত হয়নি — একবার দেখে Send চাপুন।")
+            FlowOutcome.SEVERAL_CHATS -> Triple(ActionStatus.CANCELLED, "WhatsApp में \"$name\" नाम की कई चैट हैं: ${r.choices.take(4).joinToString(", ")}। पूरा नाम बोलिए, कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে \"$name\" নামে কয়েকটা চ্যাট আছে: ${r.choices.take(4).joinToString(", ")}। পুরো নাম বলুন, কিছু পাঠাইনি।")
+            FlowOutcome.CHAT_NOT_FOUND -> Triple(ActionStatus.FAILED, "WhatsApp में भी \"$name\" नाम की कोई चैट नहीं मिली, कुछ नहीं भेजा।", "হোয়াটসঅ্যাপেও \"$name\" নামে কোনো চ্যাট পাইনি, কিছু পাঠাইনি।")
+            FlowOutcome.WRONG_CHAT -> Triple(ActionStatus.FAILED, "जो चैट खुली उसका नाम पक्का नहीं हुआ, इसलिए कुछ नहीं लिखा और नहीं भेजा।", "যে চ্যাট খুলেছে তার নাম নিশ্চিত হয়নি, তাই কিছু লিখিনি, পাঠাইনি।")
+            FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "WhatsApp में पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई। कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি। কিছু পাঠাইনি।")
+            FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp ने समय पर वो नहीं दिखाया जो चाहिए था, इसलिए मैं रुक गई। मैसेज नहीं गया।", "হোয়াটসঅ্যাপ সময়মতো ঠিক স্ক্রিন দেখায়নি, তাই থেমে গেছি। মেসেজ যায়নি।")
+            FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है, मैसेज नहीं भेज पाई।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই, মেসেজ পাঠাতে পারিনি।")
+        }
+        val msg = phrase(lang(), hi, bn)
+        report(action, status, msg)
+        if (r.outcome == FlowOutcome.SENT) tools.openSeema()
+        if (speak) say(msg)
     }
 
     private suspend fun whatsAppCall(action: AssistantAction.WhatsAppCall, speak: Boolean = false) {
