@@ -37,6 +37,24 @@ jobs:
           path: app/libs/sherpa-onnx-*.aar
           key: sherpa-onnx-aar-1.13.8
 
+      # Not cached yet: fetch it before Gradle, through the GitHub API with this run's token (the plain
+      # release URL kept answering 504 to the runners), then the plain URL, a few times. Gradle still
+      # checks its SHA-256.
+      - name: Fetch sherpa-onnx AAR
+        if: hashFiles('app/libs/sherpa-onnx-1.13.8.aar') == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p app/libs
+          for i in 1 2 3 4 5; do
+            gh release download v1.13.8 -R k2-fsa/sherpa-onnx -p 'sherpa-onnx-1.13.8.aar' -D app/libs --clobber && break
+            curl -fL --retry 3 --retry-delay 5 -o app/libs/sherpa-onnx-1.13.8.aar \
+              https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar && break
+            rm -f app/libs/sherpa-onnx-1.13.8.aar
+            sleep $((i * 15))
+          done
+          ls -la app/libs || true
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
