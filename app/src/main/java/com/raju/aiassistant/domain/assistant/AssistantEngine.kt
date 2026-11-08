@@ -127,9 +127,18 @@ internal fun isModelGone(message: String): Boolean {
  * How long a provider rests after a failure before it is asked again. A busy server (503) or a slow
  * answer is over in a minute; a used-up limit or a bad key is not.
  */
-internal fun cooldownMsFor(kind: FailureKind): Long = when (kind) {
-    FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.INVALID_KEY -> 15 * 60_000L
+internal fun cooldownMsFor(kind: FailureKind, message: String = ""): Long = when {
+    // A per-minute limit (Groq: "tokens per minute (TPM)", requests per minute) is free again within a
+    // minute: benching the provider for 15 minutes sent every later turn to slower AIs (13-18 s on the phone).
+    (kind == FailureKind.RATE_LIMITED || kind == FailureKind.QUOTA_EXCEEDED) && isPerMinuteLimit(message) -> 60_000L
+    kind == FailureKind.RATE_LIMITED || kind == FailureKind.QUOTA_EXCEEDED || kind == FailureKind.INVALID_KEY -> 15 * 60_000L
     else -> 60_000L
+}
+
+/** "tokens per minute (TPM)", "requests per minute (RPM)": a limit that resets within a minute. */
+internal fun isPerMinuteLimit(message: String): Boolean {
+    val m = message.lowercase()
+    return "per minute" in m || "(tpm)" in m || "(rpm)" in m
 }
 
 private const val MAX_LISTEN_FAILURES = 3
@@ -910,7 +919,7 @@ class AssistantEngine(
                     answeredModel = replaced.model
                     replaced.text
                 } else {
-                providerCooldown[providerId] = clock() + cooldownMsFor(streamed.kind)
+                providerCooldown[providerId] = clock() + cooldownMsFor(streamed.kind, streamed.message)
                 recordLatency(providerId, model, firstTextAt.get(), ok = false)
                 // Auto fallback: another AI whose key is saved answers instead (said openly in the chat).
                 val backup = if (spokenHead == null) fallbackReply(providerId, system, turns) else null
@@ -1038,7 +1047,7 @@ class AssistantEngine(
             val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
             if (r is AiResult.Failure) {
-                providerCooldown[id] = now + cooldownMsFor(r.kind)
+                providerCooldown[id] = now + cooldownMsFor(r.kind, r.message)
             }
         }
         return null
