@@ -223,4 +223,13 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.PnrStatus("4512345678"), p("45123 45678 ka status batao"))
         assertNull(p("PNR kaise check karte hain"))
     }
+
+    @Test
+    fun lastCallAndLastMessageAsPeopleAskThem() {
+        listOf("last call kiski aayi thi", "aakhri call kiska tha", "kiski call aayi thi", "last call kisne kiya tha", "kisne call kiya tha", "आखिरी कॉल किसकी थी", "किसका फोन आया था")
+            .forEach { assertEquals(it, AssistantAction.LastCall, p(it)) }
+        listOf("kiska message aaya tha", "kiska message aaya", "last message kiska tha", "kisne message bheja tha", "किसका मैसेज आया था")
+            .forEach { assertEquals(it, AssistantAction.ReadNotification, p(it)) }
+        assertNull(p("kisne kiya tha")) // no call / message word: could be about anything
+    }
 }

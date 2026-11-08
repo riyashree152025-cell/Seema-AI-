@@ -64,7 +64,8 @@ fun callCommand(heard: String): CallCommand? {
 /** What Seema asks after naming the caller, so "haan" / "nahi" can be answered by voice. */
 const val ASK_TO_ANSWER = "Uthau ya cut karu?"
 
-private const val TELL = "(?:bol do|bol de|keh do|kah do|keh de|likh do|bata do|message kar do|msg kar do|sms kar do|message bhej do|reply kar do|बोल दो|कह दो|लिख दो|बता दो|मैसेज कर दो|मैसेज भेज दो|বলে দাও|লিখে দাও)"
+// "Bolo" counts only with words after it ("usko bolo main busy hoon"); "haan bolo" alone stays an answer.
+private const val TELL = "(?:bol do|bol de|bolo|bolna|keh do|kah do|keh de|kaho|likh do|bata do|bata dena|message kar do|msg kar do|sms kar do|message bhej do|reply kar do|बोल दो|बोलो|बोलना|कह दो|कहो|लिख दो|बता दो|बता देना|मैसेज कर दो|मैसेज भेज दो|বলে দাও|লিখে দাও)"
 private val TELL_FIRST = Regex("^(?:(?:usko|use|unko|unhe|उसको|उसे|उन्हें|ওকে) )?$TELL (?:ki |कि |যে )?(.{2,140})$", RegexOption.IGNORE_CASE)
 private val TELL_LAST = Regex("^(?:(?:usko|use|unko|unhe|उसको|उसे|उन्हें|ওকে) )?(.{2,140}?) $TELL$", RegexOption.IGNORE_CASE)
 /** "Theek hai", "accha", "haan", "ok" before the real words (repeated: "haan theek hai …"). */
@@ -78,7 +79,9 @@ private val TELL_ANYWHERE = Regex("(?:^|\\s)(?:(?:usko|use|unko|unhe|उसक�
 /** Words that are a reply on their own: "10 minute mein call karta hoon", "meeting mein hoon". */
 private val SELF_REPLY = Regex(
     "call karta hoon|call karti hoon|call karunga|call karungi|call back|busy hoon|busy hu|meeting mein hoon|gaadi chala raha|drive kar raha|" +
-        "कॉल करता हूँ|कॉल करती हूँ|कॉल करूँगा|कॉल करूंगा|बिज़ी हूँ|बिजी हूँ|व्यस्त हूँ|मीटिंग में हूँ|পরে কল করছি|ব্যস্ত আছি",
+        "baad mein call|baad me call|baad mein baat|baad me baat|thodi der mein|thodi der me|meeting mein|meeting me|class mein hoon|" +
+        "बाद में कॉल|बाद में बात|थोड़ी देर में|थोड़ी देर बाद|मीटिंग में|क्लास में हूं|क्लास में हूँ|" +
+        "कॉल करता हूँ|कॉल करता हूं|कॉल करती हूँ|कॉल करती हूं|कॉल करूँगा|कॉल करूंगा|बिज़ी हूँ|बिज़ी हूं|बिजी हूँ|बिजी हूं|व्यस्त हूँ|व्यस्त हूं|मीटिंग में हूँ|मीटिंग में हूं|পরে কল করছি|ব্যস্ত আছি",
     RegexOption.IGNORE_CASE,
 )
 

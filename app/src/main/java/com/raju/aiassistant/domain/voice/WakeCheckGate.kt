@@ -2,9 +2,10 @@ package com.raju.aiassistant.domain.voice
 
 /**
  * Loudness below which a sound heard while she sleeps is not sent online to check for her name:
- * RMS ≈ 300 of 32 768 — a faint far-away sound, not someone talking to the phone.
+ * RMS ≈ 110 of 32 768, the same floor the wake detector uses for speech. (It was 300: on the
+ * phone, real speech through the voice-recognition mic often stays between 110 and 300.)
  */
-const val WAKE_ENERGY_THRESHOLD = 0.06f
+const val WAKE_ENERGY_THRESHOLD = 0.022f
 
 /** Misses (sounds without her name) in a row before checks pause; then 5 s, 10 s, at most 20 s. */
 const val WAKE_MISSES_BEFORE_BACKOFF = 4

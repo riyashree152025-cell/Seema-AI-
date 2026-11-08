@@ -167,8 +167,6 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
         drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.45f), Color.Transparent), glow, r * 0.35f), r * 0.35f, glow)
     }
 
-    // Pupil, and two catch-lights.
+    // A clean, solid pupil: the iris fibres are the only highlights (no white glare dots).
     drawCircle(PUPIL, pupilR, c)
-    drawCircle(EYE_WHITE.copy(alpha = 0.85f * dim), r * 0.09f, Offset(c.x - r * 0.28f, c.y - r * 0.30f))
-    drawCircle(EYE_WHITE.copy(alpha = 0.5f * dim), r * 0.04f, Offset(c.x + r * 0.22f, c.y + r * 0.20f))
 }

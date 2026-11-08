@@ -57,7 +57,9 @@ object LocalCommands {
     private const val MSG = "(?:message|messages|msg|notification|notifications|मैसेज|मेसेज|संदेश|नोटिफिकेशन)"
     private val READ_MSG = Regex(
         "^(?:(?:wo|vo|woh|naya|nayi|last|latest|वो|नया|आखिरी) )?$MSG(?: (?:ko|को))? (?:padho|padh do|padhke sunao|padh ke sunao|sunao|suna do|batao|bata do|पढ़ो|पढ़ दो|पढ़के सुनाओ|पढ़ के सुनाओ|सुनाओ|सुना दो|बताओ|बता दो)$|" +
-            "^(?:kiska|kis ka|kya|किसका|किस का|क्या) $MSG (?:aaya|aya|aaya hai|aya hai|आया|आया है)$",
+            "^(?:kiska|kis ka|kya|किसका|किस का|क्या) $MSG (?:aaya|aya|aaya hai|aya hai|aaya tha|aya tha|आया|आया है|आया था)$|" +
+            "^(?:last|aakhri|akhri|aakhiri|pichla|आखिरी|आख़िरी|पिछला) $MSG (?:kiska|kis ka|किसका|किस का)(?: (?:tha|aaya tha|था|आया था))?$|" +
+            "^(?:kisne|किसने) $MSG (?:kiya tha|bheja tha|kiya|bheja|किया था|भेजा था|किया|भेजा)$",
     )
 
     private fun readMessage(t: String): AssistantAction? = if (READ_MSG.matches(t)) AssistantAction.ReadNotification else null
@@ -262,8 +264,12 @@ object LocalCommands {
         "^(?:mera |मेरा )?$MOBILE (?:dhundo|dhoondo|dhundho|dhoondho|khojo|dhund do|dhoond do|kahan hai|kaha hai|ki ghanti bajao|ki ring bajao|bajao|ढूंढो|ढूँढो|खोजो|ढूंढ दो|कहाँ है|कहां है|की घंटी बजाओ|बजाओ)$",
     )
     private val LAST_CALL = Regex(
-        "^(?:(?:last|aakhri|akhri|aakhiri|pichla|आखिरी|आख़िरी|पिछला) $PHONE (?:kiska|kis ka|kiska tha|kis ka tha|किसका|किसका था|किस का था)(?: (?:tha|aaya tha|था|आया था))?|" +
-            "(?:abhi |अभी )?(?:kiska|kis ka|किसका|किस का) $PHONE (?:aaya tha|aya tha|tha|आया था|था))$",
+        "^(?:(?:last|aakhri|akhri|aakhiri|pichla|आखिरी|आख़िरी|पिछला) $PHONE (?:kiska|kiski|kis ka|kis ki|किसका|किसकी|किस का|किस की)" +
+            "(?: (?:tha|thi|aaya tha|aayi thi|aai thi|ayi thi|था|थी|आया था|आई थी))?|" +
+            "(?:abhi |अभी )?(?:kiska|kiski|kis ka|kis ki|किसका|किसकी|किस का|किस की) $PHONE (?:aaya tha|aya tha|aayi thi|aai thi|ayi thi|tha|thi|आया था|आई थी|था|थी)|" +
+            // "kisne" needs the word call/phone too: "kisne kiya tha" alone could be about anything.
+            "(?:last|aakhri|आखिरी|आख़िरी) $PHONE (?:kisne|किसने) (?:kiya tha|ki thi|kiya|किया था|की थी|किया)|" +
+            "(?:kisne|किसने) $PHONE (?:kiya tha|ki thi|kiya|किया था|की थी|किया))$",
     )
 
     private fun screenshot(t: String): AssistantAction? = if (SCREENSHOT.matches(t)) AssistantAction.Screenshot else null

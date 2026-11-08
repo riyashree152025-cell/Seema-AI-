@@ -16,6 +16,14 @@ class CallReplyTest {
         assertEquals("Busy hoon 10 minute mein karta hoon.", callReplyText("theek hai usko bol do busy hoon 10 minute mein karta hoon"))
         assertEquals("Meeting mein hoon.", callReplyText("accha, bol do ki meeting mein hoon"))
         assertEquals("Busy hoon.", callReplyText("haan theek hai busy hoon"))
+        // From the phone log (seema_logs_4): "bolo" and "usko" are not part of the SMS.
+        assertEquals("Main busy hun baad mein call karunga.", callReplyText("usko bolo main busy hun baad mein call karunga"))
+        assertEquals("Main busy hoon.", callReplyText("theek hai unko bol do main busy hoon"))
+        assertEquals("Abhi meeting mein hoon.", callReplyText("use kaho ki abhi meeting mein hoon"))
+        assertEquals("मैं बिजी हूं बाद में कॉल करूंगा।", callReplyText("उसको बोलो मैं बिजी हूं बाद में कॉल करूंगा"))
+        assertEquals("बिजी हूं।", callReplyText("बिजी हूं"))
+        assertEquals("Thodi der mein baat karta hoon.", callReplyText("thodi der mein baat karta hoon"))
+        assertEquals("थोड़ी देर में कॉल करता हूं।", callReplyText("थोड़ी देर में कॉल करता हूं"))
     }
 
     @Test
@@ -24,6 +32,8 @@ class CallReplyTest {
         assertNull(callReplyText("kaat do"))
         assertNull(callReplyText("mat uthao"))
         assertNull(callReplyText("haan bolo")) // answering, not a reply
+        assertNull(callReplyText("baad mein")) // "later" alone means: cut it, nothing to text
+        assertNull(callReplyText("abhi nahi"))
         assertNull(callReplyText(""))
     }
 

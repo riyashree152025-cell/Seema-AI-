@@ -540,39 +540,24 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                     android.provider.CallLog.Calls.CACHED_NAME,
                     android.provider.CallLog.Calls.TYPE,
                     android.provider.CallLog.Calls.DATE,
-                    android.provider.CallLog.Calls.DURATION,
                 )
                 context.contentResolver.query(
-                    android.provider.CallLog.Calls.CONTENT_URI,
-                    projection,
-                    null,
-                    null,
-                    "${android.provider.CallLog.Calls.DATE} DESC LIMIT 1"
+                    android.provider.CallLog.Calls.CONTENT_URI, projection, null, null,
+                    "${android.provider.CallLog.Calls.DATE} DESC",
                 )?.use { c ->
-                    if (c.moveToFirst()) {
-                        val number = c.getString(0) ?: "Unknown"
-                        val name = c.getString(1)?.takeIf { it.isNotBlank() }
-                        val type = c.getInt(2)
-                        val date = c.getLong(3)
-                        val caller = name ?: number
-                        val typeStr = when (type) {
-                            android.provider.CallLog.Calls.INCOMING_TYPE -> "Incoming call"
-                            android.provider.CallLog.Calls.OUTGOING_TYPE -> "Outgoing call"
-                            android.provider.CallLog.Calls.MISSED_TYPE -> "Missed call"
-                            android.provider.CallLog.Calls.REJECTED_TYPE -> "Rejected call"
-                            android.provider.CallLog.Calls.VOICEMAIL_TYPE -> "Voicemail"
-                            else -> "Call"
-                        }
-                        val timeAgo = android.text.format.DateUtils.getRelativeTimeSpanString(
-                            date,
-                            System.currentTimeMillis(),
-                            android.text.format.DateUtils.MINUTE_IN_MILLIS
-                        ).toString()
-
-                        ToolOutcome.Done("लास्ट कॉल $caller की थी ($typeStr), $timeAgo।")
-                    } else {
-                        ToolOutcome.Done("कॉल लॉग में कोई कॉल नहीं मिली।")
+                    if (!c.moveToFirst()) return@use ToolOutcome.Done("कॉल लॉग में कोई कॉल नहीं मिली।")
+                    val number = c.getString(0)?.takeIf { it.isNotBlank() }
+                    // The call log's cached name, else the name saved in Contacts for that number.
+                    val name = c.getString(1)?.takeIf { it.isNotBlank() } ?: number?.let { contactNameFor(it) }
+                    val kind = when (c.getInt(2)) {
+                        android.provider.CallLog.Calls.INCOMING_TYPE -> com.raju.aiassistant.domain.tools.CallKind.INCOMING
+                        android.provider.CallLog.Calls.OUTGOING_TYPE -> com.raju.aiassistant.domain.tools.CallKind.OUTGOING
+                        android.provider.CallLog.Calls.MISSED_TYPE -> com.raju.aiassistant.domain.tools.CallKind.MISSED
+                        android.provider.CallLog.Calls.REJECTED_TYPE -> com.raju.aiassistant.domain.tools.CallKind.REJECTED
+                        else -> com.raju.aiassistant.domain.tools.CallKind.OTHER
                     }
+                    val ago = com.raju.aiassistant.domain.tools.agoInHindi(System.currentTimeMillis(), c.getLong(3))
+                    ToolOutcome.Done(com.raju.aiassistant.domain.tools.lastCallSentence(name, number, kind, ago))
                 } ?: ToolOutcome.Failed("Could not access call log.")
             } catch (e: SecurityException) {
                 ToolOutcome.NeedsPermission(Manifest.permission.READ_CALL_LOG, "Call log permission is required.")
@@ -580,6 +565,17 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 ToolOutcome.Failed("Could not read call log: ${e.message}")
             }
         }
+    }
+
+    /** The name saved in Contacts for [number], or null (no permission, not saved). */
+    private fun contactNameFor(number: String): String? {
+        if (!granted(Manifest.permission.READ_CONTACTS)) return null
+        return runCatching {
+            val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+            context.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0)?.takeIf { it.isNotBlank() } else null
+            }
+        }.getOrNull()
     }
 
     /**
