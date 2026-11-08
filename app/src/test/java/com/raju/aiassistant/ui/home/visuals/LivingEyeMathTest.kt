@@ -70,4 +70,17 @@ class LivingEyeMathTest {
         assertTrue(irisLineCount(false) < irisLineCount(true))
         assertEquals(3, WAVE_GRADIENT_ARGB.size)
     }
+
+    @Test
+    fun theEyeLooksAroundButStraightAtYouWhileListening() {
+        assertEquals(0f to 0f, eyeGaze(5f, AssistantState.Listening))
+        val idle = (0 until 60).map { eyeGaze(it * 0.5f, AssistantState.Idle) }
+        assertTrue(idle.distinct().size > 30) // always moving a little, never frozen
+        AssistantState.entries.forEach { s ->
+            (0 until 40).forEach { k ->
+                val (x, y) = eyeGaze(k * 0.7f, s)
+                assertTrue(s.name, abs(x) <= 0.1f && abs(y) <= 0.1f) // small: the iris stays inside the eye
+            }
+        }
+    }
 }

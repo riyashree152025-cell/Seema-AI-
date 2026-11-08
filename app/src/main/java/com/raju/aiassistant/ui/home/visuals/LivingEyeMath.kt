@@ -47,6 +47,19 @@ fun pupilScale(t: Float, energy: Float, state: AssistantState): Float {
     return (base + micro - 0.10f * energy.coerceIn(0f, 1f)).coerceIn(0.2f, 0.5f)
 }
 
+/**
+ * Where the eye looks, as an offset of the iris and pupil in units of the eye radius: a slow, calm
+ * look-around while idle (like a real eye, never still), straight at the user while she listens,
+ * up and to the sides while she thinks, small movements while she speaks, almost still asleep.
+ */
+fun eyeGaze(t: Float, state: AssistantState): Pair<Float, Float> = when (state) {
+    AssistantState.Listening -> 0f to 0f
+    AssistantState.Thinking, AssistantState.Executing -> (0.09f * sin(t * 0.9f)) to (-0.06f + 0.02f * sin(t * 1.7f))
+    AssistantState.Speaking -> (0.03f * sin(t * 1.3f)) to (0.02f * sin(t * 1.9f + 0.5f))
+    AssistantState.Sleeping, AssistantState.Offline -> 0f to 0.02f
+    else -> (0.07f * sin(t * 0.37f) + 0.02f * sin(t * 1.1f)) to (0.045f * sin(t * 0.53f + 1f))
+}
+
 /** Sharp spikes turn around the iris while she listens, thinks, works or speaks. */
 fun eyeSpikesActive(state: AssistantState): Boolean =
     state == AssistantState.Listening || state == AssistantState.Thinking || state == AssistantState.Executing || state == AssistantState.Speaking

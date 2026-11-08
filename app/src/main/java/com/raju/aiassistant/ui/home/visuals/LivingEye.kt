@@ -139,8 +139,12 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
     // Glow around the eye.
     drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f * dim), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
 
-    // Iris: bright near the pupil, deep blue at the edge.
-    drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.9f * dim), accent.copy(alpha = dim), IRIS_DEEP), c, r), r, c)
+    // Iris: bright near the pupil, deep blue at the edge. It sits in a dark eyeball and looks around
+    // (eyeGaze): the iris, its fibres and the pupil move together, like a real eye.
+    drawCircle(Brush.radialGradient(listOf(IRIS_DEEP.copy(alpha = 0.9f), Color.Transparent), c, r * 1.08f), r * 1.08f, c)
+    val (gx, gy) = eyeGaze(t, state)
+    val ec = Offset(c.x + gx * r, c.y + gy * r)
+    drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.9f * dim), accent.copy(alpha = dim), IRIS_DEEP), ec, r), r * 0.94f, ec)
 
     // Iris fibres from the pupil outwards, gently shimmering; while she listens, thinks, works or
     // speaks the whole iris turns (no rings, ticks or arcs around it).
@@ -150,12 +154,12 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
     for (i in 0 until lines) {
         val a = turn + i * 2f * PI.toFloat() / lines + 0.04f * sin(t * 0.8f + i)
         val inner = pupilR * 1.08f
-        val outer = r * (0.86f + 0.08f * sin(i * 2.3f))
+        val outer = r * (0.82f + 0.08f * sin(i * 2.3f))
         val shade = if (i % 2 == 0) EYE_WHITE else accent
         drawLine(
             shade.copy(alpha = (0.22f + 0.18f * sin(t * 2f + i * 0.9f)).coerceIn(0.05f, 0.5f) * dim),
-            Offset(c.x + cos(a) * inner, c.y + sin(a) * inner),
-            Offset(c.x + cos(a) * outer, c.y + sin(a) * outer),
+            Offset(ec.x + cos(a) * inner, ec.y + sin(a) * inner),
+            Offset(ec.x + cos(a) * outer, ec.y + sin(a) * outer),
             strokeWidth = 1f * density,
         )
     }
@@ -163,10 +167,12 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
     // While she processes, a soft light circles inside the iris (a moving glow, not an arc).
     if (eyeRadarActive(state)) {
         val a = t * 3.8f
-        val glow = Offset(c.x + cos(a) * r * 0.62f, c.y + sin(a) * r * 0.62f)
+        val glow = Offset(ec.x + cos(a) * r * 0.6f, ec.y + sin(a) * r * 0.6f)
         drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.45f), Color.Transparent), glow, r * 0.35f), r * 0.35f, glow)
     }
 
-    // A clean, solid pupil: the iris fibres are the only highlights (no white glare dots).
-    drawCircle(PUPIL, pupilR, c)
+    // The pupil as before — a deep black core with the iris colour glowing at its edge (this edge is
+    // what makes it read as a real, living pupil) — but without the two white glare dots.
+    drawCircle(Brush.radialGradient(listOf(PUPIL, PUPIL, accent.copy(alpha = 0.5f * dim)), ec, pupilR * 1.12f), pupilR * 1.12f, ec)
+    drawCircle(Brush.radialGradient(listOf(PUPIL, Color(0xFF071226)), ec, pupilR), pupilR, ec)
 }
