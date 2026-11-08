@@ -29,6 +29,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      # The sherpa-onnx AAR (50 MB, SHA-256 checked by Gradle) comes from a GitHub release, which
+      # sometimes answers 504 for a while: keep it between runs so a build does not depend on that.
+      - name: Cache sherpa-onnx AAR
+        uses: actions/cache@v4
+        with:
+          path: app/libs/sherpa-onnx-*.aar
+          key: sherpa-onnx-aar-1.13.8
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 

@@ -913,6 +913,16 @@ class AssistantEngine(
             return
         }
         var providerId = s.defaultProvider
+        // Hybrid brain: quick messages to Groq, careful thinking to Gemini — when that key is saved and
+        // the provider is not resting after a limit. The usual fallback still covers any failure.
+        val tier = brainTier(text)
+        if (s.hybridBrain) {
+            val preferred = preferredProvider(tier)
+            if (preferred != providerId && (providerCooldown[preferred] ?: 0L) <= clock() && !keyFor(preferred).isNullOrBlank()) {
+                trace("brain: ${tier.name.lowercase()} → ${preferred.shortName}")
+                providerId = preferred
+            }
+        }
         val cooldownUntil = providerCooldown[providerId] ?: 0L
         var key = keyFor(providerId)
         val primaryBroken = cooldownUntil > clock() || key.isNullOrBlank() || (providerId == ProviderId.OLLAMA && cooldownUntil > 0L)
@@ -946,7 +956,7 @@ class AssistantEngine(
         _state.value = AssistantState.Thinking
         val allMemories = if (s.memoryEnabled) runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()) else emptyList()
         // Smart memory: with many memories, the ones related to this message are used.
-        val memoryTexts = relevantMemories(allMemories, text)
+        val memoryTexts = relevantMemories(allMemories, text, memoryLimitFor(if (s.hybridBrain) tier else BrainTier.DEEP))
         val recentOpenings = _transcript.value.asReversed().asSequence()
             .filter { it.role == ChatRole.ASSISTANT }.take(3).map { openingOf(it.text) }.filter { it.isNotBlank() }.toList()
         // Knowledge Base: passages of the user's documents that match this message (searched on the phone).
@@ -963,7 +973,7 @@ class AssistantEngine(
             finishTurn()
             return
         }
-        val turns = historyTurns(model)
+        val turns = historyTurns(model, if (s.hybridBrain) tier else BrainTier.DEEP)
 
         trace("ai request ${providerId.shortName}")
         val speak = fromVoice || s.autoSpeakReplies
@@ -1153,9 +1163,9 @@ class AssistantEngine(
      * The recent conversation sent with a request: the last few exchanges only. Free plans limit
      * tokens per minute (Groq: 8000), and 20 exchanges of history made every request ~5000 tokens.
      */
-    private fun historyTurns(model: String): List<Turn> = toTurns(
+    private fun historyTurns(model: String, tier: BrainTier = BrainTier.DEEP): List<Turn> = toTurns(
         _transcript.value,
-        minOf(settings.value.historyLimit, RECENT_EXCHANGES) * 2,
+        historyExchangesFor(tier, minOf(settings.value.historyLimit, RECENT_EXCHANGES)) * 2,
         minOf(ModelAdvice.historyCharBudget(model), HISTORY_CHARS_PER_REQUEST),
     )
 

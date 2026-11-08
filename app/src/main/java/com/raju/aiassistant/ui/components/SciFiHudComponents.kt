@@ -155,7 +155,7 @@ fun SciFiHomeNavButton(
             .height(92.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0x280D1B36))
+            .background(Brush.verticalGradient(listOf(Color(0x33102445), Color(0x22091426))))
             // Inner radial highlight, then a soft sheen from the top edge: layered frosted glass.
             .background(Brush.radialGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.10f + 0.12f * glow), Color.Transparent)))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent, Color.Transparent)))

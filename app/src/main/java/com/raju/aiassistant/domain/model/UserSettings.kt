@@ -122,6 +122,11 @@ data class UserSettings(
      * off in Settings ("Shared Mic Engine") brings back the original per-listener recorders unchanged.
      */
     val micHub: Boolean = true,
+    /**
+     * Hybrid brain: quick messages go to Groq, reasoning (PNR, expenses, plans …) to Gemini, each
+     * with only the context it needs. Only when that provider's key is saved; otherwise the chosen AI.
+     */
+    val hybridBrain: Boolean = true,
     /** Morning briefing (journeys, yesterday's spending) and the Sunday expense report as notifications. */
     val businessReminders: Boolean = true,
     /** Smart power: animations slow down and stop when nobody is using the app. */

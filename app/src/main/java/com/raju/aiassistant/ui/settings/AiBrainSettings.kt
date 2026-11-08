@@ -81,6 +81,7 @@ fun ActiveAiPanel(s: UserSettings, keySaved: (ProviderId) -> Boolean, testing: (
     HudPanel(title = "Active AI") {
         BrainArc(status)
         InfoRow("Provider", p.displayName)
+        ToggleRow("Hybrid Brain — quick: Groq, deep thinking: Gemini", s.hybridBrain, viewModel::setHybridBrain)
         InfoRow("Model", s.modelFor(p) ?: "auto — the best model the key offers is picked on first use")
         InfoRow("API key", if (keySaved(p)) "Saved (encrypted on this phone)" else "Not saved", if (keySaved(p)) SuccessGreen else WarningAmber)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

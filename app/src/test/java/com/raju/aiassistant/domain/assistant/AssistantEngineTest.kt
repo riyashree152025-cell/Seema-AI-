@@ -151,7 +151,8 @@ class AssistantEngineTest {
     }
 
     // The engine tests were written for tap-to-talk; tests for the other modes set them explicitly.
-    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK))
+    // The hybrid brain has its own tests below; the rest test the chosen provider and its fallback.
+    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK, hybridBrain = false))
     private val store = Store()
     private val speaker = FakeSpeaker()
     private val voice = FakeVoice()
@@ -1682,6 +1683,58 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
             fallbackProviders = { listOf(ProviderId.GEMINI, ProviderId.GROQ) },
         )
+    }
+
+    @Test
+    fun hybridBrainSendsQuickMessagesToGroqAndReasoningToGemini() = runTest {
+        settings.value = settings.value.copy(hybridBrain = true)
+        val gemini = FakeProvider(ArrayDeque(listOf(AiResult.Success("Gemini ka jawab"))))
+        val e = groqFallbackEngine(backgroundScope, gemini)
+        e.submit("kaise ho")
+        settle()
+        assertEquals("Groq se jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals(ProviderId.GROQ, e.lastRoute.value!!.requested)
+        assertTrue(gemini.calls.isEmpty())
+
+        e.submit("is hafte ka kharcha category wise samjhao")
+        settle()
+        assertEquals("Gemini ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals(ProviderId.GEMINI, e.lastRoute.value!!.requested)
+    }
+
+    @Test
+    fun aQuickMessageCarriesLessOfTheConversation() = runTest {
+        settings.value = settings.value.copy(hybridBrain = true)
+        val e = engine(*Array(6) { AiResult.Success("Theek hai.") })
+        repeat(5) { i -> e.submit("baat number $i"); settle() }
+        e.submit("aur batao")
+        settle()
+        assertTrue(provider.calls.last().size <= 2 * 2 + 1) // 2 exchanges + this message
+    }
+
+    @Test
+    fun whenGroqHitsItsLimitGeminiAnswersTheSameMessage() = runTest {
+        settings.value = settings.value.copy(hybridBrain = true)
+        keys[SecretId.GROQ_API_KEY] = "groq"
+        val gemini = FakeProvider(ArrayDeque(listOf(AiResult.Success("Gemini ka jawab"))))
+        val groq = object : AiProvider {
+            override val id = ProviderId.GROQ
+            override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel("llama-3.3-70b-versatile", "Llama")))
+            override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>) =
+                AiResult.Failure(FailureKind.RATE_LIMITED, "Rate limit reached on tokens per minute (TPM) (HTTP 429)")
+        }
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { id, _ -> if (id == ProviderId.GROQ) groq else gemini }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            fallbackProviders = { listOf(ProviderId.GEMINI, ProviderId.GROQ) },
+        )
+        e.submit("kaise ho")
+        settle()
+        assertEquals("Gemini ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertTrue(e.lastRoute.value!!.usedFallback)
+        assertNull(e.lastError.value)
     }
 
     @Test
