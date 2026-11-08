@@ -570,7 +570,7 @@ class AssistantEngineTest {
         e.submit("PNR 4512345678 ka status", fromVoice = true)
         settle()
         assertEquals(listOf("4512345678"), asked)
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32 (confirm)") && speaker.spoken.last().contains("Rajdhani"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32, confirm") && speaker.spoken.last().contains("Rajdhani")) // brackets are spoken as a pause
         assertTrue(provider.calls.isEmpty())
     }
 
