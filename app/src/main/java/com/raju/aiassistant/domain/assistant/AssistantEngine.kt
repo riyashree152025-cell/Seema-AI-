@@ -122,6 +122,8 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 25_000L
+/** After cutting a call, the time Android takes to write it to the call log. */
+private const val CALL_LOG_SETTLE_MS = 1_500L
 /** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
 private const val READ_REPLY_WINDOW_MS = 7_000L
 /** Extra time for an answer that started inside the window to be transcribed. */
@@ -1597,21 +1599,34 @@ class AssistantEngine(
             callCommandUntil = 0
             trace("call: reject with an SMS reply")
             val ended = tools.endCall()
-            val number = ringingNumber
-            val name = ringingName
+            val screened = ringingNumber?.takeIf { n -> n.count { it.isDigit() } >= 6 }?.let { Contact(ringingName ?: it, it) }
+            val screenedName = ringingName
             scope.launch {
-                report(AssistantAction.EndCall, ended)
-                if (number.isNullOrBlank() || number.count { it.isDigit() } < 6) {
-                    say(phrase(lang(), "कॉल काट दी। कॉल करने वाले का नंबर नहीं मिला, इसलिए मैसेज नहीं भेज पाई।", "কল কেটে দিয়েছি। নম্বর পাইনি, তাই মেসেজ পাঠাতে পারিনি।"))
-                    return@launch
+                try {
+                    report(AssistantAction.EndCall, ended)
+                    // Without the call-screening role Android gave no number while it rang: the call
+                    // log has the call a moment after it was cut.
+                    val caller = screened ?: run {
+                        delay(CALL_LOG_SETTLE_MS)
+                        tools.recentCaller()?.also { trace("call: number from the call log") }
+                    }
+                    if (caller == null) {
+                        say(phrase(lang(), "कॉल काट दी। कॉल करने वाले का नंबर नहीं मिला (Call log की permission या Seema का call-screening role चाहिए), इसलिए मैसेज नहीं भेज पाई।", "কল কেটে দিয়েছি। নম্বর পাইনি, তাই মেসেজ পাঠাতে পারিনি।"))
+                        return@launch
+                    }
+                    val who = caller.name
+                    val sms = tools.sendSms(caller, reply)
+                    report(AssistantAction.Sms(screenedName ?: caller.name, caller.number, reply), sms)
+                    say(
+                        if (sms is ToolOutcome.Done) phrase(lang(), "कॉल काट दी और $who को मैसेज भेज दिया: \"$reply\"", "কল কেটে $who কে মেসেজ পাঠিয়েছি: \"$reply\"")
+                        else phrase(lang(), "कॉल काट दी, पर मैसेज नहीं गया — SMS की permission चाहिए।", "কল কেটেছি, কিন্তু মেসেজ যায়নি — SMS permission লাগবে।"),
+                    )
+                } finally {
+                    // Done with this call: nothing left on screen or listening for it.
+                    ringingNumber = null
+                    ringingName = null
+                    if (!pausedForCall) returnToStandby()
                 }
-                val who = name ?: number
-                val sms = tools.sendSms(Contact(who, number), reply)
-                report(AssistantAction.Sms(name, number, reply), sms)
-                say(
-                    if (sms is ToolOutcome.Done) phrase(lang(), "कॉल काट दी और $who को मैसेज भेज दिया: \"$reply\"", "কল কেটে $who কে মেসেজ পাঠিয়েছি: \"$reply\"")
-                    else phrase(lang(), "कॉल काट दी, पर मैसेज नहीं गया — SMS की permission चाहिए।", "কল কেটেছি, কিন্তু মেসেজ যায়নি — SMS permission লাগবে।"),
-                )
             }
             return true
         }
@@ -1625,8 +1640,13 @@ class AssistantEngine(
             CallCommand.REJECT -> {
                 callCommandUntil = 0
                 trace("call: reject")
+                ringingNumber = null
+                ringingName = null
                 val outcome = tools.endCall()
-                scope.launch { report(AssistantAction.EndCall, outcome) }
+                scope.launch {
+                    report(AssistantAction.EndCall, outcome)
+                    if (!pausedForCall) returnToStandby()
+                }
             }
             null -> { // not a yes / no: she asked once, so she stops instead of listening in a loop
                 callCommandUntil = 0

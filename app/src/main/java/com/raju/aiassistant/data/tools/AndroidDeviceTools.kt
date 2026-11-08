@@ -504,6 +504,28 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         ToolOutcome.Failed("Could not save $name: ${e.message}")
     }
 
+    override suspend fun recentCaller(withinMs: Long): Contact? {
+        if (!granted(Manifest.permission.READ_CALL_LOG)) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(
+                    android.provider.CallLog.Calls.CONTENT_URI,
+                    arrayOf(android.provider.CallLog.Calls.NUMBER, android.provider.CallLog.Calls.CACHED_NAME, android.provider.CallLog.Calls.TYPE, android.provider.CallLog.Calls.DATE),
+                    null, null, "${android.provider.CallLog.Calls.DATE} DESC",
+                )?.use { c ->
+                    if (!c.moveToFirst()) return@use null
+                    val number = c.getString(0)?.takeIf { n -> n.count { it.isDigit() } >= 6 } ?: return@use null
+                    val type = c.getInt(2)
+                    val date = c.getLong(3)
+                    val rang = type == android.provider.CallLog.Calls.INCOMING_TYPE || type == android.provider.CallLog.Calls.MISSED_TYPE ||
+                        type == android.provider.CallLog.Calls.REJECTED_TYPE
+                    if (!rang || System.currentTimeMillis() - date > withinMs) return@use null
+                    Contact(c.getString(1)?.takeIf { it.isNotBlank() } ?: number, number)
+                }
+            }.getOrNull()
+        }
+    }
+
     override suspend fun getLastCall(): ToolOutcome {
         if (!granted(Manifest.permission.READ_CALL_LOG)) {
             return ToolOutcome.NeedsPermission(

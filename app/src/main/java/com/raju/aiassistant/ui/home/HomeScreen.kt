@@ -122,9 +122,7 @@ import com.raju.aiassistant.ui.components.SciFiHomeNavButton
 
 import com.raju.aiassistant.ui.components.SciFiStateCapsule
 
-import com.raju.aiassistant.ui.components.SciFiVoiceOrb
 
-import com.raju.aiassistant.ui.components.SciFiWaveform
 
 
 import com.raju.aiassistant.ui.home.visuals.motionProfileFor
@@ -584,7 +582,7 @@ fun HomeScreen(
 
 
 
-            // 3. Lower Cockpit Section: Audio HUD + 6-Button Dock + Status Bar (Anchored to the very bottom!)
+            // 3. Lower Cockpit Section: 6-Button Dock + Status Bar (Anchored to the very bottom!)
 
             Column(
 
@@ -596,105 +594,8 @@ fun HomeScreen(
 
             ) {
 
-                // Audio HUD: Waveforms + Center ChatGPT-Style Living Fluid Voice Orb
-
-                Row(
-
-                    Modifier
-
-                        .fillMaxWidth()
-
-                        .padding(vertical = 2.dp),
-
-                    verticalAlignment = Alignment.CenterVertically,
-
-                    horizontalArrangement = Arrangement.SpaceBetween
-
-                ) {
-
-                    // Left Audio Waveform Bars
-
-                    SciFiWaveform(
-
-                        modifier = Modifier.weight(1f),
-
-                        barCount = 14,
-
-                        color = SciFiCyanGlow,
-
-                        isListening = isListening,
-
-                        speechLevel = speechLevel
-
-                    )
-
-
-
-                    Spacer(Modifier.width(10.dp))
-
-
-
-                    // Center ChatGPT-Style Living Voice Orb (Fluid Multi-Color Aurora Glow, No Old Mic Icon!)
-
-                    SciFiVoiceOrb(
-
-                        isListening = isListening,
-
-                        isThinking = isThinking,
-
-                        isSpeaking = isSpeaking,
-
-                        speechLevel = speechLevel,
-
-                        onClick = {
-
-                            val now = SystemClock.elapsedRealtime()
-
-                            if (now - lastOrbTap >= 600L) {
-
-                                lastOrbTap = now
-
-                                if (viewModel.hasMicPermission()) {
-
-                                    viewModel.tapReactor()
-
-                                } else {
-
-                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-
-                                }
-
-                            }
-
-                        }
-
-                    )
-
-
-
-                    Spacer(Modifier.width(10.dp))
-
-
-
-                    // Right Audio Waveform Bars
-
-                    SciFiWaveform(
-
-                        modifier = Modifier.weight(1f),
-
-                        barCount = 14,
-
-                        color = SciFiCyanGlow,
-
-                        isListening = isListening,
-
-                        speechLevel = speechLevel
-
-                    )
-
-                }
-
-
+                // The Living Eye above is the one voice control (tap: listen / wake); the old voice orb
+                // and its two waveform bars are gone, which leaves room around the greeting.
 
                 // Bottom Anchored 6 HUD Cut-Corner Navigation Buttons with Glassy Sky-Blue Sheen
 

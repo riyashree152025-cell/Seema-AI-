@@ -12,6 +12,10 @@ class CallReplyTest {
         assertEquals("10 minute mein call karta hoon.", callReplyText("10 minute mein call karta hoon"))
         assertEquals("Meeting mein hoon, baad mein baat karte hain.", callReplyText("meeting mein hoon, baad mein baat karte hain likh do"))
         assertEquals("अभी गाड़ी चला रहा हूँ।", callReplyText("बोल दो अभी गाड़ी चला रहा हूँ"))
+        // From the phone log: an opener and "usko bol do" in the middle.
+        assertEquals("Busy hoon 10 minute mein karta hoon.", callReplyText("theek hai usko bol do busy hoon 10 minute mein karta hoon"))
+        assertEquals("Meeting mein hoon.", callReplyText("accha, bol do ki meeting mein hoon"))
+        assertEquals("Busy hoon.", callReplyText("haan theek hai busy hoon"))
     }
 
     @Test

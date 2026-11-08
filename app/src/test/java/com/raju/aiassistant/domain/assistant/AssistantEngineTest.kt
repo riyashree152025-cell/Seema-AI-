@@ -32,6 +32,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -118,6 +119,9 @@ class AssistantEngineTest {
         }
         var beacon: Beacon? = null
         override fun beaconHardware() = beacon
+        /** The call that rang a moment ago, as the call log would show it. */
+        var lastCaller: Contact? = null
+        override suspend fun recentCaller(withinMs: Long) = lastCaller
         val settingsOpened = mutableListOf<SettingsPage>()
         override fun openSettings(page: SettingsPage): ToolOutcome { settingsOpened += page; return ToolOutcome.Done("Opened") }
         val media = mutableListOf<com.raju.aiassistant.domain.tools.MediaCommand>()
@@ -1932,6 +1936,20 @@ class AssistantEngineTest {
         assertEquals(listOf("+91 98000 00007" to "Abhi busy hoon."), tools.sms)
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Mummy को मैसेज भेज दिया"))
         assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun withoutTheScreeningRoleTheNumberComesFromTheCallLog() = runTest {
+        tools.lastCaller = Contact("Sharma ji", "+91 98000 00009")
+        val e = engine()
+        e.listenForCallCommand(null, null) // rang without call-screening: Android gave no number
+        runCurrent()
+        voice.onResult!!("theek hai usko bol do busy hoon 10 minute mein karta hoon")
+        settle()
+        assertEquals(1, tools.ended)
+        assertEquals(listOf("+91 98000 00009" to "Busy hoon 10 minute mein karta hoon."), tools.sms)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Sharma ji को मैसेज भेज दिया"))
+        assertNotEquals(AssistantState.Listening, e.state.value) // nothing left open for this call
     }
 
     @Test

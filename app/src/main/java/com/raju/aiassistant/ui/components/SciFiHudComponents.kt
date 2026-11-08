@@ -22,6 +22,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -142,19 +144,34 @@ fun SciFiHomeNavButton(
     /** Shows a small status dot: green = on/working, null = nothing to show. */
     active: Boolean? = null,
 ) {
-    // Glass card in the Living Eye style: translucent navy, a cyan-to-violet edge, 16 dp corners.
+    // Frosted glass in the Living Eye style: a glowing cyan → violet → cyan edge, a light from the top,
+    // and on press a small dip (0.96) with a brighter glow.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.96f else 1f, tween(120), label = "tileScale")
+    val glow by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(160), label = "tileGlow")
     Box(
         modifier = modifier
             .height(92.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.verticalGradient(listOf(Color(0x22132D52), Color(0x180A182E))))
+            .background(Color(0x280D1B36))
+            // Inner radial highlight, then a soft sheen from the top edge: layered frosted glass.
+            .background(Brush.radialGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.10f + 0.12f * glow), Color.Transparent)))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent, Color.Transparent)))
             .border(
                 1.2.dp,
-                Brush.linearGradient(listOf(Color(0x6600E5FF), Color(0x337C4DFF), Color(0x6600E5FF))),
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF00E5FF).copy(alpha = 0.75f + 0.25f * glow),
+                        Color(0xFF7000FF).copy(alpha = 0.75f + 0.25f * glow),
+                        Color(0xFF00E5FF).copy(alpha = 0.75f + 0.25f * glow),
+                    )
+                ),
                 RoundedCornerShape(16.dp)
             )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )
@@ -166,12 +183,12 @@ fun SciFiHomeNavButton(
             verticalArrangement = Arrangement.Center
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Soft radial illumination behind the icon in its own colour.
+                // Luminous neon halo behind the icon in its own (iris) colour; brighter while pressed.
                 Box(
                     modifier = Modifier
                         .size(60.dp)
                         .background(
-                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.45f), iconColor.copy(alpha = 0.12f), Color.Transparent)),
+                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.50f + 0.25f * glow), iconColor.copy(alpha = 0.14f), Color.Transparent)),
                             CircleShape
                         )
                 )

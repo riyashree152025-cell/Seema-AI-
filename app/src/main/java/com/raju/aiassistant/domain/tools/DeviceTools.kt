@@ -53,6 +53,12 @@ interface DeviceTools {
     /** Writes [content] to a file named [name] and opens the share sheet (save to Files/Drive, send). */
     fun shareTextFile(name: String, content: String): ToolOutcome = ToolOutcome.Failed("Saving files is not supported here.")
     suspend fun getLastCall(): ToolOutcome = ToolOutcome.Failed("Call log is not supported here.")
+    /**
+     * Who rang a moment ago (an incoming, missed or rejected call within [withinMs]), from the call
+     * log: used to reply by SMS when Android gave no number while it rang. Null without the Call
+     * Log permission or when there is no such call.
+     */
+    suspend fun recentCaller(withinMs: Long = 120_000): Contact? = null
     fun takeScreenshot(): ToolOutcome = ToolOutcome.Failed("Screenshot is not supported here.")
     /** The app on screen, read by Seema's Accessibility service (never a password, banking or UPI screen). */
     suspend fun readScreen(): com.raju.aiassistant.domain.screen.ScreenRead =
