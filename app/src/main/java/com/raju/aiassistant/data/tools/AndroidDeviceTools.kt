@@ -282,9 +282,9 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         }
         return try {
             if (answer) {
-                // Ringing is visible in the audio mode (no extra permission needed).
-                val ringing = context.getSystemService(android.media.AudioManager::class.java)?.mode == android.media.AudioManager.MODE_RINGTONE
-                if (!ringing) return ToolOutcome.Failed("अभी कोई कॉल नहीं आ रही है।")
+                // No audio-mode check: during a ring many phones report MODE_CALL_SCREENING, or the
+                // in-communication mode Seema's own voice uses, and "utha lo" was refused although it rang.
+                // acceptRingingCall() does nothing when nothing rings.
                 tm.acceptRingingCall()
                 ToolOutcome.Done("कॉल उठा ली है।")
             } else {

@@ -265,7 +265,9 @@ class AppContainer(context: Context) {
         override suspend fun transcribe(pcm16k: ByteArray): String? {
             val key = secureKeyStore.get(SecretId.DEEPGRAM_API_KEY) ?: return null
             val option = VoiceCatalog.sttOption(currentSettings.value.deepgramSttModel)
-            return when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(pcm16k, 16_000), option.model, option.language, keyterms())) {
+            // Quiet wake clips are raised first: Deepgram returned nothing for many of them on the phone.
+            val audio = com.raju.aiassistant.domain.voice.louderForStt(pcm16k)
+            return when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(audio, 16_000), option.model, option.language, keyterms())) {
                 is AiResult.Success -> r.value.text
                 is AiResult.Failure -> null
             }

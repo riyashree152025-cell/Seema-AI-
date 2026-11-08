@@ -88,7 +88,8 @@ class DeepgramVoiceInput(
                 return@launch
             }
             val option = model()
-            when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(pcm, SAMPLE_RATE), option.model, option.language, keyterms())) {
+            // A quiet turn is raised before recognition ("Speech was heard but no words were recognised").
+            when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(com.raju.aiassistant.domain.voice.louderForStt(pcm), SAMPLE_RATE), option.model, option.language, keyterms())) {
                 is AiResult.Success -> {
                     val heard = r.value
                     _partial.value = heard.text

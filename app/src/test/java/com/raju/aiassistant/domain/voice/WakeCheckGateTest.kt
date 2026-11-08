@@ -29,7 +29,7 @@ class WakeCheckGateTest {
         assertEquals(WakeCheckGate.Decision.BACKING_OFF, gate.decide(clip(3_000)))
         now += 5_001
         assertEquals(WakeCheckGate.Decision.CHECK, gate.decide(clip(3_000)))
-        gate.onChecked(nameHeard = false) // 5th miss in a row: a longer pause
+        gate.onChecked(nameHeard = false) // one more miss in a row: a longer pause
         now += 6_000
         assertEquals(WakeCheckGate.Decision.BACKING_OFF, gate.decide(clip(3_000)))
         now += 5_000
@@ -37,7 +37,7 @@ class WakeCheckGateTest {
         gate.onChecked(nameHeard = true)
         gate.onChecked(nameHeard = false)
         assertEquals(WakeCheckGate.Decision.CHECK, gate.decide(clip(3_000))) // the name reset the count
-        assertEquals(20_000L, WakeCheckGate.backoffMs(20)) // never longer than 20 s
+        assertEquals(10_000L, WakeCheckGate.backoffMs(20)) // never longer than 10 s
     }
 
     @Test

@@ -1649,7 +1649,11 @@ class AssistantEngine(
                 callCommandUntil = 0
                 trace("call: answer")
                 val outcome = tools.answerCall()
-                scope.launch { report(AssistantAction.AnswerCall, outcome) }
+                scope.launch {
+                    report(AssistantAction.AnswerCall, outcome)
+                    // Never silent when it did not work: say why (most often the Phone permission).
+                    if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = true))
+                }
             }
             CallCommand.REJECT -> {
                 callCommandUntil = 0
@@ -1659,6 +1663,7 @@ class AssistantEngine(
                 val outcome = tools.endCall()
                 scope.launch {
                     report(AssistantAction.EndCall, outcome)
+                    if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
                     if (!pausedForCall) returnToStandby()
                 }
             }
@@ -1669,6 +1674,17 @@ class AssistantEngine(
             }
         }
         return true
+    }
+
+    /** Why answering / cutting a ringing call did not work, said out loud. */
+    private fun callFailureText(outcome: ToolOutcome, answer: Boolean): String = when (outcome) {
+        is ToolOutcome.NeedsPermission -> phrase(
+            lang(),
+            if (answer) "कॉल उठाने की अनुमति नहीं है। Settings → Apps → Seema AI → Permissions → Phone को Allow कीजिए।" else "कॉल काटने की अनुमति नहीं है। Settings → Apps → Seema AI → Permissions → Phone को Allow कीजिए।",
+            "কল ধরার/কাটার অনুমতি নেই। Settings → Apps → Seema AI → Permissions → Phone চালু করুন।",
+        )
+        is ToolOutcome.Failed -> outcome.message
+        else -> ""
     }
 
     @Volatile private var replyUntil = 0L

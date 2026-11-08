@@ -855,17 +855,17 @@ class AssistantEngineTest {
         wake.onUtterance!!(ByteArray(9_600)) // a faint sound: never sent online
         settle()
         assertEquals(0, tv.calls)
-        repeat(6) { i -> // the TV talking on and on
+        repeat(8) { i -> // the TV talking on and on
             now = 70_000L + i * 1_000L
             wake.onUtterance!!(speech())
             settle()
         }
-        assertEquals(4, tv.calls) // after 4 misses in a row the online checks pause
+        assertEquals(6, tv.calls) // after 6 misses in a row the online checks pause
         tv.text = "Seema, time batao"
         now = 90_000L // the pause is over
         wake.onUtterance!!(speech())
         settle()
-        assertEquals(5, tv.calls)
+        assertEquals(7, tv.calls)
         assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time batao" })
     }
 

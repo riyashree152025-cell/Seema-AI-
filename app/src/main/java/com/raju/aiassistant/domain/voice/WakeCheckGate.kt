@@ -7,9 +7,9 @@ package com.raju.aiassistant.domain.voice
  */
 const val WAKE_ENERGY_THRESHOLD = 0.022f
 
-/** Misses (sounds without her name) in a row before checks pause; then 5 s, 10 s, at most 20 s. */
-const val WAKE_MISSES_BEFORE_BACKOFF = 4
-const val WAKE_BACKOFF_MAX_MS = 20_000L
+/** Misses (sounds without her name) in a row before checks pause; then 5 s, at most 10 s. */
+const val WAKE_MISSES_BEFORE_BACKOFF = 6
+const val WAKE_BACKOFF_MAX_MS = 10_000L
 /** A quiet room for this long forgets earlier misses. */
 const val WAKE_MISS_MEMORY_MS = 120_000L
 
