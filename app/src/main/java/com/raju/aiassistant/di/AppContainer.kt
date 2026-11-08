@@ -403,6 +403,8 @@ class AppContainer(context: Context) {
                 }
             },
             business = businessRepository,
+            releaseMic = { micHub.releaseAll() },
+            restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,

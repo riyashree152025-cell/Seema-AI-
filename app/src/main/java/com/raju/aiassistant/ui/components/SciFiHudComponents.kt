@@ -147,10 +147,10 @@ fun SciFiHomeNavButton(
         modifier = modifier
             .height(92.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0x1A14243B))
+            .background(Brush.verticalGradient(listOf(Color(0x22132D52), Color(0x180A182E))))
             .border(
-                1.dp,
-                Brush.linearGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.85f), Color(0xFFB388FF).copy(alpha = 0.75f))),
+                1.2.dp,
+                Brush.linearGradient(listOf(Color(0x6600E5FF), Color(0x337C4DFF), Color(0x6600E5FF))),
                 RoundedCornerShape(16.dp)
             )
             .clickable(
@@ -175,16 +175,17 @@ fun SciFiHomeNavButton(
                             CircleShape
                         )
                 )
+                // Circular glass halo: a frosted disc lit from the centre in the icon's own neon hue.
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
                         .background(
-                            Brush.verticalGradient(
-                                listOf(iconColor.copy(alpha = 0.38f), iconColor.copy(alpha = 0.10f))
+                            Brush.radialGradient(
+                                listOf(iconColor.copy(alpha = 0.32f), Color(0x2614243B), Color(0x1A14243B))
                             )
                         )
-                        .border(1.4.dp, iconColor.copy(alpha = 0.9f), CircleShape),
+                        .border(1.dp, Brush.linearGradient(listOf(iconColor.copy(alpha = 0.75f), Color(0x337C4DFF))), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -209,10 +210,12 @@ fun SciFiHomeNavButton(
             Text(
                 title,
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                     fontSize = 12.5.sp,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    // A soft cyan glow under the label.
+                    shadow = androidx.compose.ui.graphics.Shadow(Color(0x9900E5FF), androidx.compose.ui.geometry.Offset.Zero, 8f),
                 ),
                 maxLines = 1
             )

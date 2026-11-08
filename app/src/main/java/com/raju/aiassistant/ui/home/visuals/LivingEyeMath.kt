@@ -10,8 +10,8 @@ import kotlin.math.sin
  * breathing, pupil, how strongly the waves move, and the wave shape itself.
  */
 
-/** The eye's radius as a share of the smaller screen side (1.35x the earlier 0.21 — it commands the viewport). */
-const val EYE_RADIUS_SHARE = 0.21f * 1.35f
+/** The eye's radius as a share of the smaller side of its area: it commands the upper viewport. */
+const val EYE_RADIUS_SHARE = 0.40f
 
 /** Seconds per breath of the idle eye. */
 const val EYE_BREATH_SECONDS = 2.6f

@@ -814,6 +814,49 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun switchedOffNothingListensUntilSwitchedOnAgain() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = FakeWake()
+        var released = 0
+        var restored = 0
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
+            wakeListener = wake, releaseMic = { released++ }, restoreMic = { restored++ },
+        )
+        e.startHandsFree()
+        runCurrent()
+        assertEquals(AssistantState.Listening, e.state.value)
+
+        settings.value = settings.value.copy(assistantPaused = true)
+        e.pauseAssistant()
+        runCurrent()
+        assertEquals(1, released) // the microphone went back at the hardware level
+        assertEquals(AssistantState.Idle, e.state.value)
+        assertTrue(wake.stops >= 1)
+
+        // Nothing brings listening back while OFF: no standby, no hands-free, no wake word.
+        val starts = voice.starts
+        val wakeStarts = wake.starts
+        e.startStandby()
+        e.startHandsFree()
+        advanceTimeBy(5_000); runCurrent()
+        assertEquals(starts, voice.starts)
+        assertEquals(wakeStarts, wake.starts)
+        assertEquals(AssistantState.Idle, e.state.value)
+
+        settings.value = settings.value.copy(assistantPaused = false)
+        e.resumeAssistant()
+        assertEquals(1, restored)
+        e.startHandsFree()
+        runCurrent()
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    @Test
     fun quietForAMinuteSheSleepsAndHerNameWakesHer() = runTest {
         settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()

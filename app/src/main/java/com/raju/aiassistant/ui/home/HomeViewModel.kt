@@ -196,6 +196,11 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     /** Ensures wake-word standby is active while the app is open and unmuted. */
+    /** While OFF: make sure nothing listens (also after the app comes back or the state changes). */
+    fun enforceOff() {
+        if (uiState.value.paused) engine.pauseAssistant()
+    }
+
     fun ensureStandby() {
         if (!uiState.value.paused && hasMicPermission()) {
             val s = c.currentSettings.value
@@ -216,11 +221,10 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             // OFF: stop speech, listening, "Hey Seema" and the background microphone service, and give
             // every microphone lease back at once: the recorder stops and no audio is read until ON.
             c.stopEverything()
-            c.wakeListener.stop()
-            c.micHub.releaseAll()
+            engine.pauseAssistant()
             com.raju.aiassistant.voice.SeemaWakeService.stop(c.appContext)
         } else {
-            c.micHub.unmute()
+            engine.resumeAssistant()
         }
         viewModelScope.launch {
             c.settingsRepository.setAssistantPaused(next)

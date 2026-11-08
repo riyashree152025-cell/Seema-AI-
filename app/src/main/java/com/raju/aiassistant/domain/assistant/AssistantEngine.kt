@@ -199,6 +199,10 @@ class AssistantEngine(
     private val wakeListener: WakeListener = NoWakeListener,
     private val hourOfDay: () -> Int = { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) },
     private val business: BusinessStore = NoBusinessStore,
+    /** Assistant switched OFF: give every microphone lease back at the hardware level (MicHub.releaseAll). */
+    private val releaseMic: () -> Unit = {},
+    /** Switched ON again: the microphone may be used again (MicHub.unmute). */
+    private val restoreMic: () -> Unit = {},
     /** PNR status from the user's PNR service; NotConfigured falls back to the official page. */
     private val pnrSource: com.raju.aiassistant.domain.business.PnrSource = com.raju.aiassistant.domain.business.PnrSource { com.raju.aiassistant.domain.business.PnrFetch.NotConfigured },
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
@@ -526,6 +530,13 @@ class AssistantEngine(
     private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp() && headphones()
 
     private fun listen() {
+        if (paused()) {
+            // Switched OFF: never open the microphone, whatever asked for it.
+            voice.stop()
+            _voiceSession.value = false
+            _state.value = AssistantState.Idle
+            return
+        }
         val gen = ++listenGen
         _state.value = AssistantState.Listening
         _heard.value = null
@@ -640,6 +651,30 @@ class AssistantEngine(
         }
     }
 
+    /**
+     * The master switch OFF: everything stops at once — the running request, speech, listening, the
+     * "Hey Seema" listener — and the microphone is released at the hardware level. Nothing listens
+     * again (no standby, no wake word, no hands-free) until [resumeAssistant].
+     */
+    fun pauseAssistant() {
+        stop()
+        asleep = false
+        wakeListener.stop()
+        callCommandUntil = 0
+        replyHandler?.let { finishReadReply(null) }
+        releaseMic()
+        _state.value = AssistantState.Idle
+        trace("off: microphone released")
+    }
+
+    /** The master switch ON: the microphone may be used again; the app starts standby / hands-free. */
+    fun resumeAssistant() {
+        restoreMic()
+        trace("on: microphone allowed")
+    }
+
+    private fun paused() = settings.value.assistantPaused
+
     /** Stop button: immediately stops listening, speech, pending questions and any running request. */
     fun stop() {
         beacon.stop(BeaconStop.STOPPED)
@@ -689,13 +724,19 @@ class AssistantEngine(
         voice.stop()
         _voiceSession.value = false
         conversationMode.exit()
+        if (paused()) {
+            // Switched OFF: no "Hey Seema" standby either.
+            asleep = false
+            _state.value = AssistantState.Idle
+            return
+        }
         asleep = true
         _state.value = AssistantState.Sleeping
         armWakeListener()
     }
 
     private fun armWakeListener() {
-        if (!asleep) return
+        if (!asleep || paused()) return
         wakeListener.start(
             onUtterance = { pcm -> scope.launch { onWakeAudio(pcm) } },
             onError = { scope.launch { delay(3_000); armWakeListener() } },

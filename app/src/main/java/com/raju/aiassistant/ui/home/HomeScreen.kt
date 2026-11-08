@@ -196,8 +196,10 @@ fun HomeScreen(
     var lastOrbTap by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(state.paused, assistantState) {
-        if (!state.paused && viewModel.hasMicPermission() && assistantState == AssistantState.Idle) {
-            viewModel.ensureStandby()
+        when {
+            // OFF: no standby, no wake word, no microphone — enforced again on every state change.
+            state.paused -> if (assistantState != AssistantState.Idle) viewModel.enforceOff()
+            viewModel.hasMicPermission() && assistantState == AssistantState.Idle -> viewModel.ensureStandby()
         }
     }
 

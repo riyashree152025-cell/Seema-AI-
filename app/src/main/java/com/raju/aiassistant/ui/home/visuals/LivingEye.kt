@@ -69,9 +69,9 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
     val gradient = WAVE_GRADIENT_ARGB.map { Color(it) }
     val midY = h * centerY.coerceIn(0.1f, 0.9f)
     for (layer in layers - 1 downTo 0) {
-        val band = minOf(h, w * 1.6f) // full-screen layer: waves stay a band, not the whole height
-        val amp = band * (0.04f + 0.20f * energy) * (1f - layer * 0.14f)
-        val offsetY = (layer - (layers - 1) / 2f) * band * 0.03f
+        // The layers spread over the whole height (no band), so the colour fills the screen top to bottom.
+        val amp = h * (0.035f + 0.11f * energy) * (1f - layer * 0.12f)
+        val offsetY = (layer - (layers - 1) / 2f) * h * (0.6f / layers)
         val top = Path()
         val bottom = Path()
         for (i in 0..points) {
@@ -104,8 +104,20 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
         drawPath(top, brush, style = Stroke(width, cap = StrokeCap.Round))
         drawPath(bottom, brush, style = Stroke(width * 0.7f, cap = StrokeCap.Round), alpha = 0.55f)
     }
-    // A wash of the state colour behind everything, brighter with energy.
-    drawRect(Brush.verticalGradient(listOf(Color.Transparent, accent.copy(alpha = 0.06f + 0.10f * energy), Color.Transparent)))
+    // Atmosphere over the whole canvas: a cyan → blue → violet wash top to bottom and a glow around
+    // the waves' centre, so no part of the screen is a dead black patch.
+    drawRect(
+        Brush.verticalGradient(
+            listOf(
+                gradient[0].copy(alpha = 0.07f + 0.05f * energy),
+                accent.copy(alpha = 0.06f + 0.10f * energy),
+                gradient[2].copy(alpha = 0.08f + 0.05f * energy),
+            ),
+        ),
+    )
+    val glowCenter = Offset(w / 2f, midY)
+    val glowR = maxOf(w, h) * 0.75f
+    drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.10f + 0.12f * energy), Color.Transparent), glowCenter, glowR), glowR, glowCenter)
 }
 
 private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantState, accent: Color, richEffects: Boolean) {
