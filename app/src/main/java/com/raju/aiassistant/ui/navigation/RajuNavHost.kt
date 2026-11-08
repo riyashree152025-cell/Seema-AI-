@@ -75,8 +75,28 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var askedMic by rememberSaveable { mutableStateOf(false) }
+    // Caller name for "kiska call hai": Android gives it to the call-screening role at ring time,
+    // without it only a call-log scan after the ring. Asked once, during setup (Settings → Setup
+    // Doctor can ask again).
+    val appContext = LocalContext.current.applicationContext
+    val callScreeningRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    val askCallScreeningOnce: () -> Unit = {
+        val prefs = appContext.getSharedPreferences("seema_setup", android.content.Context.MODE_PRIVATE)
+        if (android.os.Build.VERSION.SDK_INT >= 29 && !prefs.getBoolean("asked_call_screening", false)) {
+            val rm = appContext.getSystemService(android.app.role.RoleManager::class.java)
+            val role = android.app.role.RoleManager.ROLE_CALL_SCREENING
+            val intent = runCatching {
+                if (rm != null && rm.isRoleAvailable(role) && !rm.isRoleHeld(role)) rm.createRequestRoleIntent(role) else null
+            }.getOrNull()
+            if (intent != null) {
+                prefs.edit().putBoolean("asked_call_screening", true).apply()
+                runCatching { callScreeningRole.launch(intent) }
+            }
+        }
+    }
     val handsFreeMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) container.engine.startHandsFree()
+        askCallScreeningOnce()
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -88,6 +108,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                         if (container.voiceInput.hasPermission()) {
                             if (s.autoListen) container.engine.startHandsFree()
                             else if (s.wakeWord) container.engine.startStandby()
+                            if (s.announceCalls) askCallScreeningOnce()
                         } else if (!askedMic) {
                             askedMic = true
                             handsFreeMic.launch(Manifest.permission.RECORD_AUDIO)

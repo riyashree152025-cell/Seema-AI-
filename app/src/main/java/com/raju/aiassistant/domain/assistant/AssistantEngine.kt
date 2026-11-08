@@ -105,8 +105,8 @@ private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
 private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
-/** Careful thinking (deep tier) may take longer before its first words: Gemini gets 25 s. */
-private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 25_000L
+/** Careful thinking (deep tier) may take longer before its first words on mobile data: Gemini gets 28 s. */
+private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 28_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
@@ -776,11 +776,6 @@ class AssistantEngine(
                     armWakeListener()
                     return
                 }
-                com.raju.aiassistant.domain.voice.WakeCheckGate.Decision.BACKING_OFF -> {
-                    trace("wake: noise again and again, online checks paused")
-                    armWakeListener()
-                    return
-                }
                 com.raju.aiassistant.domain.voice.WakeCheckGate.Decision.CHECK -> Unit
             }
             // Keep listening while her name is checked online (1-3 s on a slow connection): a
@@ -798,7 +793,6 @@ class AssistantEngine(
             if (!asleep) return
             val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
             trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")
-            if (raw != null) wakeGate.onChecked(nameHeard = request != null)
             when {
                 request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
                 request.isBlank() -> { onWake(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
@@ -1144,7 +1138,7 @@ class AssistantEngine(
     /** Response times of the last replies (Tools → Response time). */
     val latencies: StateFlow<List<TurnLatency>> = _latencies.asStateFlow()
     /** Which standby sounds are worth an online name check (faint ones and noise streaks are not). */
-    private val wakeGate = com.raju.aiassistant.domain.voice.WakeCheckGate(clock)
+    private val wakeGate = com.raju.aiassistant.domain.voice.WakeCheckGate()
 
     private val beacon = PhoneBeacon(scope, speakLine = { speaker.speak(it) }, onStopped = { trace("beacon stopped: ${it.name}") })
 

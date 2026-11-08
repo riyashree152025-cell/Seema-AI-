@@ -65,4 +65,36 @@ class EndpointDetectorTest {
         assertEquals(EndpointDetector.State.LISTENING, d.feed(5_000.0, 2))
         assertEquals(EndpointDetector.State.DONE, d.feed(5_000.0, 200))
     }
+
+    @Test
+    fun aRoomThatGetsLouderAfterTheStartDoesNotHoldTheTurnFor15Seconds() {
+        // Phone logs: 750 frames (15 s) and then "no words were recognised". The user spoke, then a
+        // fan / TV kept the level above the bar measured in the first 300 ms.
+        val d = EndpointDetector(frameMs = 20)
+        d.feed(60.0, 15) // quiet calibration
+        d.feed(1_500.0, 50) // 1 s of speech
+        var frames = 0
+        var s = d.state
+        while (s == EndpointDetector.State.SPEAKING && frames < 700) { s = d.onFrame(400.0); frames++ } // steady noise
+        assertEquals(EndpointDetector.State.DONE, s)
+        assert(frames * 20 < 5_000) { "ended after ${frames * 20} ms of steady noise" }
+    }
+
+    @Test
+    fun longSpeechWithGapsBetweenWordsIsNotCut() {
+        val d = EndpointDetector(frameMs = 20)
+        d.feed(60.0, 15)
+        repeat(30) { // 9 s: 240 ms words, 60 ms gaps
+            d.feed(900.0, 12)
+            assertEquals(EndpointDetector.State.SPEAKING, d.feed(80.0, 3))
+        }
+    }
+
+    @Test
+    fun noVoiceForFourAndAHalfSecondsIsNoSpeech() {
+        val d = EndpointDetector(frameMs = 20)
+        d.feed(60.0, 15)
+        assertEquals(EndpointDetector.State.LISTENING, d.feed(60.0, 200)) // 4.3 s
+        assertEquals(EndpointDetector.State.NO_SPEECH, d.feed(60.0, 15))
+    }
 }

@@ -7,8 +7,10 @@ package com.raju.aiassistant.domain.voice
  */
 class EndpointDetector(
     private val frameMs: Int = 20,
-    private val silenceMs: Int = 1_200,
-    private val noSpeechTimeoutMs: Int = 7_000,
+    /** Pause after speech that ends the turn. */
+    private val silenceMs: Int = 1_400,
+    /** No voice at all for this long: the turn ends as "no speech". */
+    private val noSpeechTimeoutMs: Int = 4_500,
     private val maxMs: Int = 15_000,
     private val calibrationMs: Int = 300,
     /**
@@ -24,6 +26,16 @@ class EndpointDetector(
      * and again on the phone.
      */
     private val minSpeechMs: Int = 200,
+    /**
+     * How fast the room level follows a sound that stays (per frame, 0..1). The room was measured
+     * only in the first 300 ms: a fan, TV or traffic that got louder afterwards stayed "speech"
+     * for ever, so the turn ran to the 15 s limit and came back as "no words were recognised"
+     * (750 frames in the phone logs). Now a steady sound becomes the new room level within about
+     * 2 s and the pause after it is heard. Speech is never steady: the gaps between words pull the
+     * level straight back down ([floorFallRate]), so a talking user is not cut.
+     */
+    private val floorRiseRate: Double = 0.005,
+    private val floorFallRate: Double = 0.3,
 ) {
     enum class State { LISTENING, SPEAKING, DONE, NO_SPEECH }
 
@@ -50,6 +62,7 @@ class EndpointDetector(
         }
         val threshold = maxOf(minThreshold, noise * noiseFactor)
         val loud = rms > threshold
+        noise += (rms - noise) * (if (rms > noise) floorRiseRate else floorFallRate)
         when (state) {
             State.LISTENING -> {
                 loudRun = if (loud) loudRun + 1 else 0

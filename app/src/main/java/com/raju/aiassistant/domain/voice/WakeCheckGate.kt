@@ -7,21 +7,28 @@ package com.raju.aiassistant.domain.voice
  */
 const val WAKE_ENERGY_THRESHOLD = 0.022f
 
-/** Misses (sounds without her name) in a row before checks pause; then 5 s, at most 10 s. */
-const val WAKE_MISSES_BEFORE_BACKOFF = 6
-const val WAKE_BACKOFF_MAX_MS = 10_000L
-/** A quiet room for this long forgets earlier misses. */
-const val WAKE_MISS_MEMORY_MS = 120_000L
+/**
+ * How far above the room's own sound a clip must reach to be checked: RMS 35 of 32 768 (level 0.007).
+ * The bar is max(110 RMS, room + 35 RMS).
+ */
+const val WAKE_ABOVE_ROOM = 0.007f
+/** How fast the room level follows each new clip (0..1). */
+const val WAKE_ROOM_FOLLOW = 0.3f
 
 /**
  * Loudest 100 ms of a 16 kHz 16-bit little-endian clip, 0..1 (RMS / 5 000, like the microphone level).
  * A clip shorter than 100 ms is measured whole.
  */
-fun loudestLevel(pcm: ByteArray, windowSamples: Int = 1_600): Float {
+fun loudestLevel(pcm: ByteArray, windowSamples: Int = 1_600): Float = windowLevel(pcm, windowSamples, loudest = true)
+
+/** Quietest 100 ms of the clip (the room between words), on the same 0..1 scale. */
+fun quietestLevel(pcm: ByteArray, windowSamples: Int = 1_600): Float = windowLevel(pcm, windowSamples, loudest = false)
+
+private fun windowLevel(pcm: ByteArray, windowSamples: Int, loudest: Boolean): Float {
     val samples = pcm.size / 2
     if (samples == 0) return 0f
     val win = minOf(windowSamples, samples)
-    var best = 0.0
+    var best = if (loudest) 0.0 else Double.MAX_VALUE
     var start = 0
     while (start < samples) {
         val end = minOf(start + win, samples)
@@ -30,7 +37,8 @@ fun loudestLevel(pcm: ByteArray, windowSamples: Int = 1_600): Float {
             val v = ((pcm[2 * i + 1].toInt() shl 8) or (pcm[2 * i].toInt() and 0xFF)).toShort().toInt()
             sum += v.toDouble() * v
         }
-        best = maxOf(best, sum / (end - start))
+        val mean = sum / (end - start)
+        best = if (loudest) maxOf(best, mean) else minOf(best, mean)
         start += win
     }
     return (kotlin.math.sqrt(best) / 5_000.0).toFloat().coerceIn(0f, 1f)
@@ -38,42 +46,22 @@ fun loudestLevel(pcm: ByteArray, windowSamples: Int = 1_600): Float {
 
 /**
  * Decides whether a sound heard during "Hey Seema" standby goes online (Deepgram) to check for her
- * name. Faint sounds never do. After several sounds in a row without her name (a TV, people talking
- * nearby) checks pause for a short, growing time, so background noise cannot keep the internet and
- * battery busy. Her name resets everything.
+ * name. The bar follows the room: max(110 RMS, room + 35 RMS), where the room is the quiet between
+ * words in recent clips. A fan or TV raises the bar a little instead of pausing checks: the earlier
+ * pause after repeated noise ("online checks paused") also dropped a real "Hey Seema" said during it.
  */
-class WakeCheckGate(private val clock: () -> Long, private val minLevel: Float = WAKE_ENERGY_THRESHOLD) {
-    enum class Decision { CHECK, TOO_QUIET, BACKING_OFF }
+class WakeCheckGate(private val minLevel: Float = WAKE_ENERGY_THRESHOLD) {
+    enum class Decision { CHECK, TOO_QUIET }
 
-    private var misses = 0
-    private var lastMissAt = 0L
-    private var pauseUntil = 0L
+    /** The room's level, learnt from recent clips (0 until the first clip). */
+    var room = 0f
+        private set
 
     fun decide(pcm: ByteArray): Decision {
-        val now = clock()
-        if (now < pauseUntil) return Decision.BACKING_OFF
-        if (loudestLevel(pcm) < minLevel) return Decision.TOO_QUIET
-        return Decision.CHECK
-    }
-
-    /** After a check: [nameHeard] = her name was in it. */
-    fun onChecked(nameHeard: Boolean) {
-        val now = clock()
-        if (nameHeard) {
-            misses = 0
-            pauseUntil = 0
-            return
-        }
-        if (now - lastMissAt > WAKE_MISS_MEMORY_MS) misses = 0
-        misses++
-        lastMissAt = now
-        if (misses >= WAKE_MISSES_BEFORE_BACKOFF) pauseUntil = now + backoffMs(misses)
-    }
-
-    companion object {
-        fun backoffMs(misses: Int): Long {
-            val steps = (misses - WAKE_MISSES_BEFORE_BACKOFF).coerceIn(0, 8)
-            return minOf(WAKE_BACKOFF_MAX_MS, 5_000L shl steps)
-        }
+        if (pcm.size < 2) return Decision.TOO_QUIET
+        val bar = maxOf(minLevel, room + WAKE_ABOVE_ROOM)
+        val decision = if (loudestLevel(pcm) < bar) Decision.TOO_QUIET else Decision.CHECK
+        room += (quietestLevel(pcm) - room) * WAKE_ROOM_FOLLOW
+        return decision
     }
 }

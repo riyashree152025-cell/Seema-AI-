@@ -2,6 +2,7 @@ package com.raju.aiassistant.domain.assistant
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamingTest {
@@ -30,5 +31,22 @@ class StreamingTest {
         assertEquals(3000L, percentile(ms, 95))
         assertNull(percentile(emptyList(), 50))
         assertEquals("P50 1.1 s · P95 3.0 s (10 replies)", latencySummary(ms))
+    }
+
+    @Test
+    fun aLongFirstSentenceIsSpokenFromItsFirstWordsWithoutWaitingForTheFullStop() {
+        assertNull(speakableHead("Aaj Delhi mein mausam saaf rahega aur")) // under 40 characters: wait
+        assertEquals(
+            "Aaj Delhi mein mausam saaf rahega aur dopahar mein dhoop",
+            speakableHead("Aaj Delhi mein mausam saaf rahega aur dopahar mein dhoop te"), // "te…" still arriving
+        )
+        assertEquals(
+            "Aaj Delhi mein mausam saaf rahega,",
+            speakableHead("Aaj Delhi mein mausam saaf rahega, dopahar mein dhoop tez hogi "),
+        )
+        assertNull(speakableHead("Abhi Rahul ko call laga rahi hoon, ek second <action>{\"type\""))
+        val full = "Aaj Delhi mein mausam saaf rahega, dopahar mein dhoop tez hogi aur shaam ko hawa."
+        val head = speakableHead(full.take(60))!!
+        assertTrue(full.startsWith(head))
     }
 }
