@@ -68,6 +68,9 @@ class AudioInterruptions(
 
     private fun onMode(mode: Int) = update(callPhaseForMode(mode))
 
+    /** A call is ringing right now (not yet answered or ended). */
+    fun ringing(): Boolean = phase == CallPhase.RINGING
+
     private fun update(next: CallPhase) {
         if (next == phase) return
         phase = next

@@ -35,6 +35,7 @@ class RajuCallScreeningService : CallScreeningService() {
         val number = details.handle?.schemeSpecificPart
         if (!c.callDeduper.shouldAnnounce(number, System.currentTimeMillis())) return
 
+        c.lastCallAnnouncedAt = System.currentTimeMillis()
         c.appScope.launch {
             val name = number?.let { lookupContactName(it) }
             // "Raju, Mummy ka call aa raha hai. Uthau ya cut karu?" — "utha lo" answers, "cut karo" rejects,

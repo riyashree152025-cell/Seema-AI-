@@ -96,7 +96,7 @@ class DeepgramVoiceInput(
                         // Speech was recorded but no words came back: ask again rather than act on nothing.
                         heard.text.isBlank() -> onError(VoiceError("Speech was heard but no words were recognised.", unclear = true))
                         // Very unsure: better to ask again than to act on a wrong word.
-                        heard.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true))
+                        heard.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true, heard = heard.text))
                         else -> onResult(heard.text)
                     }
                 }

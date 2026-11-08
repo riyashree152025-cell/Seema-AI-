@@ -16,6 +16,12 @@ fun callAnnouncementText(contactName: String?, number: String?, speakNumber: Boo
     }
 }
 
+/**
+ * The announcement when the phone rings but Seema has no caller details (she is not the call
+ * screening app, so Android does not tell her the number): no name or "hidden number" is invented.
+ */
+fun ringingAnnouncementText(nickname: String? = null): String = "${nickPrefix(nickname)}Ek call aa raha hai."
+
 /** One announcement per call: the same number ringing again within [windowMs] is ignored. */
 class CallDeduper(private val windowMs: Long = 60_000) {
     private val recent = HashMap<String, Long>()

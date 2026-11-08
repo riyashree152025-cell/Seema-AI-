@@ -22,4 +22,10 @@ class CallReplyTest {
         assertNull(callReplyText("haan bolo")) // answering, not a reply
         assertNull(callReplyText(""))
     }
+
+    @Test
+    fun withoutCallerDetailsNoIdentityIsInvented() {
+        assertEquals("Raju ji, Ek call aa raha hai.", ringingAnnouncementText("Raju ji"))
+        assertEquals("Ek call aa raha hai.", ringingAnnouncementText(null))
+    }
 }

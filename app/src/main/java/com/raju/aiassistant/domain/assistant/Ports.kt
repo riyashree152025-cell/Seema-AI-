@@ -105,6 +105,8 @@ data class VoiceError(
     val permissionDenied: Boolean = false,
     val unclear: Boolean = false,
     val transient: Boolean = false,
+    /** What was recognised with low confidence (unclear): only a short yes/no window may use it. */
+    val heard: String? = null,
 )
 
 interface ChatHistory {

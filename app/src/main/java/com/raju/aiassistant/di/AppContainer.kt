@@ -182,7 +182,10 @@ class AppContainer(context: Context) {
             appContext,
             onCall = { phase ->
                 when (phase) {
-                    com.raju.aiassistant.core.audio.CallPhase.RINGING -> engine.onCallRinging()
+                    com.raju.aiassistant.core.audio.CallPhase.RINGING -> {
+                        engine.onCallRinging()
+                        announceRingingIfNobodyDid()
+                    }
                     com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> {
                         engine.pauseForCall()
                         if (currentSettings.value.micHub) micHub.pauseForCall()
@@ -284,6 +287,27 @@ class AppContainer(context: Context) {
     val deviceTools by lazy { AndroidDeviceTools(appContext) }
     val announcementDeduper = AnnouncementDeduper()
     val callDeduper = CallDeduper()
+
+    /** When a call was last announced (by the call-screening service, with the caller's name). */
+    @Volatile var lastCallAnnouncedAt = 0L
+
+    /**
+     * The phone rings and the call-screening service did not announce it (Seema does not hold that
+     * role, so Android gives her no number): say at least that a call is coming and listen for
+     * "utha lo / kaat do / bol do …" while it rings. With the role, the service names the caller.
+     */
+    private fun announceRingingIfNobodyDid() {
+        appScope.launch {
+            kotlinx.coroutines.delay(1_500) // the screening service, when it runs, announces first
+            val s = currentSettings.value
+            if (System.currentTimeMillis() - lastCallAnnouncedAt < 15_000) return@launch
+            if (!s.announceCalls || s.assistantPaused || s.safetyMode || !audioInterruptions.ringing()) return@launch
+            lastCallAnnouncedAt = System.currentTimeMillis()
+            android.util.Log.i("SeemaVoice", "call: announced without caller details (no call-screening role)")
+            speaker.speak(com.raju.aiassistant.domain.notify.ringingAnnouncementText(s.userName) + " " + com.raju.aiassistant.domain.notify.ASK_TO_ANSWER)
+            if (audioInterruptions.ringing()) engine.listenForCallCommand(null, null)
+        }
+    }
 
     /** True while Android has the notification listener connected (not just permission granted). */
     val listenerConnected = MutableStateFlow(false)

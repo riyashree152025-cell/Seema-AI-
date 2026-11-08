@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -1867,7 +1868,7 @@ class AssistantEngineTest {
         settle()
         assertEquals(1, tools.ended)
         assertTrue(tools.sms.isEmpty())
-        assertTrue(speaker.spoken.last().contains("नंबर छुपा था"))
+        assertTrue(speaker.spoken.last().contains("नंबर नहीं मिला"))
     }
 
     @Test
@@ -1888,7 +1889,7 @@ class AssistantEngineTest {
         val e = engine()
         var got: Boolean? = null
         assertTrue(e.listenForReadReply { got = it })
-        runCurrent()
+        advanceTimeBy(400); runCurrent() // the microphone opens only after her question has ended
         voice.onResult!!("haan padho")
         settle()
         assertEquals(true, got)
@@ -1896,7 +1897,7 @@ class AssistantEngineTest {
 
         got = null
         assertTrue(e.listenForReadReply { got = it })
-        runCurrent()
+        advanceTimeBy(400); runCurrent()
         voice.onResult!!("rehne do")
         settle()
         assertEquals(false, got)
@@ -1927,8 +1928,59 @@ class AssistantEngineTest {
         runCurrent()
         advanceTimeBy(6_000)
         runCurrent()
+        assertFalse(called) // an answer begun inside the 6 s window still gets time to be transcribed
+        advanceTimeBy(5_000)
+        runCurrent()
         assertTrue(called)
         assertNull(got)
+    }
+
+    @Test
+    fun aMicOpenedOnlyAfterHerQuestionAndAnUnsureHaanStillReads() = runTest {
+        val e = engine()
+        var got: Boolean? = null
+        val before = voice.starts
+        e.listenForReadReply { got = it }
+        runCurrent()
+        assertEquals(before, voice.starts) // not while the tail of her voice may still be in the air
+        advanceTimeBy(400); runCurrent()
+        assertEquals(before + 1, voice.starts)
+        voice.onError!!(VoiceError("I didn't hear that clearly.", unclear = true, heard = "haan"))
+        runCurrent()
+        assertEquals(true, got)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun anUnclearSoundInTheReplyWindowListensAgain() = runTest {
+        val e = engine()
+        var got: Boolean? = null
+        var called = false
+        e.listenForReadReply { called = true; got = it }
+        advanceTimeBy(400); runCurrent()
+        val starts = voice.starts
+        voice.onError!!(VoiceError("I didn't hear that clearly.", unclear = true, heard = "mmm"))
+        advanceTimeBy(300); runCurrent()
+        assertFalse(called)
+        assertEquals(starts + 1, voice.starts) // asked the microphone again, window still open
+        voice.onResult!!("sunao")
+        runCurrent()
+        assertEquals(true, got)
+    }
+
+    @Test
+    fun whileItRingsNoiseKeepsListeningAndAnUnsureKaatDoStillCuts() = runTest {
+        val e = engine()
+        e.listenForCallCommand("+91 98000 00007", "Mummy")
+        runCurrent()
+        val starts = voice.starts
+        voice.onError!!(VoiceError("Speech was heard but no words were recognised.", unclear = true))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(starts + 1, voice.starts)
+        voice.onError!!(VoiceError("I didn't hear that clearly.", unclear = true, heard = "kaat do"))
+        settle()
+        assertEquals(1, tools.ended)
+        assertTrue(tools.sms.isEmpty()) // unsure words are never sent as an SMS
     }
 
     @Test

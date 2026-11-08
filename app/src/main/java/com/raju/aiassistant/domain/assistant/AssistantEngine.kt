@@ -122,7 +122,11 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 25_000L
 /** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
-private const val READ_REPLY_WINDOW_MS = 5_000L
+private const val READ_REPLY_WINDOW_MS = 6_000L
+/** Extra time for an answer that started inside the window to be transcribed. */
+private const val READ_REPLY_GRACE_MS = 4_000L
+/** Pause after her question before the microphone opens, so the end of her own voice is not heard. */
+private const val ECHO_SETTLE_MS = 350L
 /** "This model is no longer available" and similar replies: the model was retired, not a passing error. */
 internal fun isModelGone(message: String): Boolean {
     val m = message.lowercase()
@@ -540,12 +544,31 @@ class AssistantEngine(
                     scope.launch { delay(300); if (voiceConfirmOpen()) listen() }
                     return@start
                 }
-                // A short yes/no window (message or call) ends quietly on silence: no loop.
-                if (replyHandler != null) { finishReadReply(null); return@start }
+                // "Padh ke sunau kya?": a short "haan / nahi" often comes back as low-confidence. Its
+                // yes/no words are still clear enough; anything else is asked again while time remains.
+                if (replyHandler != null) {
+                    val unsure = err.heard?.let { readReply(it) }
+                    when {
+                        unsure != null -> { trace("read reply: ${if (unsure) "yes" else "no"} (low confidence)"); finishReadReply(unsure) }
+                        (err.noSpeech || err.unclear) && clock() < replyUntil - 1_000 -> scope.launch { delay(250); if (replyHandler != null) listen() }
+                        else -> finishReadReply(null)
+                    }
+                    return@start
+                }
                 if (clock() < callCommandUntil) {
-                    callCommandUntil = 0
-                    trace("call: no answer heard, stop listening")
-                    returnToStandby()
+                    // While it rings: "utha lo / kaat do" heard unsurely still counts (never an SMS from
+                    // unsure words); silence or noise → listen again for the rest of the ring.
+                    val unsure = err.heard?.let { callCommand(it) }
+                    if (unsure != null && err.heard != null && callReplyText(err.heard) == null) {
+                        handleCallCommand(err.heard)
+                    } else if ((err.noSpeech || err.unclear) && clock() < callCommandUntil - 1_500) {
+                        trace("call: nothing clear yet, listening again")
+                        scope.launch { delay(250); if (clock() < callCommandUntil) listen() }
+                    } else {
+                        callCommandUntil = 0
+                        trace("call: no answer heard, stop listening")
+                        returnToStandby()
+                    }
                     return@start
                 }
                 val keepGoing = handsFree && _voiceSession.value && !settings.value.assistantPaused && !err.permissionDenied
@@ -1483,6 +1506,8 @@ class AssistantEngine(
     /** A call rings: her own reply stops; the microphone stays usable so she can hear "utha lo" / "kaat do". */
     fun onCallRinging() {
         trace("call ringing")
+        // Already announced and listening for "utha lo / bol do …": keep that listening going.
+        if (clock() < callCommandUntil) return
         cancelWork()
     }
 
@@ -1514,7 +1539,7 @@ class AssistantEngine(
             scope.launch {
                 report(AssistantAction.EndCall, ended)
                 if (number.isNullOrBlank() || number.count { it.isDigit() } < 6) {
-                    say(phrase(lang(), "कॉल काट दी। नंबर छुपा था, इसलिए मैसेज नहीं भेज पाई।", "কল কেটে দিয়েছি। নম্বর লুকোনো ছিল, তাই মেসেজ পাঠাতে পারিনি।"))
+                    say(phrase(lang(), "कॉल काट दी। कॉल करने वाले का नंबर नहीं मिला, इसलिए मैसेज नहीं भेज पाई।", "কল কেটে দিয়েছি। নম্বর পাইনি, তাই মেসেজ পাঠাতে পারিনি।"))
                     return@launch
                 }
                 val who = name ?: number
@@ -1562,10 +1587,12 @@ class AssistantEngine(
         if (settings.value.assistantPaused || !voice.isAvailable() || pausedForCall || clock() < callCommandUntil) return false
         if (_voiceSession.value || job?.isActive == true || _pending.value != null || replyHandler != null) return false
         replyHandler = onReply
-        replyUntil = clock() + windowMs
+        // The window counts from when the microphone opens; an answer begun inside it gets time to be
+        // transcribed (a hard cap, not a race against Deepgram's reply).
+        replyUntil = clock() + ECHO_SETTLE_MS + windowMs
         replyTimeout?.cancel()
         replyTimeout = scope.launch {
-            delay(windowMs)
+            delay(ECHO_SETTLE_MS + windowMs + READ_REPLY_GRACE_MS)
             if (replyHandler != null) {
                 trace("read reply: no answer")
                 finishReadReply(null)
@@ -1573,13 +1600,21 @@ class AssistantEngine(
         }
         if (asleep) leaveSleep()
         _voiceSession.value = true
-        trace("read reply: listening")
-        listen()
+        _state.value = AssistantState.Listening
+        scope.launch {
+            // Her question has finished playing (the announcer calls this after speak() returns);
+            // a short pause more keeps the tail of her voice out of the microphone.
+            delay(ECHO_SETTLE_MS)
+            if (replyHandler == null) return@launch
+            trace("read reply: listening")
+            listen()
+        }
         return true
     }
 
     private fun handleReadReply(text: String): Boolean {
-        if (replyHandler == null || clock() >= replyUntil) return false
+        // Accepted until the window is closed by the timeout (an answer begun in time is not lost).
+        if (replyHandler == null) return false
         val answer = readReply(text)
         trace("read reply: ${answer ?: "unclear"}")
         finishReadReply(answer)
