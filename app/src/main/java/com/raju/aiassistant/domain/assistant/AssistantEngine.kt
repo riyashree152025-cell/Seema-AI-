@@ -793,10 +793,11 @@ class AssistantEngine(
                 raw = runCatching { t.transcribe(pcm) }.getOrNull()
             }
             val heard = raw?.trim().orEmpty()
-            trace("wake heard: $heard")
+            // Privacy: only lengths in the log, never what was said.
+            trace("wake heard: ${heard.length} chars")
             if (!asleep) return
             val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
-            trace("wake request: $request")
+            trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")
             if (raw != null) wakeGate.onChecked(nameHeard = request != null)
             when {
                 request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
@@ -1266,7 +1267,9 @@ class AssistantEngine(
      */
     private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean): Boolean {
         val s = settings.value
-        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp || action is AssistantAction.WhatsAppFile)) return false
+        if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp ||
+                action is AssistantAction.WhatsAppFile || action is AssistantAction.Sms || action is AssistantAction.ScreenTap || action is AssistantAction.ScreenType)
+        ) return false
         when (action) {
             is AssistantAction.OpenApp -> {
                 val outcome = tools.openApp(action.name)
@@ -1399,6 +1402,27 @@ class AssistantEngine(
                 report(action, ActionStatus.SUCCESS, "Screen padhi (bina AI): ${snap.appLabel}")
                 record(ChatRole.ASSISTANT, msg)
                 if (speak) say(msg)
+            }
+            is AssistantAction.Sms -> {
+                // Same path as when the AI asks: contact choice by voice, then send.
+                trace("offline command: sms")
+                _state.value = AssistantState.Executing
+                sendSms(action, speak)
+            }
+            is AssistantAction.ScreenTap -> {
+                trace("offline command: tap")
+                _state.value = AssistantState.Executing
+                screenTap(action, speak)
+            }
+            is AssistantAction.ScreenType -> {
+                trace("offline command: type")
+                _state.value = AssistantState.Executing
+                screenType(action, speak)
+            }
+            is AssistantAction.ScreenScroll -> {
+                trace("offline command: scroll")
+                _state.value = AssistantState.Executing
+                screenScroll(action, speak)
             }
             is AssistantAction.PnrStatus -> {
                 trace("offline command: pnr status")
@@ -2914,7 +2938,24 @@ class AssistantEngine(
         }
         record(ChatRole.SYSTEM, "$icon $message")
         actionLog.safeLog(action, status, message)
+        // Diagnostics: which action did not work and the kind of reason — never names, numbers or words.
+        if (status != ActionStatus.SUCCESS) trace("fail: ${action.javaClass.simpleName} ${status.name.lowercase()} (${failReasonKind(message)})")
         if (status == ActionStatus.FAILED) _state.value = AssistantState.Error
+    }
+
+    /** The kind of a failure for the log, from its message: permission, accessibility, not found, network … */
+    private fun failReasonKind(message: String): String {
+        val m = message.lowercase()
+        return when {
+            "permission" in m || "अनुमति" in m -> "permission"
+            "accessibility" in m -> "accessibility"
+            "safety mode" in m -> "safety mode"
+            "नहीं मिला" in m || "not found" in m || "no contact" in m || "नहीं मिली" in m -> "not found"
+            "cancel" in m || "नहीं भेज" in m -> "cancelled"
+            "internet" in m || "network" in m || "timeout" in m || "समय" in m -> "network / time"
+            "बैंक" in m || "upi" in m || "पासवर्ड" in m || "pin" in m -> "sensitive screen"
+            else -> "other"
+        }
     }
 
     private suspend fun ActionLog.safeLog(action: AssistantAction, status: ActionStatus, message: String) {

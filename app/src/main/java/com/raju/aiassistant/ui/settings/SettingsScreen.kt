@@ -314,7 +314,8 @@ fun SettingsScreen(
                 SystemScreen(
                     s = s,
                     viewModel = viewModel,
-                    onBack = { currentScreen = "menu" }
+                    onBack = { currentScreen = "menu" },
+                    secrets = state.secrets,
                 )
             }
         }
@@ -2494,6 +2495,7 @@ fun SystemScreen(
     s: UserSettings,
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
+    secrets: Map<SecretId, SecretStatus> = emptyMap(),
 ) {
     Column(
         modifier = Modifier
@@ -2510,19 +2512,8 @@ fun SystemScreen(
             Text("System Integration", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF081730))
-                .border(1.2.dp, Color(0xFF16345C), RoundedCornerShape(18.dp))
-                .padding(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("System Diagnostics", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
-                Text("SEEMA CORE v2.5 | 100% Online", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
-                Text("Offline models, neural speech, and cloud brain ready.", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-            }
-        }
+        // The real check-up (was a fixed "100% Online" card that checked nothing): every permission,
+        // role, service and key Seema needs, with a button to fix each, plus mic and voice tests.
+        DiagnosePanel(secrets, wakeWord = s.wakeWord)
     }
 }

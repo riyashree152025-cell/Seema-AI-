@@ -16,11 +16,13 @@ object LocalCommands {
 
     fun parse(text: String): AssistantAction? {
         whatsApp(text)?.let { return it }
+        sms(text)?.let { return it }
+        typeOnScreen(text)?.let { return it }
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
             ?: battery(t) ?: home(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
-            ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: pnr(t) ?: openApp(t)
+            ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: pnr(t) ?: scroll(t) ?: tap(t) ?: openApp(t)
     }
 
     // ------------------------------------------------------------------ text clean-up
@@ -157,7 +159,7 @@ object LocalCommands {
     private val ANSWER_CALL = Regex("^$PHONE (?:uthao|utha lo|utha do|uthaiye|receive karo|receive kar lo|pick karo|उठाओ|उठा लो|उठा दो|उठाइए|रिसीव करो|रिसीव कर लो)$")
     private val CALL_TO = Regex("^(.{1,40}?) (?:ko|को) $PHONE (?:karo|kar do|kar de|lagao|laga do|laga de|milao|mila do|करो|कर दो|कर दे|लगाओ|लगा दो|लगा दे|मिलाओ|मिला दो)$")
     private val CALL_EN = Regex("^(?:call|dial) ([a-z0-9 +]{1,40})$")
-    private val NOT_A_NAME = Regex("(?:^| )(?:whatsapp|व्हाट्सएप|व्हाट्सऐप|video|वीडियो|aur|और|and|phir|फिर|then|mujhe|मुझे|kisi|किसी|usko|उसको|isko|इसको|unko|उनको|sabko|सबको|ise|use|उसे|इसे|karo|करो|lagao|लगाओ|kar|कर|back|me|him|her)(?: |$)")
+    private val NOT_A_NAME = Regex("(?:^| )(?:whatsapp|व्हाट्सएप|व्हाट्सऐप|video|वीडियो|aur|और|and|phir|फिर|then|mujhe|मुझे|kisi|किसी|usko|उसको|isko|इसको|unko|उनको|sabko|सबको|ise|use|उसे|इसे|karo|करो|lagao|लगाओ|kar|कर|back|me|him|her|dabao|daba|press|click|दबाओ)(?: |$)")
 
     private fun endCall(t: String): AssistantAction? = if (END_CALL.matches(t)) AssistantAction.EndCall else null
 
@@ -230,6 +232,59 @@ object LocalCommands {
         // "ticket wali PDF", "wo document", "latest file": a document, not words to type.
         if (FILE_REQUEST.matches(msg)) return AssistantAction.WhatsAppFile(contact = who, file = msg)
         return AssistantAction.WhatsApp(contact = who, text = msg)
+    }
+
+    // ------------------------------------------------------------------ SMS
+
+    private const val SMS_WORD = "(?:sms|message|msg|massage|मैसेज|मेसेज|एसएमएस|संदेश)"
+    /** "Firoz ko message karo ki abhi tak payment nahi mila" (no "WhatsApp" in it: that is WhatsApp). */
+    private val SMS_TO = Regex(
+        "^(.{1,40}?) (?:ko|को) $SMS_WORD(?: (?:karo|kar do|kar de|bhejo|bhej do|bhej de|करो|कर दो|कर दे|भेजो|भेज दो|भेज दे))? (?:ki|कि|ke|के) (.{2,300})$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun sms(text: String): AssistantAction? {
+        val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "").replace(Regex("^[,\\s]+"), "")
+        if (t.length > 360 || Regex(WA, RegexOption.IGNORE_CASE).containsMatchIn(t)) return null
+        val m = SMS_TO.matchEntire(t) ?: return null
+        val who = m.groupValues[1].trim().trim('"', '\'', '“', '”')
+        val msg = m.groupValues[2].trim().trim('"', '\'', '“', '”').trim()
+        if (who.isEmpty() || msg.length < 2 || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(normalize(who))) return null
+        val digits = who.filter { it.isDigit() }
+        return if (digits.length >= 7 && digits.length * 2 >= who.count { !it.isWhitespace() }) AssistantAction.Sms(contact = null, number = who, text = msg)
+        else AssistantAction.Sms(contact = who, number = null, text = msg)
+    }
+
+    // ------------------------------------------------------------------ the app on screen
+
+    /** "Send dabao", "OK button press karo", "Install pe click karo": tap that (Seema asks first). */
+    private val TAP = Regex(
+        "^(.{1,30}?)(?: (?:button|बटन))?(?: (?:par|pe|पर|पे|ko|को))? (?:dabao|daba do|daba de|press karo|press kar do|click karo|click kar do|tap karo|tap kar do|दबाओ|दबा दो|दबा दे|प्रेस करो|क्लिक करो|टैप करो)$",
+    )
+    private val NOT_A_BUTTON = Regex("(?:^| )(?:call|phone|फोन|कॉल|torch|टॉर्च|volume|आवाज़|aur|और|and|phir|फिर)(?: |$)")
+
+    private fun tap(t: String): AssistantAction? {
+        val what = TAP.matchEntire(t)?.groupValues?.get(1)?.trim() ?: return null
+        if (what.isEmpty() || what.split(' ').size > 4 || NOT_A_BUTTON.containsMatchIn(what)) return null
+        return AssistantAction.ScreenTap(what)
+    }
+
+    private val SCROLL_DOWN = Regex("^(?:(?:neeche|niche|नीचे) (?:scroll|स्क्रॉल)(?: (?:karo|kar do|करो|कर दो))?|scroll (?:down|neeche|niche)|(?:screen|स्क्रीन) (?:neeche|niche|नीचे) (?:karo|करो))$")
+    private val SCROLL_UP = Regex("^(?:(?:upar|oopar|ऊपर) (?:scroll|स्क्रॉल)(?: (?:karo|kar do|करो|कर दो))?|scroll (?:up|upar|oopar)|(?:screen|स्क्रीन) (?:upar|ऊपर) (?:karo|करो))$")
+
+    private fun scroll(t: String): AssistantAction? = when {
+        SCROLL_DOWN.matches(t) -> AssistantAction.ScreenScroll(down = true)
+        SCROLL_UP.matches(t) -> AssistantAction.ScreenScroll(down = false)
+        else -> null
+    }
+
+    /** "Likho kal milte hain" / "type karo ki main aa raha hoon": typed into the app in front (asked first). */
+    private val TYPE_FIRST = Regex("^(?:(?:ye|yeh|ये|यह) )?(?:likho|likh do|type karo|type kar do|लिखो|लिख दो|टाइप करो)(?: (?:ki|कि))? (.{1,200})$", RegexOption.IGNORE_CASE)
+
+    private fun typeOnScreen(text: String): AssistantAction? {
+        val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "")
+        val words = TYPE_FIRST.matchEntire(t)?.groupValues?.get(1)?.trim()?.trim('"', '\'', '“', '”') ?: return null
+        return if (words.isBlank()) null else AssistantAction.ScreenType(words, null)
     }
 
     // ------------------------------------------------------------------ music

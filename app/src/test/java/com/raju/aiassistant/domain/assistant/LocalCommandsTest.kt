@@ -232,4 +232,23 @@ class LocalCommandsTest {
             .forEach { assertEquals(it, AssistantAction.ReadNotification, p(it)) }
         assertNull(p("kisne kiya tha")) // no call / message word: could be about anything
     }
+
+    @Test
+    fun smsAndScreenActionsAreUnderstoodOnThePhone() {
+        assertEquals(AssistantAction.Sms("Firoz", null, "abhi tak payment nahi mila hai"), p("Firoz ko message karo ki abhi tak payment nahi mila hai"))
+        assertEquals(AssistantAction.Sms("Mummy", null, "main 8 baje aaunga"), p("Seema, Mummy ko SMS bhejo ki main 8 baje aaunga."))
+        assertEquals(AssistantAction.Sms(null, "98765 43210", "pahunch gaya"), p("98765 43210 ko message bhejo ki pahunch gaya"))
+        assertEquals(AssistantAction.WhatsApp("Riya", "kal milte hain"), p("WhatsApp par Riya ko message bhejo ki kal milte hain")) // WhatsApp stays WhatsApp
+        assertNull(p("mom ko sms karo")) // no words: the AI asks what to write
+
+        assertEquals(AssistantAction.ScreenTap("send"), p("send dabao"))
+        assertEquals(AssistantAction.ScreenTap("ok"), p("OK button press karo"))
+        assertEquals(AssistantAction.ScreenTap("install"), p("install pe click karo"))
+        assertNull(p("call dabao"))
+
+        assertEquals(AssistantAction.ScreenScroll(down = true), p("neeche scroll karo"))
+        assertEquals(AssistantAction.ScreenScroll(down = false), p("scroll up"))
+        assertEquals(AssistantAction.ScreenType("kal milte hain", null), p("likho kal milte hain"))
+        assertEquals(AssistantAction.ScreenType("main aa raha hoon", null), p("type karo ki main aa raha hoon"))
+    }
 }

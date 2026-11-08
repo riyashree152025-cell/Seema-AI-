@@ -419,8 +419,9 @@ class AssistantEngineTest {
         assertTrue(tools.sms.isEmpty()) // a spoken choice is confirmed once more
         voice.onResult!!("haan")
         settle()
-        assertEquals(listOf("+919711945150" to "Abhi tak payment nahi mila hai"), tools.sms)
+        assertEquals(listOf("+919711945150" to "abhi tak payment nahi mila hai"), tools.sms) // the user's own words
         assertTrue(speaker.spoken.any { it.contains("Firoz को SMS भेज दिया") })
+        assertTrue(provider.calls.isEmpty()) // understood on the phone: works the same every time
     }
 
     @Test
@@ -1141,7 +1142,8 @@ class AssistantEngineTest {
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("ये लिख दूँ"))
         voice.onResult!!("हाँ")
         settle()
-        assertEquals(listOf<ScreenOp>(ScreenOp.Type("Kal milte hain", null)), tools.screenOps)
+        // On the phone the words are typed as the user said them (no AI request in between).
+        assertEquals(listOf<ScreenOp>(ScreenOp.Type("kal milte hain", null)), tools.screenOps)
         assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("लिख दिया"))
     }
 
