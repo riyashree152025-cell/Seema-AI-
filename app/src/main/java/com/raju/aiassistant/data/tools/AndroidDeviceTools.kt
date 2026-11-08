@@ -345,6 +345,13 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return start(intent, "Timer set for $shown.", "No clock app accepted the timer.")
     }
 
+    override fun setTatkalAlarm(hour: Int, minute: Int, label: String): ToolOutcome {
+        val alarm = com.raju.aiassistant.domain.tatkal.TatkalAlarm(hour, minute, label)
+        val exact = com.raju.aiassistant.notifications.TatkalAlarms.add(context, alarm)
+        val msg = "${label} Tatkal alarm set for ${alarm.timeText} every day."
+        return ToolOutcome.Done(if (exact) msg else msg + " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
+    }
+
     override fun setAlarm(hour: Int, minute: Int, note: String): ToolOutcome {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM)
             .putExtra(AlarmClock.EXTRA_HOUR, hour)

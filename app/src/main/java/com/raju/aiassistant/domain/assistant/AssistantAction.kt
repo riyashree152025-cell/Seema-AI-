@@ -64,6 +64,10 @@ sealed interface AssistantAction {
     data class SetAlarm(val hour: Int, val minute: Int, val note: String) : AssistantAction {
         override val label get() = "Alarm: %02d:%02d".format(hour, minute)
     }
+    /** A daily Tatkal alert at the user's time ("AC" or "Sleeper"). */
+    data class SetTatkalAlarm(val hour: Int, val minute: Int, val kind: String) : AssistantAction {
+        override val label get() = "Tatkal $kind alarm: %02d:%02d".format(hour, minute)
+    }
     data class Flashlight(val on: Boolean) : AssistantAction {
         override val label get() = "Flashlight " + if (on) "on" else "off"
     }

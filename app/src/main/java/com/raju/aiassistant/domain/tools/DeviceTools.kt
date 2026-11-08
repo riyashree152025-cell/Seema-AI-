@@ -39,6 +39,8 @@ interface DeviceTools {
     // Personal-use extras. Defaults keep older fakes compiling; AndroidDeviceTools overrides all of them.
     fun setTimer(seconds: Int, note: String): ToolOutcome = ToolOutcome.Failed("Timer is not supported here.")
     fun setAlarm(hour: Int, minute: Int, note: String): ToolOutcome = ToolOutcome.Failed("Alarm is not supported here.")
+    /** Daily Tatkal alert. A Done message containing [TATKAL_INEXACT] means it may ring late (exact alarms off). */
+    fun setTatkalAlarm(hour: Int, minute: Int, label: String): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
     fun setFlashlight(on: Boolean): ToolOutcome = ToolOutcome.Failed("Flashlight is not supported here.")
     fun setVolume(percent: Int): ToolOutcome = ToolOutcome.Failed("Volume control is not supported here.")
     fun mediaControl(command: MediaCommand): ToolOutcome = ToolOutcome.Failed("Media control is not supported here.")
@@ -115,3 +117,6 @@ fun normalizeForWhatsApp(number: String): String? {
 /** Deduplicates contacts by number (last 10 digits). */
 fun distinctContacts(contacts: List<Contact>): List<Contact> =
     contacts.distinctBy { it.number.filter(Char::isDigit).takeLast(10) }
+
+/** Added to a Tatkal alarm's reply when exact alarms are off: it may ring a little late. */
+const val TATKAL_INEXACT = "(exact alarm off: may ring late)"

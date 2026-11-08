@@ -1319,6 +1319,19 @@ class AssistantEngine(
                     say(phrase(lang(), "$time बजे का अलार्म लगा दिया है।", "$time এর অ্যালার্ম দিয়ে দিয়েছি।"))
                 }
             }
+            is AssistantAction.SetTatkalAlarm -> {
+                trace("offline command: tatkal alarm")
+                val outcome = tools.setTatkalAlarm(action.hour, action.minute, action.kind)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done) {
+                    val time = "%02d:%02d".format(action.hour, action.minute)
+                    val late = outcome.message.contains(com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
+                    say(
+                        phrase(lang(), "${action.kind} Tatkal का अलार्म रोज़ $time बजे लगा दिया है।", "${action.kind} Tatkal-এর অ্যালার্ম রোজ $time-এ দিয়ে দিয়েছি।") +
+                            if (late) phrase(lang(), " अलार्म ठीक समय पर बजे, इसके लिए फ़ोन में Alarms & reminders की अनुमति दीजिए।", " অ্যালার্ম ঠিক সময়ে বাজার জন্য ফোনে Alarms & reminders অনুমতি দিন।") else "",
+                    )
+                }
+            }
             is AssistantAction.TakePhoto -> {
                 trace("offline command: photo")
                 _state.value = AssistantState.Executing
@@ -1866,6 +1879,7 @@ class AssistantEngine(
             is AssistantAction.Remember -> remember(action)
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))
             is AssistantAction.SetAlarm -> report(action, tools.setAlarm(action.hour, action.minute, action.note))
+            is AssistantAction.SetTatkalAlarm -> report(action, tools.setTatkalAlarm(action.hour, action.minute, action.kind))
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
             is AssistantAction.Volume -> report(action, tools.setVolume(action.percent))
             is AssistantAction.Media -> {

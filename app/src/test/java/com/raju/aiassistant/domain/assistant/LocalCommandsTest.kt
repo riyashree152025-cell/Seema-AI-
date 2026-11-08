@@ -41,6 +41,9 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.SetAlarm(19, 0, ""), p("alarm shaam 7 baje"))
         assertEquals(AssistantAction.SetAlarm(22, 0, ""), p("रात 10 बजे का अलार्म लगाओ"))
         assertEquals(AssistantAction.SetAlarm(18, 45, ""), p("18:45 ka alarm"))
+        assertEquals(AssistantAction.SetTatkalAlarm(9, 58, "AC"), p("tatkal alarm 9:58 AC"))
+        assertEquals(AssistantAction.SetTatkalAlarm(10, 58, "Sleeper"), p("10:58 baje sleeper ke liye tatkal yaad dilao"))
+        assertEquals(null, p("6 baje ka alarm")) // still asked: morning or evening?
         assertNull(p("6 baje ka alarm")) // morning or evening? the AI asks
     }
 

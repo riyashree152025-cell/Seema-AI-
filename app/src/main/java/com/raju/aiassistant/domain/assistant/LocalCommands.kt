@@ -1,5 +1,7 @@
 package com.raju.aiassistant.domain.assistant
 
+import com.raju.aiassistant.domain.tatkal.parseTatkal
+
 import com.raju.aiassistant.domain.tools.MediaCommand
 
 /**
@@ -18,6 +20,7 @@ object LocalCommands {
         whatsApp(text)?.let { return it }
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
+        parseTatkal(text)?.let { return AssistantAction.SetTatkalAlarm(it.hour, it.minute, it.label) }
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
