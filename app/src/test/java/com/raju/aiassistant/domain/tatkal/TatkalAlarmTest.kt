@@ -48,4 +48,18 @@ class TatkalAlarmTest {
     fun acAndSleeperAlarmsNeverShareAnId() {
         assertFalse(TatkalAlarm(9, 58, "AC").id == TatkalAlarm(9, 58, "Sleeper").id)
     }
+
+    @Test
+    fun aSentenceCanSetListOrCancel() {
+        assertEquals(TatkalCommand.Set(TatkalAlarm(9, 58, "AC")), parseTatkalCommand("tatkal alarm 9:58 AC"))
+        assertEquals(TatkalCommand.List, parseTatkalCommand("tatkal alarm list karo"))
+        assertEquals(TatkalCommand.List, parseTatkalCommand("mere tatkal alarm batao"))
+        assertEquals(TatkalCommand.List, parseTatkalCommand("कितने तत्काल अलार्म लगे हैं"))
+        assertEquals(TatkalCommand.Cancel(9, 58, "AC"), parseTatkalCommand("9:58 AC tatkal alarm cancel karo"))
+        assertEquals(TatkalCommand.Cancel(10, 58, null), parseTatkalCommand("10:58 wala tatkal alarm band karo"))
+        assertEquals(TatkalCommand.CancelAll, parseTatkalCommand("sab tatkal alarm hata do"))
+        assertEquals(TatkalCommand.CancelAll, parseTatkalCommand("तत्काल के सारे अलार्म हटाओ"))
+        assertNull(parseTatkalCommand("tatkal alarm cancel karo")) // which one? no time, no "sab"
+        assertNull(parseTatkalCommand("tatkal ke baare mein batao")) // a question, no time: not a list either? it is a question for the AI
+    }
 }

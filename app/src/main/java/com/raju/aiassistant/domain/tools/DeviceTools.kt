@@ -41,6 +41,10 @@ interface DeviceTools {
     fun setAlarm(hour: Int, minute: Int, note: String): ToolOutcome = ToolOutcome.Failed("Alarm is not supported here.")
     /** Daily Tatkal alert. A Done message containing [TATKAL_INEXACT] means it may ring late (exact alarms off). */
     fun setTatkalAlarm(hour: Int, minute: Int, label: String): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
+    fun listTatkalAlarms(): List<com.raju.aiassistant.domain.tatkal.TatkalAlarm> = emptyList()
+    /** Removes the alarms at that time ([kind] null: either class). Done message carries the count. */
+    fun cancelTatkalAlarms(hour: Int, minute: Int, kind: String?): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
+    fun cancelAllTatkalAlarms(): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
     fun setFlashlight(on: Boolean): ToolOutcome = ToolOutcome.Failed("Flashlight is not supported here.")
     fun setVolume(percent: Int): ToolOutcome = ToolOutcome.Failed("Volume control is not supported here.")
     fun mediaControl(command: MediaCommand): ToolOutcome = ToolOutcome.Failed("Media control is not supported here.")

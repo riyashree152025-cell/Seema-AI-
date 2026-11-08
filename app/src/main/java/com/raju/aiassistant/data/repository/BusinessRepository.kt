@@ -1,11 +1,16 @@
 package com.raju.aiassistant.data.repository
 
 import com.raju.aiassistant.data.db.BusinessDao
+import com.raju.aiassistant.data.db.ClientEntity
 import com.raju.aiassistant.data.db.ExpenseEntity
 import com.raju.aiassistant.data.db.JourneyEntity
+import com.raju.aiassistant.data.db.LedgerEntryEntity
 import com.raju.aiassistant.domain.business.BusinessStore
 import com.raju.aiassistant.domain.business.Expense
 import com.raju.aiassistant.domain.business.Journey
+import com.raju.aiassistant.domain.ledger.LedgerKind
+import com.raju.aiassistant.domain.ledger.LedgerLine
+import com.raju.aiassistant.domain.ledger.balanceOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -54,6 +59,26 @@ class BusinessRepository(private val dao: BusinessDao, private val clock: () -> 
 
     /** Journeys more than a week in the past are no longer useful. */
     suspend fun pruneOldJourneys(today: LocalDate) = dao.deleteJourneysBefore(today.minusDays(7).toString())
+
+    /** Clients are found by their name ignoring case, spaces and punctuation; a new name makes a new client. */
+    override suspend fun recordLedger(name: String, amountPaise: Long, kind: LedgerKind): Long? {
+        val key = clientKey(name).ifEmpty { return null }
+        val id = dao.clientByName(key)?.id
+            ?: dao.insertClient(ClientEntity(name = name.trim().take(60), normalizedName = key, phone = null, createdAt = clock()))
+        dao.insertLedgerEntry(LedgerEntryEntity(clientId = id, amountPaise = amountPaise, type = kind.name, note = "", createdAt = clock()))
+        return balanceOfClient(id)
+    }
+
+    override suspend fun ledgerBalance(name: String): Long? {
+        val key = clientKey(name).ifEmpty { return null }
+        val id = dao.clientByName(key)?.id ?: return null
+        return balanceOfClient(id)
+    }
+
+    private suspend fun balanceOfClient(clientId: Long): Long =
+        balanceOf(dao.ledgerFor(clientId).map { LedgerLine(LedgerKind.valueOf(it.type), it.amountPaise) })
+
+    private fun clientKey(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
 }
 
 private fun ExpenseEntity.toDomain() = Expense(id, amountPaise, note, category, createdAt)

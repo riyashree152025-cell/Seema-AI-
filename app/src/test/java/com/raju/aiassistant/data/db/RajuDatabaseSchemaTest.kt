@@ -26,6 +26,11 @@ class RajuDatabaseSchemaTest {
         assertEquals(expectedSql(4, setOf("kb_documents", "kb_chunks")).sorted(), RajuDatabase.MIGRATION_3_4_SQL.sorted())
     }
 
+    @Test
+    fun migration4to5MatchesRoomsSchema() {
+        assertEquals(expectedSql(5, setOf("clients", "ledger_entries")).sorted(), RajuDatabase.MIGRATION_4_5_SQL.sorted())
+    }
+
     private fun expectedSql(version: Int, tables: Set<String>): List<String> {
         val file = File("schemas/com.raju.aiassistant.data.db.RajuDatabase/$version.json")
         assertTrue("Room schema not exported at ${file.absolutePath}", file.exists())

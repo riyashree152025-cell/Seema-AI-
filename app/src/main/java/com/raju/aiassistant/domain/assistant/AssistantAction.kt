@@ -68,6 +68,23 @@ sealed interface AssistantAction {
     data class SetTatkalAlarm(val hour: Int, val minute: Int, val kind: String) : AssistantAction {
         override val label get() = "Tatkal $kind alarm: %02d:%02d".format(hour, minute)
     }
+    data object TatkalList : AssistantAction {
+        override val label get() = "Tatkal alarms: list"
+    }
+    /** [kind] null: the alarm at that time, of either class. */
+    data class TatkalCancel(val hour: Int, val minute: Int, val kind: String?) : AssistantAction {
+        override val label get() = "Tatkal alarm cancel: %02d:%02d".format(hour, minute)
+    }
+    data object TatkalCancelAll : AssistantAction {
+        override val label get() = "Tatkal alarms: cancel all"
+    }
+    /** Udhaar book: money given to [name] (GAVE) or got back from them (GOT). */
+    data class LedgerRecord(val name: String, val amountPaise: Long, val kind: com.raju.aiassistant.domain.ledger.LedgerKind) : AssistantAction {
+        override val label get() = "Ledger: $name ${formatRupees(amountPaise)} ${kind.name}"
+    }
+    data class LedgerBalance(val name: String) : AssistantAction {
+        override val label get() = "Ledger balance: $name"
+    }
     data class Flashlight(val on: Boolean) : AssistantAction {
         override val label get() = "Flashlight " + if (on) "on" else "off"
     }

@@ -50,10 +50,28 @@ object TatkalAlarms {
 
     /** Saves the alarm and sets it. Returns false when it could only be set inexactly (see the class note). */
     fun add(context: Context, alarm: TatkalAlarm): Boolean {
-        val kept = all(context).filter { it.id != alarm.id } + alarm
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY, kept.joinToString(";") { "${it.hour}:${it.minute}:${it.label}" }).apply()
+        save(context, all(context).filter { it.id != alarm.id } + alarm)
         return schedule(context, alarm)
+    }
+
+    /** Cancels and forgets the alarms [matching]. Returns how many were removed. */
+    fun remove(context: Context, matching: (TatkalAlarm) -> Boolean): Int {
+        val gone = all(context).filter(matching)
+        if (gone.isEmpty()) return 0
+        val am = context.getSystemService(AlarmManager::class.java)
+        gone.forEach { alarm ->
+            PendingIntent.getBroadcast(
+                context, alarm.id, Intent(context, TatkalAlarmReceiver::class.java),
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+            )?.let { pi -> am?.cancel(pi); pi.cancel() }
+        }
+        save(context, all(context) - gone.toSet())
+        return gone.size
+    }
+
+    private fun save(context: Context, alarms: List<TatkalAlarm>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY, alarms.joinToString(";") { "${it.hour}:${it.minute}:${it.label}" }).apply()
     }
 
     /** After a restart or an app update the alarms are gone from AlarmManager: set them again. */

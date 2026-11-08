@@ -1451,6 +1451,8 @@ class AssistantEngine(
                 trace("offline command: ${if (action.date) "date" else "time"}")
                 informational(action, spokenClock(action), speak)
             }
+            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
+            AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             else -> return false
         }
         if (_state.value != AssistantState.Error) {
@@ -1880,6 +1882,8 @@ class AssistantEngine(
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))
             is AssistantAction.SetAlarm -> report(action, tools.setAlarm(action.hour, action.minute, action.note))
             is AssistantAction.SetTatkalAlarm -> report(action, tools.setTatkalAlarm(action.hour, action.minute, action.kind))
+            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
+            AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
             is AssistantAction.Volume -> report(action, tools.setVolume(action.percent))
             is AssistantAction.Media -> {
@@ -1940,6 +1944,71 @@ class AssistantEngine(
      * service, for the PNR said or the journeys of the next 7 days. Without a service: the official
      * page opens with the PNR copied (no free official API exists).
      */
+    /** Udhaar book and Tatkal alarm list / cancel: no AI, the answer is spoken and kept in the action log. */
+    private suspend fun ledgerOrTatkal(action: AssistantAction, speak: Boolean) {
+        when (action) {
+            is AssistantAction.LedgerRecord -> {
+                trace("offline command: ledger entry")
+                val balance = runCatching { business.recordLedger(action.name, action.amountPaise, action.kind) }.getOrNull()
+                if (balance == null) {
+                    report(action, ActionStatus.FAILED, "Udhaar book could not save the entry.")
+                    return
+                }
+                val paid = formatRupees(action.amountPaise)
+                val head = if (action.kind == com.raju.aiassistant.domain.ledger.LedgerKind.GOT)
+                    phrase(lang(), "Entry saved: ${action.name} se $paid mile।", "Entry saved: ${action.name} থেকে $paid পেলাম।")
+                else phrase(lang(), "Entry saved: ${action.name} ko $paid diye।", "Entry saved: ${action.name}-কে $paid দিলাম।")
+                val text = head + " " + ledgerBalanceText(action.name, balance)
+                report(action, ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            is AssistantAction.LedgerBalance -> {
+                trace("offline command: ledger balance")
+                val balance = runCatching { business.ledgerBalance(action.name) }.getOrNull()
+                val text = if (balance == null) phrase(lang(), "${action.name} के नाम से कोई हिसाब नहीं मिला।", "${action.name}-এর নামে কোনো হিসাব পাইনি।")
+                    else ledgerBalanceText(action.name, balance)
+                report(action, if (balance == null) ActionStatus.FAILED else ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            AssistantAction.TatkalList -> {
+                trace("offline command: tatkal list")
+                val list = tools.listTatkalAlarms()
+                val text = if (list.isEmpty()) phrase(lang(), "कोई Tatkal alarm लगा नहीं है।", "কোনো Tatkal অ্যালার্ম নেই।")
+                    else phrase(lang(), "Tatkal alarm रोज़: ", "রোজ Tatkal অ্যালার্ম: ") + list.joinToString(", ") { "${it.label} ${it.timeText}" }
+                report(action, ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            is AssistantAction.TatkalCancel -> {
+                trace("offline command: tatkal cancel")
+                val outcome = tools.cancelTatkalAlarms(action.hour, action.minute, action.kind)
+                val time = "%02d:%02d".format(action.hour, action.minute)
+                val text = if (outcome is ToolOutcome.Done) phrase(lang(), "$time वाला Tatkal alarm हटा दिया।", "$time-এর Tatkal অ্যালার্ম সরিয়ে দিয়েছি।")
+                    else phrase(lang(), "$time पर कोई Tatkal alarm नहीं मिला।", "$time-এ কোনো Tatkal অ্যালার্ম পাইনি।")
+                report(action, outcome)
+                if (speak) say(text)
+            }
+            AssistantAction.TatkalCancelAll -> {
+                trace("offline command: tatkal cancel all")
+                val outcome = tools.cancelAllTatkalAlarms()
+                val text = if (outcome is ToolOutcome.Done) phrase(lang(), "सारे Tatkal alarm हटा दिए।", "সব Tatkal অ্যালার্ম সরিয়ে দিয়েছি।")
+                    else phrase(lang(), "कोई Tatkal alarm लगा नहीं था।", "কোনো Tatkal অ্যালার্ম ছিল না।")
+                report(action, outcome)
+                if (speak) say(text)
+            }
+            else -> Unit
+        }
+    }
+
+    /** "Rahul ka baaki ₹900 hai." / "Aapko Rahul ko ₹900 dene hain." / "Hisaab barabar hai." */
+    private fun ledgerBalanceText(name: String, balance: Long): String {
+        val amount = formatRupees(kotlin.math.abs(balance))
+        return when {
+            balance > 0 -> phrase(lang(), "$name का बाकी $amount है।", "$name-এর বাকি $amount।")
+            balance < 0 -> phrase(lang(), "आपको $name को $amount देने हैं।", "আপনাকে $name-কে $amount দিতে হবে।")
+            else -> phrase(lang(), "$name का हिसाब बराबर है।", "$name-এর হিসাব সমান।")
+        }
+    }
+
     private suspend fun pnrStatus(action: AssistantAction.PnrStatus, speak: Boolean) {
         val pnrs = if (action.pnr.isNotBlank()) listOf(action.pnr) else {
             val today = today()

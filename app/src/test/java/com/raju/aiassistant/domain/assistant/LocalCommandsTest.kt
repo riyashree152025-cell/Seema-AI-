@@ -44,6 +44,11 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.SetTatkalAlarm(9, 58, "AC"), p("tatkal alarm 9:58 AC"))
         assertEquals(AssistantAction.SetTatkalAlarm(10, 58, "Sleeper"), p("10:58 baje sleeper ke liye tatkal yaad dilao"))
         assertEquals(null, p("6 baje ka alarm")) // still asked: morning or evening?
+        assertEquals(AssistantAction.TatkalList, p("tatkal alarm list karo"))
+        assertEquals(AssistantAction.TatkalCancel(9, 58, "AC"), p("9:58 AC tatkal cancel karo"))
+        assertEquals(AssistantAction.TatkalCancelAll, p("sab tatkal alarm hata do"))
+        assertEquals(AssistantAction.LedgerRecord("Rahul", 50_000, com.raju.aiassistant.domain.ledger.LedgerKind.GOT), p("Rahul se 500 rupaye mile"))
+        assertEquals(AssistantAction.LedgerBalance("Rahul"), p("Rahul ka hisaab batao"))
         assertNull(p("6 baje ka alarm")) // morning or evening? the AI asks
     }
 

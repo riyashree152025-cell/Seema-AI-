@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, MemoryEntity::class, ActionLogEntity::class, ExpenseEntity::class, JourneyEntity::class, KbDocumentEntity::class, KbChunkEntity::class],
-    version = 4,
+    entities = [ConversationEntity::class, MessageEntity::class, MemoryEntity::class, ActionLogEntity::class, ExpenseEntity::class, JourneyEntity::class, KbDocumentEntity::class, KbChunkEntity::class, ClientEntity::class, LedgerEntryEntity::class],
+    version = 5,
     exportSchema = true,
 )
 abstract class RajuDatabase : RoomDatabase() {
@@ -58,9 +58,23 @@ abstract class RajuDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5: adds the client memory and the udhaar book (entries). Existing data is kept. */
+        val MIGRATION_4_5_SQL = listOf(
+            "CREATE TABLE IF NOT EXISTS `clients` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `normalizedName` TEXT NOT NULL, `phone` TEXT, `createdAt` INTEGER NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS `index_clients_normalizedName` ON `clients` (`normalizedName`)",
+            "CREATE TABLE IF NOT EXISTS `ledger_entries` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `clientId` INTEGER NOT NULL, `amountPaise` INTEGER NOT NULL, `type` TEXT NOT NULL, `note` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS `index_ledger_entries_clientId` ON `ledger_entries` (`clientId`)",
+        )
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_5_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
         fun create(context: Context): RajuDatabase =
             Room.databaseBuilder(context, RajuDatabase::class.java, "raju_ai.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

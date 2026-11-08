@@ -36,6 +36,11 @@ interface BusinessStore {
     suspend fun saveJourney(journey: Journey): Long
     suspend fun journeysFrom(date: LocalDate): List<Journey>
     suspend fun removeJourney(pnr: String): Boolean
+
+    /** Udhaar book: records money given (GAVE) or got back (GOT); returns the client's balance now, or null if not stored. */
+    suspend fun recordLedger(name: String, amountPaise: Long, kind: com.raju.aiassistant.domain.ledger.LedgerKind): Long? = null
+    /** What [name] still owes me (negative: I owe them), or null when there is no such client. */
+    suspend fun ledgerBalance(name: String): Long? = null
 }
 
 object NoBusinessStore : BusinessStore {

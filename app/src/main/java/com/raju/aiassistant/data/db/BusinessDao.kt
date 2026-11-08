@@ -43,4 +43,16 @@ interface BusinessDao {
 
     @Query("DELETE FROM journeys WHERE journeyDate < :beforeDate")
     suspend fun deleteJourneysBefore(beforeDate: String): Int
+
+    @Insert
+    suspend fun insertClient(client: ClientEntity): Long
+
+    @Query("SELECT * FROM clients WHERE normalizedName = :normalized ORDER BY id ASC LIMIT 1")
+    suspend fun clientByName(normalized: String): ClientEntity?
+
+    @Insert
+    suspend fun insertLedgerEntry(entry: LedgerEntryEntity): Long
+
+    @Query("SELECT * FROM ledger_entries WHERE clientId = :clientId ORDER BY createdAt ASC, id ASC")
+    suspend fun ledgerFor(clientId: Long): List<LedgerEntryEntity>
 }

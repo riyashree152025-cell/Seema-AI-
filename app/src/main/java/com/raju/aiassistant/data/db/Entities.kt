@@ -94,3 +94,24 @@ data class KbChunkEntity(
     val chunkIndex: Int,
     val text: String,
 )
+
+/** Client memory: someone the user does udhaar or payments with. [normalizedName] finds them again. */
+@Entity(tableName = "clients", indices = [Index("normalizedName")])
+data class ClientEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val normalizedName: String,
+    val phone: String?,
+    val createdAt: Long,
+)
+
+/** One udhaar-book entry: [type] is GAVE (I gave) or GOT (I got back); amount in paise. */
+@Entity(tableName = "ledger_entries", indices = [Index("clientId")])
+data class LedgerEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val clientId: Long,
+    val amountPaise: Long,
+    val type: String,
+    val note: String,
+    val createdAt: Long,
+)

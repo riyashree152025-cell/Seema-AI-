@@ -352,6 +352,21 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return ToolOutcome.Done(if (exact) msg else msg + " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
     }
 
+    override fun listTatkalAlarms() = com.raju.aiassistant.notifications.TatkalAlarms.all(context)
+
+    override fun cancelTatkalAlarms(hour: Int, minute: Int, kind: String?): ToolOutcome {
+        val n = com.raju.aiassistant.notifications.TatkalAlarms.remove(context) {
+            it.hour == hour && it.minute == minute && (kind == null || it.label == kind)
+        }
+        return if (n == 0) ToolOutcome.Failed("No Tatkal alarm at %02d:%02d.".format(hour, minute))
+        else ToolOutcome.Done("Removed $n Tatkal alarm(s) at %02d:%02d.".format(hour, minute))
+    }
+
+    override fun cancelAllTatkalAlarms(): ToolOutcome {
+        val n = com.raju.aiassistant.notifications.TatkalAlarms.remove(context) { true }
+        return if (n == 0) ToolOutcome.Failed("No Tatkal alarm is set.") else ToolOutcome.Done("Removed $n Tatkal alarm(s).")
+    }
+
     override fun setAlarm(hour: Int, minute: Int, note: String): ToolOutcome {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM)
             .putExtra(AlarmClock.EXTRA_HOUR, hour)
