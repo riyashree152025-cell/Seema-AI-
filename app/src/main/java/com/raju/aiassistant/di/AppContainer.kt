@@ -164,7 +164,7 @@ class AppContainer(context: Context) {
     val micHub by lazy {
         com.raju.aiassistant.data.voice.MicHub(
             appScope,
-            { com.raju.aiassistant.data.voice.AudioRecordFrameSource() },
+            { com.raju.aiassistant.data.voice.AudioRecordFrameSource(enhance = { audioInterruptions.ringing() }) },
             ringFrames = com.raju.aiassistant.data.voice.ringFramesFor(com.raju.aiassistant.data.voice.minMicBufferBytes()),
             log = { android.util.Log.i("SeemaVoice", it) },
         )
@@ -184,13 +184,18 @@ class AppContainer(context: Context) {
                 when (phase) {
                     com.raju.aiassistant.core.audio.CallPhase.RINGING -> {
                         engine.onCallRinging()
+                        val s = currentSettings.value
+                        // The ringtone down to ~20 % while she announces and listens; restored below.
+                        if (s.announceCalls && !s.assistantPaused && !s.safetyMode) ringDucker.duck()
                         announceRingingIfNobodyDid()
                     }
                     com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> {
+                        ringDucker.restore()
                         engine.pauseForCall()
                         if (currentSettings.value.micHub) micHub.pauseForCall()
                     }
                     com.raju.aiassistant.core.audio.CallPhase.NONE -> {
+                        ringDucker.restore()
                         engine.resumeAfterCall()
                         if (currentSettings.value.micHub) micHub.resumeAfterCall()
                     }
@@ -287,6 +292,8 @@ class AppContainer(context: Context) {
     val deviceTools by lazy { AndroidDeviceTools(appContext) }
     val announcementDeduper = AnnouncementDeduper()
     val callDeduper = CallDeduper()
+
+    val ringDucker by lazy { com.raju.aiassistant.core.audio.RingDucker(appContext) }
 
     /** When a call was last announced (by the call-screening service, with the caller's name). */
     @Volatile var lastCallAnnouncedAt = 0L

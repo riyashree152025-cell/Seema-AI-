@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -43,6 +42,11 @@ fun LivingEyeVisualizer(
     /** False in battery saver or on a hot phone: fewer wave layers, points and iris lines. */
     richEffects: Boolean = true,
     accentArgb: Long = eyeAccentArgb(state),
+    /** Home draws the waves once, full screen behind everything, and the eye on its own layer. */
+    drawWaves: Boolean = true,
+    drawEye: Boolean = true,
+    /** Where the waves run, as a share of the height (the eye's height on Home). */
+    waveCenterY: Float = 0.5f,
 ) {
     val accent by animateColorAsState(Color(accentArgb), tween(450), label = "eyeAccent")
     // Energy carried between frames so the waves swell and fade instead of jumping.
@@ -52,21 +56,22 @@ fun LivingEyeVisualizer(
         val target = waveEnergy(state, speechLevel(), micLevel())
         energy[0] = smoothEnergy(energy[0], target)
         val e = energy[0]
-        drawAmbientWaves(t, e, accent, richEffects)
-        drawLivingEye(t, e, state, accent, richEffects)
+        if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, waveCenterY)
+        if (drawEye) drawLivingEye(t, e, state, accent, richEffects)
     }
 }
 
-private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, richEffects: Boolean) {
+private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, richEffects: Boolean, centerY: Float) {
     val w = size.width
     val h = size.height
     val layers = waveLayerCount(richEffects)
     val points = wavePointCount(richEffects)
     val gradient = WAVE_GRADIENT_ARGB.map { Color(it) }
-    val midY = h / 2f
+    val midY = h * centerY.coerceIn(0.1f, 0.9f)
     for (layer in layers - 1 downTo 0) {
-        val amp = h * (0.05f + 0.30f * energy) * (1f - layer * 0.14f)
-        val offsetY = (layer - (layers - 1) / 2f) * h * 0.035f
+        val band = minOf(h, w * 1.6f) // full-screen layer: waves stay a band, not the whole height
+        val amp = band * (0.04f + 0.20f * energy) * (1f - layer * 0.14f)
+        val offsetY = (layer - (layers - 1) / 2f) * band * 0.03f
         val top = Path()
         val bottom = Path()
         for (i in 0..points) {
@@ -112,28 +117,16 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
     // Glow around the eye.
     drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f * dim), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
 
-    // Spikes turning around the iris while she listens, thinks, works or speaks.
-    if (eyeSpikesActive(state)) {
-        val count = if (richEffects) 56 else 32
-        val turn = t * eyeSpinSpeed(state) * 2f * PI.toFloat()
-        for (i in 0 until count) {
-            val a = turn + i * 2f * PI.toFloat() / count
-            val wobble = 0.5f + 0.5f * sin(t * 6f + i * 1.7f)
-            val len = r * (0.08f + 0.18f * energy * wobble + if (i % 4 == 0) 0.06f else 0f)
-            val from = Offset(c.x + cos(a) * r * 1.06f, c.y + sin(a) * r * 1.06f)
-            val to = Offset(c.x + cos(a) * (r * 1.06f + len), c.y + sin(a) * (r * 1.06f + len))
-            drawLine(accent.copy(alpha = 0.55f + 0.4f * wobble), from, to, strokeWidth = (if (i % 4 == 0) 2.2f else 1.3f) * density, cap = StrokeCap.Round)
-        }
-    }
-
     // Iris: bright near the pupil, deep blue at the edge.
     drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.9f * dim), accent.copy(alpha = dim), IRIS_DEEP), c, r), r, c)
 
-    // Iris fibres from the pupil outwards, gently shimmering.
+    // Iris fibres from the pupil outwards, gently shimmering; while she listens, thinks, works or
+    // speaks the whole iris turns (no rings, ticks or arcs around it).
     val pupilR = r * pupilScale(t, energy, state)
     val lines = irisLineCount(richEffects)
+    val turn = if (eyeSpikesActive(state)) t * eyeSpinSpeed(state) * 2f * PI.toFloat() else 0f
     for (i in 0 until lines) {
-        val a = i * 2f * PI.toFloat() / lines + 0.04f * sin(t * 0.8f + i)
+        val a = turn + i * 2f * PI.toFloat() / lines + 0.04f * sin(t * 0.8f + i)
         val inner = pupilR * 1.08f
         val outer = r * (0.86f + 0.08f * sin(i * 2.3f))
         val shade = if (i % 2 == 0) EYE_WHITE else accent
@@ -145,18 +138,14 @@ private fun DrawScope.drawLivingEye(t: Float, energy: Float, state: AssistantSta
         )
     }
 
-    // Radar sweep inside the iris while she is processing.
+    // While she processes, a soft light circles inside the iris (a moving glow, not an arc).
     if (eyeRadarActive(state)) {
-        val sweep = (t * 220f) % 360f
-        drawArc(
-            Brush.radialGradient(listOf(accent.copy(alpha = 0.55f), Color.Transparent), c, r * 0.95f),
-            startAngle = sweep, sweepAngle = 70f, useCenter = true,
-            topLeft = Offset(c.x - r * 0.95f, c.y - r * 0.95f), size = Size(r * 1.9f, r * 1.9f),
-        )
+        val a = t * 3.8f
+        val glow = Offset(c.x + cos(a) * r * 0.62f, c.y + sin(a) * r * 0.62f)
+        drawCircle(Brush.radialGradient(listOf(EYE_WHITE.copy(alpha = 0.45f), Color.Transparent), glow, r * 0.35f), r * 0.35f, glow)
     }
 
-    // Pupil with a faint accent edge, and two catch-lights.
-    drawCircle(Brush.radialGradient(listOf(PUPIL, PUPIL, accent.copy(alpha = 0.5f)), c, pupilR * 1.12f), pupilR * 1.12f, c)
+    // Pupil, and two catch-lights.
     drawCircle(PUPIL, pupilR, c)
     drawCircle(EYE_WHITE.copy(alpha = 0.85f * dim), r * 0.09f, Offset(c.x - r * 0.28f, c.y - r * 0.30f))
     drawCircle(EYE_WHITE.copy(alpha = 0.5f * dim), r * 0.04f, Offset(c.x + r * 0.22f, c.y + r * 0.20f))

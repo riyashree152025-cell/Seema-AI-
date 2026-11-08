@@ -224,6 +224,10 @@ class NotificationFlowTest {
         listOf("haan", "haan padho", "suno", "sunao", "हाँ पढ़ो").forEach { assertEquals(it, true, readReply(it)) }
         listOf("rehne do", "nahi", "chup", "मत सुनाओ", "nahi padho").forEach { assertEquals(it, false, readReply(it)) }
         assertNull(readReply("kal milte hain"))
+        // Fast path words from the phone test: "bologe", "batao", "yes", "read"; a bare "na" is a no,
+        // but "padho na" is still a yes.
+        listOf("bologe", "batao", "yes", "read", "padho na").forEach { assertEquals(it, true, readReply(it)) }
+        listOf("na", "skip", "mat").forEach { assertEquals(it, false, readReply(it)) }
     }
 
     @Test

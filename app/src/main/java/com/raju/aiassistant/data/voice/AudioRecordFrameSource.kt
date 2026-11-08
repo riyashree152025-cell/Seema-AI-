@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import kotlin.math.max
 
 /** Android's minimum AudioRecord buffer for Seema's format; the recorder itself gets 4x this. */
@@ -24,8 +26,37 @@ class AudioRecordFrameSource(
         MediaRecorder.AudioSource.MIC,
         MediaRecorder.AudioSource.DEFAULT,
     ),
+    /**
+     * True while the phone rings: the device's echo canceller and noise suppressor are switched on
+     * for this recorder, so "kaat do / bol do …" is heard over the ringtone. Checked on every read.
+     */
+    private val enhance: () -> Boolean = { false },
 ) : FrameSource {
     private var recorder: AudioRecord? = null
+    private var echoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var enhanced = false
+
+    private fun applyEffects(on: Boolean) {
+        val rec = recorder ?: return
+        if (on) {
+            if (echoCanceler == null && AcousticEchoCanceler.isAvailable()) {
+                echoCanceler = runCatching { AcousticEchoCanceler.create(rec.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
+            if (noiseSuppressor == null && NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = runCatching { NoiseSuppressor.create(rec.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
+        } else {
+            releaseEffects()
+        }
+    }
+
+    private fun releaseEffects() {
+        runCatching { echoCanceler?.release() }
+        runCatching { noiseSuppressor?.release() }
+        echoCanceler = null
+        noiseSuppressor = null
+    }
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO is checked by the caller before a lease is taken
     override fun open(): Boolean {
@@ -54,10 +85,18 @@ class AudioRecordFrameSource(
         return false
     }
 
-    override suspend fun read(buf: ByteArray, offset: Int, length: Int): Int =
-        recorder?.read(buf, offset, length) ?: -1
+    override suspend fun read(buf: ByteArray, offset: Int, length: Int): Int {
+        val want = runCatching { enhance() }.getOrDefault(false)
+        if (want != enhanced) {
+            applyEffects(want)
+            enhanced = want
+        }
+        return recorder?.read(buf, offset, length) ?: -1
+    }
 
     override fun close() {
+        releaseEffects()
+        enhanced = false
         recorder?.let {
             runCatching { it.stop() }
             it.release()

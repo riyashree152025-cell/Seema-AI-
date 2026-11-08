@@ -236,15 +236,23 @@ fun HomeScreen(
 
             .background(Brush.verticalGradient(listOf(SciFiBackgroundTop, Color(0xFF040A18), SciFiBackgroundBottom)))
 
-            .navigationBarsPadding()
-
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-
     ) {
+
+        // Ambient fluid waves: the whole screen, edge to edge, behind everything (no side padding).
+        com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
+            time = { timeProvider.floatValue },
+            speechLevel = { speechLevel },
+            micLevel = { micLevel },
+            state = assistantState,
+            modifier = Modifier.fillMaxSize(),
+            richEffects = profile.richEffects,
+            drawEye = false,
+            waveCenterY = 0.42f,
+        )
 
         Column(
 
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 6.dp),
 
             horizontalAlignment = Alignment.CenterHorizontally,
 
@@ -488,9 +496,9 @@ fun HomeScreen(
 
 
 
-                    // Living Eye + ambient waves (all modes): one canvas filling the whole area above the buttons,
-                    // edge to edge. Waves follow her voice while she speaks and the microphone while she listens.
+                    // The Living Eye in the middle (the waves are drawn once, full screen, behind everything).
                     com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
+                        drawWaves = false,
                         time = { timeProvider.floatValue },
                         speechLevel = { speechLevel },
                         micLevel = { micLevel },

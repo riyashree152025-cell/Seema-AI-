@@ -122,11 +122,11 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 25_000L
 /** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
-private const val READ_REPLY_WINDOW_MS = 6_000L
+private const val READ_REPLY_WINDOW_MS = 7_000L
 /** Extra time for an answer that started inside the window to be transcribed. */
 private const val READ_REPLY_GRACE_MS = 4_000L
 /** Pause after her question before the microphone opens, so the end of her own voice is not heard. */
-private const val ECHO_SETTLE_MS = 350L
+private const val ECHO_SETTLE_MS = 400L
 /** "This model is no longer available" and similar replies: the model was retired, not a passing error. */
 internal fun isModelGone(message: String): Boolean {
     val m = message.lowercase()

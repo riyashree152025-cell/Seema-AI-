@@ -137,10 +137,10 @@ fun readReply(heard: String): Boolean? {
 
 // "No" first: "nahi, mat sunao" must never read the message.
 private val READ_NO = Regex(
-    "\\b(nahi|nahin|nai|no|mat|rehne do|rahne do|chup|chhodo|chodo|baad me|baad mein|band karo|skip|cancel)\\b|नहीं|नही|मत|रहने दो|चुप|छोड़ो|बाद में|না|থাক|পরে",
+    "\\b(nahi|nahin|nai|no|mat|rehne do|rahne do|chup|chhodo|chodo|baad me|baad mein|band karo|skip|cancel)\\b|^\\s*(na|ना)\\s*$|नहीं|नही|मत|रहने दो|चुप|छोड़ो|बाद में|না|থাক|পরে",
     RegexOption.IGNORE_CASE,
 )
 private val READ_YES = Regex(
-    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|suno|sunao|suna do|padho|padh do|padhkar|padh ke|bolo|batao|read)\\b|हाँ|हां|सुनाओ|सुना दो|सुनो|पढ़ो|पढ़ दो|पढ़|बोलो|बताओ|হ্যাঁ|পড়ো|শোনাও",
+    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|suno|sunao|suna do|padho|padh do|padhkar|padh ke|bolo|bologe|batao|bata do|read)\\b|हाँ|हां|सुनाओ|सुना दो|सुनो|पढ़ो|पढ़ दो|पढ़|बोलो|बताओ|হ্যাঁ|পড়ো|শোনাও",
     RegexOption.IGNORE_CASE,
 )

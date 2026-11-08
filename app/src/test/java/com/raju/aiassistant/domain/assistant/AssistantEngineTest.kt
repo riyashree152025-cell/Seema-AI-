@@ -1928,8 +1928,8 @@ class AssistantEngineTest {
         runCurrent()
         advanceTimeBy(6_000)
         runCurrent()
-        assertFalse(called) // an answer begun inside the 6 s window still gets time to be transcribed
-        advanceTimeBy(5_000)
+        assertFalse(called) // an answer begun inside the 7 s window still gets time to be transcribed
+        advanceTimeBy(6_000)
         runCurrent()
         assertTrue(called)
         assertNull(got)
