@@ -17,8 +17,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Announces incoming SIM calls. Android only binds this service after the user grants Seema AI the
- * "call screening" role (Settings → Calls). Every call is allowed through unchanged — the app never
- * blocks, rejects, answers, records or silences calls. The caller's name is looked up in Contacts
+ * "call screening" role (Settings → Calls). Every call is allowed through unchanged — the app itself
+ * never blocks, records or silences calls; it answers or rejects one only when the user says so. The caller's name is looked up in Contacts
  * only if Contacts permission was granted; nothing about the call is stored.
  */
 @RequiresApi(29)
@@ -37,9 +37,11 @@ class RajuCallScreeningService : CallScreeningService() {
 
         c.appScope.launch {
             val name = number?.let { lookupContactName(it) }
-            // "Raju, Mummy ka call aa raha hai. Uthau ya cut karu?" — "utha lo" answers, "cut karo" rejects.
+            // "Raju, Mummy ka call aa raha hai. Uthau ya cut karu?" — "utha lo" answers, "cut karo" rejects,
+            // "bol do abhi busy hoon" rejects and replies by SMS.
             c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber, s.userName) + " " + ASK_TO_ANSWER)
-            c.engine.listenForCallCommand()
+            // "Bol do abhi busy hoon" cuts the call and sends those words to this number by SMS.
+            c.engine.listenForCallCommand(number, name)
         }
     }
 

@@ -80,6 +80,8 @@ class AppContainer(context: Context) {
     val memoryRepository by lazy { MemoryRepository(database.memoryDao()) }
     val actionLogRepository by lazy { ActionLogRepository(database.actionLogDao()) }
     val businessRepository by lazy { BusinessRepository(database.businessDao()) }
+    /** PNR status from the service set up in Settings (none by default). */
+    val pnrSource: com.raju.aiassistant.domain.business.PnrSource by lazy { com.raju.aiassistant.data.rail.HttpPnrSource(http, secureKeyStore) }
     /** Imported documents (RAG), stored and searched on the phone. */
     val knowledgeRepository by lazy { com.raju.aiassistant.data.knowledge.KnowledgeRepository(appContext, database.knowledgeDao()) }
     /** Hindi or Bengali right now: set by the engine from what the user says, used by the voice. */
@@ -370,6 +372,7 @@ class AppContainer(context: Context) {
                 }
             },
             business = businessRepository,
+            pnrSource = pnrSource,
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,

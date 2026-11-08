@@ -20,7 +20,7 @@ object LocalCommands {
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
             ?: battery(t) ?: home(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
-            ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: openApp(t)
+            ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: pnr(t) ?: openApp(t)
     }
 
     // ------------------------------------------------------------------ text clean-up
@@ -316,6 +316,19 @@ object LocalCommands {
     )
 
     private fun readScreen(t: String): AssistantAction? = if (READ_SCREEN.matches(t)) AssistantAction.ReadScreen(null) else null
+
+    // ------------------------------------------------------------------ PNR
+
+    private val PNR_MINE = Regex(
+        "^(?:(?:mera|meri|mere|hamara|मेरा|मेरी|हमारा) )?(?:pnr|पीएनआर|ticket|टिकट)(?: (?:ka|ki|का|की))? (?:status|स्टेटस)(?: (?:kya hai|kya he|batao|bata do|क्या है|बताओ|बता दो))?$|" +
+            "^(?:mera|meri|मेरा|मेरी) (?:ticket|टिकट) (?:confirm|कन्फर्म) (?:hua|hui|हुआ|हुई)(?: (?:kya|क्या))?$",
+    )
+    private val PNR_NUMBER = Regex("^(?:pnr|पीएनआर)? ?(\\d{10})(?: (?:ka|ki|का|की))? (?:status|स्टेटस)(?: (?:kya hai|batao|bata do|क्या है|बताओ))?$")
+
+    private fun pnr(t: String): AssistantAction? {
+        PNR_NUMBER.matchEntire(t.replace(Regex("(?<=\\d) (?=\\d)"), ""))?.let { return AssistantAction.PnrStatus(it.groupValues[1]) }
+        return if (PNR_MINE.matches(t)) AssistantAction.PnrStatus("") else null
+    }
 
     // ------------------------------------------------------------------ time and date
 

@@ -550,6 +550,31 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun pnrStatusIsReadOutFromThePnrServiceWithoutTheAi() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val asked = mutableListOf<String>()
+        val source = com.raju.aiassistant.domain.business.PnrSource { pnr ->
+            asked += pnr
+            com.raju.aiassistant.domain.business.PnrFetch.Ok(
+                com.raju.aiassistant.domain.business.PnrSnapshot(pnr, "12301", "Rajdhani", "12 Nov", chartPrepared = true,
+                    passengers = listOf(com.raju.aiassistant.domain.business.PassengerStatus("WL 12", "CNF S4 32"))),
+            )
+        }
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            pnrSource = source,
+        )
+        e.submit("PNR 4512345678 ka status", fromVoice = true)
+        settle()
+        assertEquals(listOf("4512345678"), asked)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32 (confirm)") && speaker.spoken.last().contains("Rajdhani"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
     fun aCommandThatIsMoreThanAPhoneCommandStillGoesToTheAi() = runTest {
         val e = engine(AiResult.Success("Theek hai."))
         e.submit("5 minute ka timer lagao aur gaana bhi chalao")
@@ -1816,6 +1841,33 @@ class AssistantEngineTest {
         assertEquals(1, tools.answered)
         assertEquals(0, tools.ended)
         assertEquals(0, provider.calls.size) // no AI request
+    }
+
+    @Test
+    fun bolDoAbhiBusyHoonCutsTheCallAndTextsTheCaller() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand("+91 98000 00007", "Mummy")
+        runCurrent()
+        voice.onResult!!("bol do abhi busy hoon")
+        settle()
+        assertEquals(1, tools.ended)
+        assertEquals(0, tools.answered)
+        assertEquals(listOf("+91 98000 00007" to "Abhi busy hoon."), tools.sms)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Mummy को मैसेज भेज दिया"))
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun aHiddenNumberIsCutButNotTexted() = runTest {
+        val e = engine()
+        e.listenForCallCommand(null, null)
+        runCurrent()
+        voice.onResult!!("10 minute mein call karta hoon")
+        settle()
+        assertEquals(1, tools.ended)
+        assertTrue(tools.sms.isEmpty())
+        assertTrue(speaker.spoken.last().contains("नंबर छुपा था"))
     }
 
     @Test

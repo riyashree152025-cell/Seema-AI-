@@ -240,7 +240,24 @@ fun SettingsScreen(
                 TavilyDetailScreen(
                     secretStatus = state.secrets[SecretId.TAVILY_API_KEY] ?: SecretStatus(),
                     viewModel = viewModel,
-                    onBack = { currentScreen = "brain_ai" }
+                    onBack = { currentScreen = "brain_ai" },
+                    extra = {
+                        Spacer(Modifier.height(16.dp))
+                        Text("🚆 PNR status service (background PNR alerts)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
+                        Text("Aapki apni PNR service ka URL — {pnr} ki jagah PNR aata hai. Official free API nahi hai.", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.PNR_STATUS_ENDPOINT,
+                            title = "PNR service URL",
+                            secretStatus = state.secrets[SecretId.PNR_STATUS_ENDPOINT] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.PNR_STATUS_TOKEN,
+                            title = "PNR service token (optional)",
+                            secretStatus = state.secrets[SecretId.PNR_STATUS_TOKEN] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
+                    }
                 )
             }
             "voice_speech" -> {
@@ -1263,6 +1280,8 @@ fun TavilyDetailScreen(
     secretStatus: SecretStatus,
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
+    /** More data services shown under web search (the PNR status service). */
+    extra: @Composable () -> Unit = {},
 ) {
     var keyInput by remember { mutableStateOf("") }
     var keyVisible by remember { mutableStateOf(false) }
@@ -1345,6 +1364,7 @@ fun TavilyDetailScreen(
                 }
             }
         }
+        extra()
     }
 }
 

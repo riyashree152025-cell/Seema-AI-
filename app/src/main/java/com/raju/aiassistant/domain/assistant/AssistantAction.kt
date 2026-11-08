@@ -135,7 +135,7 @@ sealed interface AssistantAction {
     }
     /** Opens the official Indian Railways PNR page (with the PNR copied); the status is never guessed. */
     data class PnrStatus(val pnr: String) : AssistantAction {
-        override val label get() = "PNR status: $pnr"
+        override val label get() = if (pnr.isBlank()) "PNR status (upcoming journeys)" else "PNR status: $pnr"
     }
     data class MandiPrice(val commodity: String, val place: String?) : AssistantAction {
         override val label get() = "Mandi price: $commodity" + (place?.let { " ($it)" } ?: "")

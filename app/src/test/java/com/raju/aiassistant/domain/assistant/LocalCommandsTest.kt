@@ -213,4 +213,14 @@ class LocalCommandsTest {
         // A sentence that only mentions a file is a message.
         assertEquals(AssistantAction.WhatsApp("Riya", "file mil gayi kya"), p("WhatsApp par Riya ko file mil gayi kya bhejo"))
     }
+
+    @Test
+    fun pnrStatusByVoice() {
+        assertEquals(AssistantAction.PnrStatus(""), p("mera PNR status kya hai"))
+        assertEquals(AssistantAction.PnrStatus(""), p("PNR status batao"))
+        assertEquals(AssistantAction.PnrStatus(""), p("meri ticket confirm hui kya"))
+        assertEquals(AssistantAction.PnrStatus("4512345678"), p("PNR 4512345678 ka status"))
+        assertEquals(AssistantAction.PnrStatus("4512345678"), p("45123 45678 ka status batao"))
+        assertNull(p("PNR kaise check karte hain"))
+    }
 }

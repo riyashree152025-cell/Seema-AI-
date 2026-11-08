@@ -18,4 +18,7 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     ELEVENLABS_API_KEY("elevenlabs_api_key", "ElevenLabs voice API key", "https://elevenlabs.io/app/settings/api-keys"),
     CARTESIA_API_KEY("cartesia_api_key", "Cartesia voice API key", "https://play.cartesia.ai/keys"),
     DEEPGRAM_API_KEY("deepgram_api_key", "Deepgram API key", "https://console.deepgram.com"),
+    /** The user's PNR status service: a URL with {pnr} (or ?pnr= is added). No free official API exists. */
+    PNR_STATUS_ENDPOINT("pnr_status_endpoint", "PNR status service URL", ""),
+    PNR_STATUS_TOKEN("pnr_status_token", "PNR status service token", ""),
 }

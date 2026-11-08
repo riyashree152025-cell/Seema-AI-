@@ -2,6 +2,7 @@ package com.raju.aiassistant.domain.assistant
 
 import com.raju.aiassistant.domain.tools.PhotoResult
 import com.raju.aiassistant.domain.notify.callCommand
+import com.raju.aiassistant.domain.notify.callReplyText
 import com.raju.aiassistant.domain.notify.CallCommand
 import com.raju.aiassistant.domain.notify.readReply
 import com.raju.aiassistant.data.search.WebSearch
@@ -194,6 +195,8 @@ class AssistantEngine(
     private val wakeListener: WakeListener = NoWakeListener,
     private val hourOfDay: () -> Int = { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) },
     private val business: BusinessStore = NoBusinessStore,
+    /** PNR status from the user's PNR service; NotConfigured falls back to the official page. */
+    private val pnrSource: com.raju.aiassistant.domain.business.PnrSource = com.raju.aiassistant.domain.business.PnrSource { com.raju.aiassistant.domain.business.PnrFetch.NotConfigured },
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Privacy-safe diagnostics (stages, error codes, lengths — never what the user said). */
     private val log: (String) -> Unit = {},
@@ -1295,6 +1298,11 @@ class AssistantEngine(
                 record(ChatRole.ASSISTANT, msg)
                 if (speak) say(msg)
             }
+            is AssistantAction.PnrStatus -> {
+                trace("offline command: pnr status")
+                _state.value = AssistantState.Executing
+                pnrStatus(action, speak)
+            }
             is AssistantAction.WhatsAppFile -> {
                 trace("offline command: whatsapp file")
                 _state.value = AssistantState.Executing
@@ -1478,8 +1486,14 @@ class AssistantEngine(
         cancelWork()
     }
 
-    /** After the caller announcement ("… ka call aa raha hai. Utha lun?"): listens for "haan / utha lo" or "kaat do". */
-    fun listenForCallCommand() {
+    /** The ringing caller (number as Android gave it, name from Contacts) for a reply by SMS. */
+    @Volatile private var ringingNumber: String? = null
+    @Volatile private var ringingName: String? = null
+
+    /** After the caller announcement ("… ka call aa raha hai. Utha lun?"): listens for "haan / utha lo", "kaat do" or "bol do …". */
+    fun listenForCallCommand(number: String? = null, name: String? = null) {
+        ringingNumber = number
+        ringingName = name
         if (settings.value.assistantPaused || !voice.isAvailable() || pausedForCall) return
         callCommandUntil = clock() + CALL_COMMAND_WINDOW_MS
         if (asleep) leaveSleep()
@@ -1490,6 +1504,29 @@ class AssistantEngine(
     /** "Utha lo" / "kaat do" while a call rings is handled here at once, without the AI. True when it was a call command. */
     private fun handleCallCommand(text: String): Boolean {
         if (clock() >= callCommandUntil) return false
+        // "Bol do abhi busy hoon" / "10 minute mein call karta hoon": cut the call, send those words by SMS.
+        callReplyText(text)?.let { reply ->
+            callCommandUntil = 0
+            trace("call: reject with an SMS reply")
+            val ended = tools.endCall()
+            val number = ringingNumber
+            val name = ringingName
+            scope.launch {
+                report(AssistantAction.EndCall, ended)
+                if (number.isNullOrBlank() || number.count { it.isDigit() } < 6) {
+                    say(phrase(lang(), "कॉल काट दी। नंबर छुपा था, इसलिए मैसेज नहीं भेज पाई।", "কল কেটে দিয়েছি। নম্বর লুকোনো ছিল, তাই মেসেজ পাঠাতে পারিনি।"))
+                    return@launch
+                }
+                val who = name ?: number
+                val sms = tools.sendSms(Contact(who, number), reply)
+                report(AssistantAction.Sms(name, number, reply), sms)
+                say(
+                    if (sms is ToolOutcome.Done) phrase(lang(), "कॉल काट दी और $who को मैसेज भेज दिया: \"$reply\"", "কল কেটে $who কে মেসেজ পাঠিয়েছি: \"$reply\"")
+                    else phrase(lang(), "कॉल काट दी, पर मैसेज नहीं गया — SMS की permission चाहिए।", "কল কেটেছি, কিন্তু মেসেজ যায়নি — SMS permission লাগবে।"),
+                )
+            }
+            return true
+        }
         when (callCommand(text)) {
             CallCommand.ANSWER -> {
                 callCommandUntil = 0
@@ -1708,14 +1745,7 @@ class AssistantEngine(
                 val ok = runCatching { business.removeJourney(action.pnr) }.getOrDefault(false)
                 report(action, if (ok) ActionStatus.SUCCESS else ActionStatus.FAILED, if (ok) "PNR ${action.pnr} removed from the diary." else "PNR ${action.pnr} is not in the diary.")
             }
-            is AssistantAction.PnrStatus -> {
-                // There is no free official PNR API: open the official page with the PNR ready to paste.
-                tools.copyToClipboard(action.pnr)
-                when (val o = tools.openWebPage(PNR_ENQUIRY_URL)) {
-                    is ToolOutcome.Done -> report(action, ActionStatus.SUCCESS, "Official PNR page opened — PNR ${action.pnr} is copied, paste it there and fill the captcha.")
-                    else -> report(action, o)
-                }
-            }
+            is AssistantAction.PnrStatus -> pnrStatus(action, speak)
             is AssistantAction.MandiPrice -> {
                 val place = action.place?.let { " $it" }.orEmpty()
                 searchWeb(AssistantAction.SearchWeb("${action.commodity} mandi bhav today$place price per quintal agmarknet"), provider, model, system, speak)
@@ -1723,6 +1753,42 @@ class AssistantEngine(
             is AssistantAction.SaveFile -> report(action, tools.shareTextFile(action.name, action.content))
             is AssistantAction.Research -> research(action, provider, model, system, speak)
         }
+    }
+
+    /**
+     * "Mera PNR status kya hai": read out by voice (train, status, coach and berth) from the user's PNR
+     * service, for the PNR said or the journeys of the next 7 days. Without a service: the official
+     * page opens with the PNR copied (no free official API exists).
+     */
+    private suspend fun pnrStatus(action: AssistantAction.PnrStatus, speak: Boolean) {
+        val pnrs = if (action.pnr.isNotBlank()) listOf(action.pnr) else {
+            val today = today()
+            runCatching { business.journeysFrom(today) }.getOrDefault(emptyList())
+                .filter { !it.date.isAfter(today.plusDays(7)) }.map { it.pnr }.distinct().take(3)
+        }
+        if (pnrs.isEmpty()) {
+            val msg = phrase(lang(), "आपकी डायरी में अगले हफ्ते की कोई यात्रा नहीं है। PNR बोलिए, जैसे \"PNR 4512345678 ka status\"।", "ডায়েরিতে সামনের সপ্তাহের কোনো যাত্রা নেই। PNR বলুন।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val lines = mutableListOf<String>()
+        for (pnr in pnrs) {
+            when (val f = pnrSource.status(pnr)) {
+                is com.raju.aiassistant.domain.business.PnrFetch.Ok -> lines += com.raju.aiassistant.domain.business.spokenPnrStatus(f.snapshot)
+                is com.raju.aiassistant.domain.business.PnrFetch.Failed -> lines += "PNR $pnr: ${f.message}"
+                com.raju.aiassistant.domain.business.PnrFetch.NotConfigured -> {
+                    // There is no free official PNR API: open the official page with the PNR ready to paste.
+                    tools.copyToClipboard(pnr)
+                    when (val o = tools.openWebPage(PNR_ENQUIRY_URL)) {
+                        is ToolOutcome.Done -> report(action, ActionStatus.SUCCESS, "Official PNR page opened — PNR $pnr is copied, paste it there and fill the captcha. (Settings → PNR status service: set one up for spoken status.)")
+                        else -> report(action, o)
+                    }
+                    return
+                }
+            }
+        }
+        informational(action, lines.joinToString("\n"), speak)
     }
 
     /**

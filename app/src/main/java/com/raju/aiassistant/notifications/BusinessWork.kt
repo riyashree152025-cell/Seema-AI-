@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit
 object BusinessScheduler {
     private const val MORNING = "morning_briefing"
     private const val WEEKLY = "weekly_expense_report"
+    private const val PNR_WATCH = "pnr_watch"
 
     fun schedule(context: Context) {
         val wm = WorkManager.getInstance(context)
@@ -51,6 +52,13 @@ object BusinessScheduler {
             MORNING, ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<MorningBriefingWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(delayUntil(now, nextMorning(now)), TimeUnit.MILLISECONDS)
+                .build(),
+        )
+        // Upcoming journeys' PNRs every 30 minutes (only when a PNR service is set up; needs internet).
+        wm.enqueueUniquePeriodicWork(
+            PNR_WATCH, ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<PnrWatchWorker>(30, TimeUnit.MINUTES)
+                .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
                 .build(),
         )
         wm.enqueueUniquePeriodicWork(
@@ -85,6 +93,36 @@ class MorningBriefingWorker(context: Context, params: WorkerParameters) : Corout
         val (from, to) = periodRange(Period.YESTERDAY, System.currentTimeMillis(), zone)
         val text = morningBriefing(today, repo.journeysFrom(today), repo.expensesBetween(from, to)) ?: return Result.success()
         BusinessNotifier(applicationContext).show(BusinessNotifier.MORNING_ID, "☀️ Seema: aaj ki briefing", text, LaunchRequest.ACTION_BRIEFING)
+        return Result.success()
+    }
+}
+
+/**
+ * Checks the PNRs of journeys in the next 7 days. A confirmation, a prepared chart or any other
+ * status change → a notification and, when Seema may speak, a spoken alert. The first check of a
+ * PNR only remembers its status. Nothing runs without a PNR service in Settings.
+ */
+class PnrWatchWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val c = (applicationContext as RajuApp).container
+        val s = c.settingsRepository.settings.first()
+        if (!s.businessReminders) return Result.success()
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val journeys = runCatching { c.businessRepository.journeysFrom(today) }.getOrDefault(emptyList())
+            .filter { !it.date.isAfter(today.plusDays(7)) }
+        if (journeys.isEmpty()) return Result.success()
+        val prefs = applicationContext.getSharedPreferences("pnr_watch", Context.MODE_PRIVATE)
+        for (j in journeys.distinctBy { it.pnr }) {
+            val fetch = c.pnrSource.status(j.pnr)
+            if (fetch is com.raju.aiassistant.domain.business.PnrFetch.NotConfigured) return Result.success()
+            val snap = (fetch as? com.raju.aiassistant.domain.business.PnrFetch.Ok)?.snapshot ?: continue
+            val changes = com.raju.aiassistant.domain.business.pnrChanges(prefs.getString(j.pnr, null), snap)
+            prefs.edit().putString(j.pnr, snap.signature).apply()
+            if (changes.isEmpty()) continue
+            val text = com.raju.aiassistant.domain.business.spokenPnrAlert(snap, changes)
+            BusinessNotifier(applicationContext).show(BusinessNotifier.PNR_ID_BASE + (j.pnr.hashCode() and 0xFF), "🚆 Seema: PNR ${j.pnr}", text, LaunchRequest.ACTION_BRIEFING)
+            if (!s.assistantPaused && !s.safetyMode) runCatching { c.speaker.speak(text) }
+        }
         return Result.success()
     }
 }
@@ -142,5 +180,6 @@ class BusinessNotifier(private val context: Context) {
         const val CHANNEL_ID = "business_briefings"
         const val MORNING_ID = 4201
         const val WEEKLY_ID = 4202
+        const val PNR_ID_BASE = 4300
     }
 }
