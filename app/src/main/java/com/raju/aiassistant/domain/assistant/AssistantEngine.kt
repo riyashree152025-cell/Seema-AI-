@@ -2088,7 +2088,9 @@ class AssistantEngine(
                 else phrase(lang(), "\"${action.contact}\" के लिए कोई पूरा फ़ोन नंबर नहीं मिला (${found.first().number} जैसे सर्विस या छोटे नंबर पर कॉल नहीं लगाती)। Contacts में सेव पूरा नाम बोलिए।", "\"${action.contact}\" এর জন্য পুরো নম্বর পাইনি। কন্টাক্টে সেভ করা পুরো নাম বলুন।"),
             )
         }
-        val chosen = if (candidates.size == 1 && settings.value.directCalling) {
+        // A spelling guess ("Ramesh" found "Rakesh") is never dialled without the question first.
+        val guess = ContactMatch.isSpellingGuess(action.contact ?: action.number.orEmpty(), candidates)
+        val chosen = if (candidates.size == 1 && settings.value.directCalling && !guess) {
             candidates[0]
         } else {
             chooseContact(

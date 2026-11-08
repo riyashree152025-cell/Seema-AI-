@@ -113,4 +113,65 @@ class ContactMatchTest {
         assertEquals(firoz[1], ContactMatch.pick("doosra", firoz))
         assertEquals(null, ContactMatch.pick("91", firoz)) // too few digits to choose
     }
+
+    @Test
+    fun bracketsAndWordsOfAContactNameAreFound() {
+        val rizwan = listOf(Contact("Rizwan (Travels)", "99999 11111"), Contact("Rahul Sharma", "91234 56789"))
+        assertEquals("Rizwan (Travels)", ContactMatch.best("Rizwan", rizwan).single().name)
+        assertEquals("Rizwan (Travels)", ContactMatch.best("rizwan travels", rizwan).single().name)
+        assertEquals("Rizwan (Travels)", ContactMatch.best("Travels", rizwan).single().name)
+    }
+
+    @Test
+    fun numberWordsMeanDigits() {
+        val vf = listOf(Contact("Vodafone 01", "98765 00001"), Contact("Vodafone 02", "98765 00002"))
+        assertEquals("Vodafone 01", ContactMatch.best("Vodafone One", vf).single().name)
+        assertEquals("Vodafone 01", ContactMatch.best("vodafone 1", vf).single().name)
+        assertEquals("Vodafone 02", ContactMatch.best("वोडाफोन दो", vf).single().name)
+        assertEquals("Vodafone 01", ContactMatch.best("वोडाफोन वन", vf).single().name)
+        assertEquals("Vodafone 01", ContactMatch.best("Vodafone ek", vf).single().name)
+        assertEquals(2, ContactMatch.best("Vodafone", vf).size) // no number said: ask which one
+    }
+
+    @Test
+    fun honorificsDoNotStopAMatch() {
+        val jalal = listOf(Contact("Jalal", "98765 00011"), Contact("Rahul Sharma", "91234 56789"))
+        assertEquals("Jalal", ContactMatch.best("Jalal Bhai", jalal).single().name)
+        // Said in Hindi, saved in English with the same words: found by sound.
+        val jalalBhai = listOf(Contact("Jalal Bhai", "98765 00013"), Contact("Jalal", "98765 00011"))
+        assertEquals("Jalal Bhai", ContactMatch.best("जलाल भाई", jalalBhai).single().name)
+        // A contact saved with the honorific is still the one that is found.
+        val both = jalal + Contact("Jalal Bhai", "98765 00012")
+        assertEquals("Jalal Bhai", ContactMatch.best("Jalal Bhai", both).single().name)
+    }
+
+    @Test
+    fun aSpellingMistakeFindsTheSavedName() {
+        val rizwan = listOf(Contact("Rizwan Travels", "99999 11111"), Contact("Rahul Sharma", "91234 56789"))
+        assertEquals("Rizwan Travels", ContactMatch.best("Rizwen Travls", rizwan).single().name)
+        assertTrue(ContactMatch.best("Riya", rizwan).isEmpty()) // short names are never guessed
+        assertTrue(ContactMatch.best("Rahul", listOf(Contact("Rizwan Travels", "99999 11111"))).isEmpty())
+    }
+
+    @Test
+    fun jaroWinklerScoresSpellingsAsExpected() {
+        assertEquals(0.961, ContactMatch.similarity("martha", "marhta"), 0.001)
+        assertEquals(1.0, ContactMatch.similarity("riya", "riya"), 0.0)
+        assertTrue(ContactMatch.similarity("riya", "rahul") < ContactMatch.FUZZY_THRESHOLD)
+    }
+
+    @Test
+    fun aNumberInTheQueryMustBeInTheName() {
+        val phone = listOf(Contact("Airtel Money", "*400#"))
+        assertTrue(ContactMatch.best("Airtel 01", phone).isEmpty())
+    }
+
+    @Test
+    fun aSpellingGuessIsToldApartFromANameMatch() {
+        val c = listOf(Contact("Rakesh Bhai", "98765 00021"), Contact("Rahul Sharma", "91234 56789"))
+        assertTrue(ContactMatch.isSpellingGuess("Ramesh Bhai", c)) // found, but only by spelling: ask first
+        assertTrue(!ContactMatch.isSpellingGuess("Rakesh", c))
+        assertTrue(!ContactMatch.isSpellingGuess("Rahul", c))
+        assertTrue(!ContactMatch.isSpellingGuess("Rahul Sharma", c))
+    }
 }
