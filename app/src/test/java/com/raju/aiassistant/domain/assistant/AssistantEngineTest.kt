@@ -829,7 +829,7 @@ class AssistantEngineTest {
     private var now = 0L
 
     /** 0.3 s of clear speech-level sound: what the wake listener hands over when someone talks. */
-    private fun speech() = ByteArray(9_600) { i -> if (i % 2 == 0) (3_000 and 0xFF).toByte() else (3_000 shr 8).toByte() }
+    private fun speech(amplitude: Int = 3_000) = ByteArray(9_600) { i -> if (i % 2 == 0) (amplitude and 0xFF).toByte() else (amplitude shr 8).toByte() }
 
     private fun TestScope.sleepyEngine(wake: WakeListener, transcriber: Transcriber?, vararg replies: AiResult<String>): AssistantEngine {
         provider = FakeProvider(ArrayDeque(replies.toList()))
@@ -843,7 +843,7 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun standbyNoiseDoesNotKeepTheInternetBusy() = runTest {
+    fun standbyNoiseNeverLocksOutHerName() = runTest {
         settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS, wakeWord = true)
         val wake = FakeWake()
         val tv = FakeTranscriber("aaj ki taaza khabar")
@@ -856,17 +856,17 @@ class AssistantEngineTest {
         wake.onUtterance!!(ByteArray(9_600)) // a faint sound: never sent online
         settle()
         assertEquals(0, tv.calls)
-        repeat(8) { i -> // the TV talking on and on
+        repeat(8) { i -> // the TV talking on and on: checked, never "paused"
             now = 70_000L + i * 1_000L
-            wake.onUtterance!!(speech())
+            wake.onUtterance!!(speech(amplitude = 3_000 + i * 200))
             settle()
         }
-        assertEquals(6, tv.calls) // after 6 misses in a row the online checks pause
+        assertEquals(8, tv.calls)
         tv.text = "Seema, time batao"
-        now = 90_000L // the pause is over
-        wake.onUtterance!!(speech())
+        now = 79_000L // straight after the noise: her name is still checked
+        wake.onUtterance!!(speech(amplitude = 6_000))
         settle()
-        assertEquals(7, tv.calls)
+        assertEquals(9, tv.calls)
         assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time batao" })
     }
 

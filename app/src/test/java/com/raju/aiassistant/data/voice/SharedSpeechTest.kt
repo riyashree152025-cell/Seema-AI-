@@ -54,10 +54,10 @@ class SharedSpeechTest {
     private val speech = frame(3_000)
 
     /**
-     * 300 ms of room calibration, 600 ms of speech, then the 1.2 s pause that ends the turn: the turn's
-     * audio is 105 frames (the 10 frames after the pause are not part of it).
+     * 300 ms of room calibration, 600 ms of speech, then the 1.4 s pause that ends the turn: the turn's
+     * audio is 115 frames (the 10 frames after the pause are not part of it).
      */
-    private val oneTurn = List(15) { silence } + List(30) { speech } + List(70) { silence }
+    private val oneTurn = List(15) { silence } + List(30) { speech } + List(80) { silence }
 
     private fun TestScope.hub(source: () -> FrameSource, consumers: CoroutineDispatcher = StandardTestDispatcher(testScheduler)) =
         MicHub(
@@ -76,7 +76,7 @@ class SharedSpeechTest {
         val outcomes = oneTurn.map { c.feed(it) }
         val done = outcomes.first { it != null }
         assertTrue(done is SpeechCapture.Outcome.Done)
-        assertEquals(105 * MIC_FRAME_BYTES, (done as SpeechCapture.Outcome.Done).pcm.size)
+        assertEquals(115 * MIC_FRAME_BYTES, (done as SpeechCapture.Outcome.Done).pcm.size)
         assertEquals(1, outcomes.count { it != null }) // one decision, once
     }
 
@@ -126,7 +126,7 @@ class SharedSpeechTest {
         assertEquals(beforeTurn, wakeFrames) // the wake listener got nothing during the turn
         assertNull(pcm)
 
-        advanceTimeBy(600) // the turn ends
+        advanceTimeBy(800) // the turn ends
         runCurrent()
         assertNotNull(pcm)
         assertTrue(turn.isCompleted)
