@@ -36,7 +36,7 @@ object LocalCommands {
         val t = normalize(text)
         if (t.isEmpty() || t.length > 80) return null
         return readMessage(t) ?: torch(t) ?: volume(t) ?: timer(t) ?: alarm(t) ?: photo(t) ?: endCall(t) ?: answerCall(t) ?: call(t)
-            ?: battery(t) ?: home(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
+            ?: battery(t) ?: home(t) ?: lock(t) ?: media(t) ?: screenshot(t) ?: findPhone(t) ?: lastCall(t) ?: openSettings(t) ?: back(t)
             ?: openSeema(t) ?: clock(t) ?: readScreen(t) ?: pnr(t) ?: scroll(t) ?: tap(t) ?: openApp(t)
     }
 
@@ -202,6 +202,9 @@ object LocalCommands {
     private fun battery(t: String): AssistantAction? = if (BATTERY.matches(t)) AssistantAction.Battery else null
 
     private fun home(t: String): AssistantAction? = if (HOME.matches(t)) AssistantAction.GoHome else null
+
+    private val LOCK = Regex("^(?:(?:screen|phone|फ़ोन|फोन|स्क्रीन) )?(?:lock|लॉक) (?:karo|kar do|karna|करो|कर दो)$|^(?:screen|phone|फ़ोन|फोन|स्क्रीन) (?:lock|लॉक)$")
+    private fun lock(t: String): AssistantAction? = if (LOCK.matches(t)) AssistantAction.LockScreen else null
 
     // ------------------------------------------------------------------ WhatsApp message
 

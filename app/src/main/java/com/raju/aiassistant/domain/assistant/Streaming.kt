@@ -2,6 +2,20 @@ package com.raju.aiassistant.domain.assistant
 
 private val SENTENCE_END = Regex("[.!?।](?=\\s)")
 
+/**
+ * Words that cannot end a finished sentence: "Rahul ko", "mujhe Delhi se", "ye wala", "call karo aur".
+ * A pause after one of them is a breath in the middle of the sentence, not the end of it.
+ */
+private val UNFINISHED_ENDINGS = Regex(
+    "(?:^|\\s)(?:aur|lekin|par|ki|ke|ka|ko|se|mein|me|men|ne|pe|to|toh|matlab|jaise|liye|wala|wali|wale|bhi|kya|kaise|kaisa|kaisi|kab|kahan|" +
+        "and|but|or|so|because|the|a|an|for|with|about|of|at|in|on|to|" +
+        "और|लेकिन|पर|कि|के|का|की|को|से|में|ने|पे|तो|मतलब|जैसे|लिए|वाला|वाली|वाले|भी|क्या|कैसे|कैसा|कैसी|कब|कहाँ|कहां)[\\s,.…]*$",
+    RegexOption.IGNORE_CASE,
+)
+
+/** True when [text] ends in a word that asks for more words after it. */
+fun isUnfinished(text: String): Boolean = UNFINISHED_ENDINGS.containsMatchIn(text.trim())
+
 private val CLAUSE_END = Regex("[,;:—–](?=\\s)")
 
 /**

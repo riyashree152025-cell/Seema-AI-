@@ -736,6 +736,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         }
     }
 
+    override fun lockScreen(): ToolOutcome {
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning() &&
+            com.raju.aiassistant.accessibility.SeemaAccessibilityService.lockScreen()) {
+            return ToolOutcome.Done("Screen locked.")
+        }
+        return ToolOutcome.Failed("Screen lock needs Seema's Accessibility permission (Settings → Accessibility) and Android 9 or newer.")
+    }
+
     override fun goHome(): ToolOutcome {
         if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning() &&
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.goHome()) {

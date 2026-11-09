@@ -128,6 +128,10 @@ sealed interface AssistantAction {
     data class LookCamera(val front: Boolean, val question: String) : AssistantAction {
         override val label get() = "Look through the ${if (front) "front" else "back"} camera"
     }
+    /** Locks the screen (the PIN or pattern is still needed to open it again). */
+    data object LockScreen : AssistantAction {
+        override val label get() = "Lock screen"
+    }
     data object GoHome : AssistantAction {
         override val label get() = "Go to home screen"
     }

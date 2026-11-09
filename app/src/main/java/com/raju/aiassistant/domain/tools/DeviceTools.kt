@@ -100,6 +100,7 @@ interface DeviceTools {
     /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */
     suspend fun takePhoto(front: Boolean, save: Boolean): PhotoResult = PhotoResult.Failed("Camera is not supported here.")
     fun goHome(): ToolOutcome = ToolOutcome.Failed("Going home is not supported here.")
+    fun lockScreen(): ToolOutcome = ToolOutcome.Failed("Locking is not supported here.")
     fun openSeema(): ToolOutcome = ToolOutcome.Failed("Opening Seema is not supported here.")
 }
 

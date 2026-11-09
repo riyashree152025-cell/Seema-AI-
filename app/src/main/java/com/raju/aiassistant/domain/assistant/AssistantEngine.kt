@@ -109,6 +109,11 @@ private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
 private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 28_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
+/**
+ * After she has done something for the user, the next sentence needs no "Hey Seema" for this long
+ * (also while another app is on screen). Every new command starts it again.
+ */
+private const val FOLLOW_UP_MS = 90_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
 /** How long a WhatsApp Send / Call press is waited for (slow networks, a dialog in between). */
 private const val AUTO_ACTION_WAIT_MS = 14_000L
@@ -167,7 +172,6 @@ private const val MAX_FAST_NO_SPEECH = 6
 /** Chat messages kept in memory (older ones stay in the database). */
 private const val MAX_TRANSCRIPT_IN_MEMORY = 300
 /** A voice message ending in one of these was cut off by a pause: wait for the rest. */
-private val CONTINUATION = Regex("(^|\\s)(aur|lekin|par|ki|ke|to|toh|matlab|jaise|and|but|or|so|because|और|लेकिन|पर|कि|के|तो|मतलब|जैसे|क्योंकि)[\\s,.…]*$", RegexOption.IGNORE_CASE)
 /** How long to wait for the rest of a sentence that ended in "aur…" / "lekin…". */
 private const val CONTINUATION_WAIT_MS = 6_000L
 
@@ -320,6 +324,8 @@ class AssistantEngine(
      * end up waiting for "Hey Seema" — never deaf, and never listening openly to the other app's sound.
      */
     @Volatile private var inBackground = false
+    /** Until this time a spoken sentence is taken as a command without the wake word. */
+    @Volatile private var followUpUntil = 0L
     private var backgroundGuard: Job? = null
     /** Low-confidence recognitions in a row; she asks to repeat only for the first. */
     private var unclearInARow = 0
@@ -346,6 +352,7 @@ class AssistantEngine(
         if (!submitGuard.accept(trimmed, clock())) return
         if (!fromVoice) voice.stop() // typed while listening: don't also take a voice result
         if (fromVoice) { listenFailures = 0; unclearInARow = 0 }
+        followUpUntil = clock() + FOLLOW_UP_MS
         leaveSleep()
         lastActivityAt = clock()
         cancelWork()
@@ -372,7 +379,7 @@ class AssistantEngine(
         _heard.value = text
         heldVoiceText = null
         heldJob?.cancel()
-        if (CONTINUATION.containsMatchIn(text.trim()) && text.trim().split(Regex("\\s+")).size >= 2) {
+        if (isUnfinished(text) && text.trim().split(Regex("\\s+")).size >= 2) {
             heldVoiceText = text
             lastActivityAt = clock()
             heldJob = scope.launch {
@@ -474,7 +481,7 @@ class AssistantEngine(
         conversationMode.exit()
         heldJob?.cancel()
         heldVoiceText = null
-        if (canSleep()) {
+        if (canStandby()) {
             // SeemaWakeService (a microphone foreground service) keeps the wake word alive while
             // another app is on screen. A turn still running (her "WhatsApp khol diya") finishes
             // first and then goes to sleep itself; the guard catches every other way out.
@@ -505,6 +512,12 @@ class AssistantEngine(
     private fun canSleep(): Boolean =
         settings.value.wakeWord && !settings.value.assistantPaused && wakeListener !== NoWakeListener
 
+    /** A follow-up is open: she keeps listening in the background even with the wake word switched off. */
+    fun followUpOpen(): Boolean = !paused() && clock() < followUpUntil && wakeListener !== NoWakeListener
+
+    /** Standby is possible now: the wake word, or an open follow-up window. */
+    private fun canStandby(): Boolean = canSleep() || followUpOpen()
+
     /**
      * While another app is on screen, whatever path a turn ends on (an error, silence, a session
      * timing out, a yes/no question nobody answered), Seema returns to waiting for her name.
@@ -518,7 +531,9 @@ class AssistantEngine(
                 val st = _state.value
                 val busy = st == AssistantState.Thinking || st == AssistantState.Speaking ||
                     st == AssistantState.Executing || st == AssistantState.Listening
-                if (canSleep() && !asleep && !pausedForCall && !busy && job?.isActive != true &&
+                // The follow-up window closed while the wake word is off: nothing listens any more.
+                if (asleep && !settings.value.wakeWord && !followUpOpen()) leaveSleep()
+                if (canStandby() && !asleep && !pausedForCall && !busy && job?.isActive != true &&
                     !_voiceSession.value && _pending.value == null && replyHandler == null && clock() >= callCommandUntil
                 ) {
                     trace("background: back to \"Hey Seema\" standby")
@@ -758,6 +773,9 @@ class AssistantEngine(
             return
         }
         val now = clock()
+        // Follow-up: she has just done something for the user, so the next sentence needs no "Hey Seema".
+        val followUp = followUpOpen()
+        if (followUp && now - lastSpokeAt < 2_500L) { armWakeListener(); return } // her own voice, just said
         // The tail of her own voice must not wake her. When her name can be checked (Deepgram), the
         // words decide instead: "Hey Seema …" said right after her answer used to be thrown away.
         val nameCheckable = settings.value.wakeWord && transcriber?.isAvailable() == true
@@ -791,7 +809,11 @@ class AssistantEngine(
             // Privacy: only lengths in the log, never what was said.
             trace("wake heard: ${heard.length} chars")
             if (!asleep) return
-            val request = if (settings.value.wakeWord) afterWakeWord(heard) else heard.takeIf { it.length >= 2 }
+            val request = when {
+                followUp -> heard.takeIf { it.length >= 2 }
+                settings.value.wakeWord -> afterWakeWord(heard)
+                else -> heard.takeIf { it.length >= 2 }
+            }
             trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")
             when {
                 request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
@@ -1453,6 +1475,12 @@ class AssistantEngine(
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
+            AssistantAction.LockScreen -> {
+                trace("offline command: lock screen")
+                val outcome = tools.lockScreen()
+                report(action, outcome)
+                if (speak) say(phrase(lang(), if (outcome is ToolOutcome.Done) "स्क्रीन लॉक कर दी है।" else "स्क्रीन लॉक नहीं हो पाई। Settings में Seema की Accessibility चालू कीजिए।", if (outcome is ToolOutcome.Done) "স্ক্রিন লক করে দিয়েছি।" else "স্ক্রিন লক হয়নি। Settings-এ Seema-র Accessibility চালু করুন।"))
+            }
             else -> return false
         }
         if (_state.value != AssistantState.Error) {
@@ -1863,6 +1891,7 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
             }
+            AssistantAction.LockScreen -> report(action, tools.lockScreen())
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
                 report(action, outcome)

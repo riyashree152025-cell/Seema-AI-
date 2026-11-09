@@ -345,6 +345,12 @@ class SeemaAccessibilityService : AccessibilityService() {
             }, 15_000)
         }
 
+        /** Locks the screen through the system (Android 9+). Opening it again still needs the phone's own PIN or pattern. */
+        fun lockScreen(): Boolean {
+            val service = instance ?: return false
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && service.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+        }
+
         fun goHome(): Boolean {
             val service = instance ?: return false
             return service.performGlobalAction(GLOBAL_ACTION_HOME)

@@ -1,6 +1,7 @@
 package com.raju.aiassistant.domain.assistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,5 +49,19 @@ class StreamingTest {
         val full = "Aaj Delhi mein mausam saaf rahega, dopahar mein dhoop tez hogi aur shaam ko hawa."
         val head = speakableHead(full.take(60))!!
         assertTrue(full.startsWith(head))
+    }
+
+    @Test
+    fun aPauseInsideASentenceIsNotTheEnd() {
+        assertTrue(isUnfinished("Rahul ko"))
+        assertTrue(isUnfinished("mujhe Delhi se"))
+        assertTrue(isUnfinished("Mummy ko call karo aur"))
+        assertTrue(isUnfinished("mere ghar mein"))
+        assertTrue(isUnfinished("आज मौसम कैसा"))
+        assertTrue(isUnfinished("ye wala"))
+        assertFalse(isUnfinished("Rahul ko message bhej do"))
+        assertFalse(isUnfinished("Torch on karo"))
+        assertFalse(isUnfinished("Rahul se paise mile"))
+        assertFalse(isUnfinished("kal ka mausam batao"))
     }
 }
