@@ -41,6 +41,8 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
+          # A real phone size (1080 x 2400), so the screenshots show the layout as the user sees it.
+          profile: pixel_6
           script: bash scripts/smoke.sh
       - name: Upload screenshots and logcat
         if: always()

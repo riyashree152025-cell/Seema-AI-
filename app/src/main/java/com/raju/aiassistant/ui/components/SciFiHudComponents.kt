@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -137,7 +138,7 @@ fun SciFiHomeNavButton(
     val lit by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(180), label = "tileLit")
     Box(
         modifier = modifier
-            .height(108.dp)
+            .height(104.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .premiumSurface(shape = RoundedCornerShape(22.dp), accent = iconColor, lit = lit)
             // The tile's own colour, very faint, glowing up from the bottom.
@@ -190,10 +191,13 @@ fun SciFiHomeNavButton(
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.SemiBold,
                     color = Premium.TextHigh,
-                    fontSize = 15.sp,
-                    letterSpacing = 0.2.sp,
+                    fontSize = 14.5.sp,
+                    lineHeight = 17.sp,
+                    letterSpacing = 0.1.sp,
                 ),
-                maxLines = 1,
+                // "Voice Center" on a narrow phone: a second line rather than "Voice Ce…".
+                maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
@@ -450,17 +454,12 @@ fun SciFiStatTile(
     valueColor: Color = Color.White,
     modifier: Modifier = Modifier,
 ) {
+    // Grows with its text (a fixed 72 dp cut the larger values off), premium glass like the rest.
     Box(
         modifier = modifier
-            .height(72.dp)
-            .clip(SciFiCardShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xD908172F), Color(0xF2040C1A))
-                )
-            )
-            .border(1.dp, SciFiCyanGlow.copy(alpha = 0.55f), SciFiCardShape)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .heightIn(min = 84.dp)
+            .premiumSurface(shape = RoundedCornerShape(18.dp))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -469,21 +468,24 @@ fun SciFiStatTile(
         ) {
             Text(
                 "$icon $label",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 13.sp
-                )
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Medium,
+                    color = Premium.TextLow,
+                    fontSize = 13.5.sp
+                ),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 value,
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.SemiBold,
                     color = valueColor,
-                    fontSize = 16.sp
+                    fontSize = 17.sp
                 ),
-                maxLines = 1
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }
