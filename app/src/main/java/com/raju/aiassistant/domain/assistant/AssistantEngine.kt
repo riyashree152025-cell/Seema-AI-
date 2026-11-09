@@ -775,7 +775,6 @@ class AssistantEngine(
         val now = clock()
         // Follow-up: she has just done something for the user, so the next sentence needs no "Hey Seema".
         val followUp = followUpOpen()
-        if (followUp && now - lastSpokeAt < 2_500L) { armWakeListener(); return } // her own voice, just said
         // The tail of her own voice must not wake her. When her name can be checked (Deepgram), the
         // words decide instead: "Hey Seema …" said right after her answer used to be thrown away.
         val nameCheckable = settings.value.wakeWord && transcriber?.isAvailable() == true
@@ -810,7 +809,9 @@ class AssistantEngine(
             trace("wake heard: ${heard.length} chars")
             if (!asleep) return
             val request = when {
-                followUp -> heard.takeIf { it.length >= 2 }
+                // Her name said: the rest is the request (as before). No name: the whole sentence,
+                // unless it is just the echo of her own answer, which was said within the last 2.5 s.
+                followUp -> afterWakeWord(heard) ?: heard.takeIf { it.length >= 2 && now - lastSpokeAt >= 2_500L }
                 settings.value.wakeWord -> afterWakeWord(heard)
                 else -> heard.takeIf { it.length >= 2 }
             }
