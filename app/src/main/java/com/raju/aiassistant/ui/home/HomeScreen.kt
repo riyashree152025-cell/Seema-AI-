@@ -803,7 +803,7 @@ fun HomeScreen(
 
                         Text(
 
-                            "🟢 SEEMA CORE v2.5 | 100% ONLINE | TAP FOR CHAT",
+                            "SEEMA ONLINE  ·  TAP FOR CHAT",
 
                             style = MaterialTheme.typography.labelSmall.copy(
 
@@ -811,7 +811,7 @@ fun HomeScreen(
 
                                 color = Color.White.copy(alpha = 0.9f),
 
-                                fontSize = 14.sp,
+                                fontSize = 14.sp, // one line on the phone,
 
                                 letterSpacing = 1.sp
 

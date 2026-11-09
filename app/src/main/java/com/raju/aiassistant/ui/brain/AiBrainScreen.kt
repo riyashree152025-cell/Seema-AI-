@@ -404,9 +404,6 @@ fun AiBrainScreen(
             } else {
                 SciFiGradientButton(
                     text = "▶  TEST ACTIVE AI",
-                    gradient = Brush.horizontalGradient(
-                        listOf(Color(0xFF0052D4), Color(0xFF0077FF), Color(0xFF00C6FF))
-                    ),
                     onClick = {
                         scope.launch {
                             testingAi = true

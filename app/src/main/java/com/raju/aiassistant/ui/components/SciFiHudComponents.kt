@@ -772,19 +772,7 @@ fun SciFiStateCapsule(
 
     Box(
         modifier = modifier
-            .clip(CutCornerShape(8.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0x3800D0FF), Color(0x1F003366))
-                )
-            )
-            .border(
-                1.2.dp,
-                Brush.horizontalGradient(
-                    listOf(statusColor.copy(alpha = 0.5f), statusColor, statusColor.copy(alpha = 0.5f))
-                ),
-                CutCornerShape(8.dp)
-            )
+            .premiumSurface(shape = RoundedCornerShape(14.dp), accent = statusColor, lit = 0.3f)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -803,22 +791,28 @@ fun SciFiStateCapsule(
                     .background(statusColor.copy(alpha = dotAlpha))
             )
             Column {
+                // One line each: in the narrow header the label broke into "STA / NDB / Y".
                 Text(
                     statusLabel,
                     style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         color = statusColor,
-                        fontSize = 14.5.sp,
-                        letterSpacing = 1.sp
-                    )
+                        fontSize = 13.sp,
+                        letterSpacing = 0.6.sp
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
                 )
                 Text(
                     subtitle,
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MaterialTheme.typography.bodySmall.copy(
                         fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.75f),
-                        fontSize = 9.sp
-                    )
+                        color = Premium.TextLow,
+                        fontSize = 11.5.sp
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }

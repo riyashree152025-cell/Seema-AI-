@@ -228,7 +228,7 @@ fun ControlPanelScreen(
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF0072FF),
+                            checkedTrackColor = Color(0xFF3AA8BC), // calm aqua (was a loud blue)
                             uncheckedThumbColor = Color.Gray,
                             uncheckedTrackColor = Color(0xFF132036)
                         )
@@ -318,14 +318,10 @@ fun ControlPanelScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(SciFiButtonShape)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF8A2BE2), Color(0xFF6A0DAD), Color(0xFF9370DB))
-                        )
-                    )
-                    .border(1.2.dp, Color(0xFFBA68C8), SciFiButtonShape)
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF16324F), Color(0xFF1E4A6E), Color(0xFF16324F))))
+                    .border(1.dp, Brush.linearGradient(listOf(com.raju.aiassistant.ui.components.Premium.Gold.copy(alpha = 0.7f), com.raju.aiassistant.ui.components.Premium.Aqua.copy(alpha = 0.45f))), RoundedCornerShape(18.dp))
                     .clickable { showAddDialog = true },
                 contentAlignment = Alignment.Center
             ) {
@@ -336,10 +332,10 @@ fun ControlPanelScreen(
                     Text(
                         "+  Add New Routine",
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            color = com.raju.aiassistant.ui.components.Premium.TextHigh,
                             fontSize = 17.sp,
-                            letterSpacing = 0.8.sp
+                            letterSpacing = 0.4.sp
                         )
                     )
                 }
@@ -503,7 +499,7 @@ private fun RoutineItemCard(
                 onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = Color(0xFF0072FF),
+                    checkedTrackColor = Color(0xFF3AA8BC), // calm aqua (was a loud blue)
                     uncheckedThumbColor = Color.Gray,
                     uncheckedTrackColor = Color(0xFF132036)
                 )
