@@ -334,7 +334,7 @@ fun HomeScreen(
 
                         style = MaterialTheme.typography.labelSmall.copy(
 
-                            fontSize = 10.sp,
+                            fontSize = 13.sp,
 
                             letterSpacing = 1.sp,
 
@@ -437,7 +437,7 @@ fun HomeScreen(
                         // OFF = Seema neither listens nor speaks ("Hey Seema", notifications, calls too); tap again for ON.
                         text = if (isMuted) "⛔ SEEMA OFF — कुछ नहीं सुनेगी (दबाकर चालू करें)" else "🟢 SEEMA ON — दबाकर बंद करें",
 
-                        fontSize = 11.5.sp,
+                        fontSize = 14.5.sp,
 
                         fontWeight = FontWeight.Bold,
 
@@ -588,7 +588,7 @@ fun HomeScreen(
 
                             color = if (isListening) SciFiCyanGlow else Color.White.copy(alpha = 0.75f),
 
-                            fontSize = 13.5.sp,
+                            fontSize = 16.sp,
 
                             fontWeight = if (isListening) FontWeight.Bold else FontWeight.Normal
 
@@ -633,7 +633,7 @@ fun HomeScreen(
 
                         Modifier.fillMaxWidth(),
 
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
 
                     ) {
 
@@ -643,7 +643,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Psychology,
 
-                            iconColor = Color(0xFF00E5FF),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Brain,
 
                             onClick = onOpenAiBrain,
 
@@ -657,7 +657,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.GraphicEq,
 
-                            iconColor = Color(0xFF40C4FF),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Voice,
 
                             onClick = onOpenVoiceControl,
 
@@ -671,7 +671,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Storage,
 
-                            iconColor = Color(0xFFB388FF),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Memory,
 
                             onClick = onOpenMemoryCenter,
 
@@ -689,7 +689,7 @@ fun HomeScreen(
 
                         Modifier.fillMaxWidth(),
 
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
 
                     ) {
 
@@ -699,7 +699,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.AutoAwesome,
 
-                            iconColor = Color(0xFFFFB300),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Automation,
 
                             onClick = onOpenControlPanel,
 
@@ -713,7 +713,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Apps,
 
-                            iconColor = Color(0xFF00E676),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Apps,
 
                             onClick = onOpenApps,
 
@@ -727,7 +727,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Settings,
 
-                            iconColor = Color(0xFF00E5FF),
+                            iconColor = com.raju.aiassistant.ui.components.Premium.Settings,
 
                             onClick = onOpenSettings,
 
@@ -811,7 +811,7 @@ fun HomeScreen(
 
                                 color = Color.White.copy(alpha = 0.9f),
 
-                                fontSize = 11.sp,
+                                fontSize = 14.sp,
 
                                 letterSpacing = 1.sp
 

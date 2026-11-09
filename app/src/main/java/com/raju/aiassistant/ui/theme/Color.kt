@@ -7,14 +7,15 @@ import androidx.compose.ui.graphics.Color
 val VoidBlack = Color(0xFF05070F)
 val GlassPanel = Color(0xFF0B1224)
 val GlassPanelHigh = Color(0xFF131D36)
-val Emerald = Color(0xFF38E1FF)
+// Calm aqua (was the neon 0xFF38E1FF): filled buttons and accents feel premium instead of loud.
+val Emerald = Color(0xFF6FD8EA)
 val EmeraldBright = Color(0xFFB4F4FF)
 val EmeraldDeep = Color(0xFF2F7BFF)
 val EmeraldMist = Color(0xFF0F2A4A)
 val HoloCyan = Color(0xFF7C9CFF)
 val HoloViolet = Color(0xFFA88BFF)
 val TextPrimary = Color(0xFFEAF2FF)
-val TextSecondary = Color(0xFFA3B3CF)
+val TextSecondary = Color(0xFFBCC7D8) // brighter: hints are readable on the dark panels
 val SuccessGreen = Color(0xFF5EF2A8)
 val WarningAmber = Color(0xFFFFC857)
 val ErrorRed = Color(0xFFFF6B8A)

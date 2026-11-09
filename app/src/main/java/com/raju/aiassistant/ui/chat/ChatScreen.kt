@@ -281,7 +281,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp),
-                placeholder = { Text("Type or Speak...", color = Color(0xFF7088AA), fontSize = 14.sp) },
+                placeholder = { Text("Type or Speak...", color = Color(0xFF7088AA), fontSize = 16.5.sp) },
                 maxLines = 3,
                 shape = RoundedCornerShape(26.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -380,7 +380,7 @@ private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Uni
 
                 // Which AI really answered (this session's replies), e.g. "via Gemini · gemini-3.8-flash".
                 if (!isUser) message.via?.let { via ->
-                    Text("via $via", color = Color.White.copy(alpha = 0.55f), fontSize = 10.5.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("via $via", color = Color.White.copy(alpha = 0.55f), fontSize = 13.5.sp, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 // Copy / Repeat row for assistant messages
@@ -394,7 +394,7 @@ private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Uni
                         Text(
                             "Copy",
                             color = NeonCyan,
-                            fontSize = 11.sp,
+                            fontSize = 14.sp,
                             modifier = Modifier
                                 .clickable { clipboard.setText(AnnotatedString(message.text)) }
                                 .padding(4.dp),
@@ -404,7 +404,7 @@ private fun ReferenceMessageRow(message: ChatMessage, onRepeat: ((String) -> Uni
                             Text(
                                 "Repeat",
                                 color = NeonCyan,
-                                fontSize = 11.sp,
+                                fontSize = 14.sp,
                                 modifier = Modifier
                                     .clickable { onRepeat(message.text) }
                                     .padding(4.dp),

@@ -36,37 +36,33 @@ fun HudPanel(
     accent: Color = MaterialTheme.colorScheme.primary,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val trace = rememberBorderTrace()
     Column(
         modifier
             .fillMaxWidth()
-            .hudFrame(accent, cut = 12.dp, fillAlpha = 0.07f, trace = trace, base = GlassPanel, edgeTo = HoloViolet)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .premiumSurface(accent = accent)
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (title != null) HudTitle(title, accent)
         content()
     }
 }
 
-/** Panel heading: a small diamond marker, the title, and a hairline running to the edge. */
+/** Panel heading: a short gold bar, the title in large type, and a fading gold hairline. */
 @Composable
 fun HudTitle(title: String, accent: Color = MaterialTheme.colorScheme.primary) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.size(8.dp)) {
-            val p = Path().apply {
-                moveTo(size.width / 2, 0f); lineTo(size.width, size.height / 2); lineTo(size.width / 2, size.height); lineTo(0f, size.height / 2); close()
-            }
-            drawPath(p, accent)
+        Canvas(Modifier.size(width = 4.dp, height = 20.dp)) {
+            drawRoundRect(Brush.verticalGradient(listOf(Premium.Gold, accent.copy(alpha = 0.8f))), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width, size.width))
         }
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, letterSpacing = 0.6.sp), color = accent)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, letterSpacing = 0.3.sp), color = Premium.TextHigh)
+        Spacer(Modifier.width(12.dp))
         Canvas(
             Modifier
                 .weight(1f)
                 .height(1.dp),
-        ) { drawLine(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.6f), HoloViolet.copy(alpha = 0.25f), Color.Transparent)), Offset.Zero, Offset(size.width, 0f), size.height) }
+        ) { drawLine(Brush.horizontalGradient(listOf(Premium.Gold.copy(alpha = 0.45f), Color.Transparent)), Offset.Zero, Offset(size.width, 0f), size.height) }
     }
 }
 

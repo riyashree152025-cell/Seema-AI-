@@ -162,7 +162,7 @@ fun SeemaProScreen(
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White,
-                                fontSize = 12.sp,
+                                fontSize = 15.sp,
                             ),
                         )
                     }

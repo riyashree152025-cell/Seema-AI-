@@ -166,7 +166,7 @@ fun MemoryCenterScreen(
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (settings.memoryEnabled) SuccessGreen else Color.Gray,
-                                    fontSize = 14.sp
+                                    fontSize = 16.5.sp
                                 )
                             )
                         }
@@ -174,7 +174,7 @@ fun MemoryCenterScreen(
                             "Used: $usedMb MB / 1 GB  (${memories.size} facts)",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp
+                                fontSize = 15.sp
                             )
                         )
                     }
@@ -245,7 +245,7 @@ fun MemoryCenterScreen(
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
-                                fontSize = 14.5.sp,
+                                fontSize = 17.sp,
                                 lineHeight = 19.sp
                             )
                         )
@@ -254,7 +254,7 @@ fun MemoryCenterScreen(
                             "Long-term facts persist across sessions and power intelligent contextual responses.",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color.White.copy(alpha = 0.65f),
-                                fontSize = 11.5.sp
+                                fontSize = 14.5.sp
                             )
                         )
                     }
@@ -293,7 +293,7 @@ fun MemoryCenterScreen(
                                         .background(Color(0x2600E5FF))
                                         .padding(8.dp)
                                 ) {
-                                    Text(mem.text, color = Color.White, fontSize = 12.sp)
+                                    Text(mem.text, color = Color.White, fontSize = 15.sp)
                                 }
                             }
                         }

@@ -247,7 +247,7 @@ private fun VoiceChip(label: String, onClick: () -> Unit) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 lineHeight = 13.sp,

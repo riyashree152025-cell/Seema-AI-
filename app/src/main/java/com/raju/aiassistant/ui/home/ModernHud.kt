@@ -376,7 +376,7 @@ private fun DockButton(label: String, icon: ImageVector, accent: Color, enabled:
                 .border(1.dp, tint.copy(alpha = 0.55f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp)) }
-        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.8.sp), color = tint, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 13.sp, letterSpacing = 0.8.sp), color = tint, maxLines = 1)
     }
 }
 

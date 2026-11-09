@@ -56,10 +56,10 @@ fun AnnouncementPrompt(coordinator: AnnouncementCoordinator) {
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                Text(p.item.appLabel, color = Color(0xFF00E5FF), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(p.item.appLabel, color = Color(0xFF00E5FF), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(
                     if (p.item.count > 1) "$who ke ${p.item.count} messages. Padhkar sunaun?" else "$who ka message. Padhkar sunaun?",
-                    color = Color.White, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = Color.White, fontSize = 16.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
             }
             TextButton(onClick = { coordinator.skip(p.id) }) { Text("Skip", color = Color.White.copy(alpha = 0.7f)) }

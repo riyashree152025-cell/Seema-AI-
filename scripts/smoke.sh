@@ -14,6 +14,29 @@ adb shell dumpsys activity activities | grep -iE "ResumedActivity" || true
 adb shell uiautomator dump /sdcard/ui1.xml || true
 adb shell cat /sdcard/ui1.xml | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | head -80 || true
 adb exec-out screencap -p > smoke-1.png
+
+echo "===== RUN 1b: the pages behind the home tiles (for design review) ====="
+# Taps an element by its text or content description (uiautomator bounds → centre).
+tap_text() {
+  adb shell uiautomator dump /sdcard/nav.xml > /dev/null 2>&1
+  local b
+  b=$(adb shell cat /sdcard/nav.xml | tr '>' '\n' | grep -m1 -E "(text|content-desc)=\"$1\"" | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | head -1)
+  if [ -z "$b" ]; then echo "NAV: '$1' not on screen"; return 1; fi
+  local n=($(echo "$b" | grep -oE '[0-9]+'))
+  adb shell input tap $(( (n[0] + n[2]) / 2 )) $(( (n[1] + n[3]) / 2 ))
+}
+for page in "AI Brain:brain" "Automation:automation" "Settings:settings"; do
+  label=${page%%:*}; name=${page##*:}
+  if tap_text "$label"; then
+    sleep 4
+    adb exec-out screencap -p > smoke-page-$name.png
+    adb shell input swipe 540 1700 540 700 400
+    sleep 2
+    adb exec-out screencap -p > smoke-page-$name-2.png
+    adb shell input keyevent KEYCODE_BACK
+    sleep 3
+  fi
+done
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|ANR in|Application Not Responding|raju|System.err|Choreographer" | head -150 || true
 
 echo "===== RUN 2: animations on ====="

@@ -345,7 +345,7 @@ private fun AppGridCard(item: AppItem, onClick: () -> Unit) {
         Text(
             item.name,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp,
+                fontSize = 13.5.sp,
                 color = Color.White,
                 fontWeight = FontWeight.Medium,
             ),

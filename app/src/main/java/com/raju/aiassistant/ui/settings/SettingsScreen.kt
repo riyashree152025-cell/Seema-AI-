@@ -244,7 +244,7 @@ fun SettingsScreen(
                     extra = {
                         Spacer(Modifier.height(16.dp))
                         Text("🚆 PNR status service (background PNR alerts)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
-                        Text("Aapki apni PNR service ka URL — {pnr} ki jagah PNR aata hai. Official free API nahi hai.", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                        Text("Aapki apni PNR service ka URL — {pnr} ki jagah PNR aata hai. Official free API nahi hai.", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp)
                         VoiceEngineSecretCard(
                             secretId = SecretId.PNR_STATUS_ENDPOINT,
                             title = "PNR service URL",
@@ -501,7 +501,7 @@ fun SettingsMenuScreen(
                         "Smart • Personal • Always with you",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color(0xFF00E5FF).copy(alpha = 0.85f),
-                            fontSize = 11.sp
+                            fontSize = 14.sp
                         )
                     )
                 }
@@ -532,7 +532,7 @@ fun SettingsMenuScreen(
                 "Customize your AI Assistant",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 13.sp
+                    fontSize = 15.5.sp
                 )
             )
         }
@@ -599,7 +599,7 @@ fun BrainAiGridScreen(
                         "Choose your AI Provider",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -646,7 +646,7 @@ fun BrainAiGridScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF00E5FF),
-                            fontSize = 11.sp,
+                            fontSize = 14.sp,
                             letterSpacing = 1.sp
                         )
                     )
@@ -663,7 +663,7 @@ fun BrainAiGridScreen(
                         "सीमा सोचने व उत्तर देने के लिए इसी AI का उपयोग कर रही है।",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.75f),
-                            fontSize = 11.5.sp
+                            fontSize = 14.5.sp
                         )
                     )
                 }
@@ -679,7 +679,7 @@ fun BrainAiGridScreen(
                         "ACTIVE",
                         color = SuccessGreen,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
+                        fontSize = 14.sp
                     )
                 }
             }
@@ -690,7 +690,7 @@ fun BrainAiGridScreen(
             style = MaterialTheme.typography.titleSmall.copy(
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF00E5FF),
-                fontSize = 14.5.sp
+                fontSize = 17.sp
             )
         )
 
@@ -765,7 +765,7 @@ fun BrainAiGridScreen(
                     "Multiple AI providers for the best experience. Groq & Cerebras provide instant responses (<500ms), while Google Gemini provides extensive reasoning and knowledge.",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 12.sp
+                        fontSize = 15.sp
                     )
                 )
             }
@@ -834,7 +834,7 @@ fun ProviderGridCard(
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontSize = 14.5.sp
+                        fontSize = 17.sp
                     ),
                     maxLines = 1
                 )
@@ -852,7 +852,7 @@ fun ProviderGridCard(
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = if (isConnected) SuccessGreen else Color.White.copy(alpha = 0.6f),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp
+                            fontSize = 14.sp
                         )
                     )
                 }
@@ -982,7 +982,7 @@ fun AiProviderDetailScreen(
                     "Powerful AI for your ideas",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp
+                        fontSize = 15.sp
                     )
                 )
 
@@ -998,7 +998,7 @@ fun AiProviderDetailScreen(
                             "★ ACTIVE PRIMARY AI (सक्रिय मुख्य AI)",
                             color = SuccessGreen,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     }
                 } else {
@@ -1007,7 +1007,7 @@ fun AiProviderDetailScreen(
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Text("⭐ इसे सीमा का मुख्य AI बनाएं (Set Primary)", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("⭐ इसे सीमा का मुख्य AI बनाएं (Set Primary)", fontSize = 15.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1039,7 +1039,7 @@ fun AiProviderDetailScreen(
                         Text(
                             secretStatus.maskedValue,
                             color = Color(0xFF00E5FF),
-                            fontSize = 11.5.sp,
+                            fontSize = 14.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -1076,7 +1076,7 @@ fun AiProviderDetailScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(if (secretStatus.busy) "Testing…" else "Test Connection", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (secretStatus.busy) "Testing…" else "Test Connection", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1092,7 +1092,7 @@ fun AiProviderDetailScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Save", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1108,10 +1108,10 @@ fun AiProviderDetailScreen(
                         TextButton(onClick = {
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(provider.secret.helpUrl))) }
                         }) {
-                            Text("Get API Key", fontSize = 11.5.sp, color = Color(0xFF00E5FF))
+                            Text("Get API Key", fontSize = 14.5.sp, color = Color(0xFF00E5FF))
                         }
                         TextButton(onClick = { confirmRemove = true }) {
-                            Text("Remove", fontSize = 11.5.sp, color = ErrorRed)
+                            Text("Remove", fontSize = 14.5.sp, color = ErrorRed)
                         }
                     }
                 }
@@ -1157,7 +1157,7 @@ fun AiProviderDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(currentModel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                        Text(currentModel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF00E5FF))
                     }
 
@@ -1188,7 +1188,7 @@ fun AiProviderDetailScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
-                        Text("Refresh Models", color = Color(0xFF00E5FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Refresh Models", color = Color(0xFF00E5FF), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1234,7 +1234,7 @@ fun AiProviderDetailScreen(
                         "Connection Status",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 11.5.sp
+                            fontSize = 14.5.sp
                         )
                     )
                     Text(
@@ -1244,7 +1244,7 @@ fun AiProviderDetailScreen(
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = if (secretStatus.configured && !secretStatus.isError) SuccessGreen else WarningAmber,
-                            fontSize = 14.5.sp
+                            fontSize = 17.sp
                         )
                     )
                 }
@@ -1317,7 +1317,7 @@ fun TavilyDetailScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TavilyLogo(size = 64.dp)
                 Text("Tavily AI Web Search", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 20.sp)
-                Text("Real-time web search for up-to-date answers", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                Text("Real-time web search for up-to-date answers", color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp)
             }
         }
 
@@ -1358,10 +1358,10 @@ fun TavilyDetailScreen(
                 Text(
                     if (secretStatus.configured) "✓ Key saved ${secretStatus.maskedValue}" else "Key abhi save nahi hai",
                     color = if (secretStatus.configured) Color(0xFF69F0AE) else Color(0xFFFFC857),
-                    fontSize = 13.sp,
+                    fontSize = 15.5.sp,
                 )
                 secretStatus.message?.let {
-                    Text(it, color = if (secretStatus.isError) Color(0xFFFF6B8A) else Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                    Text(it, color = if (secretStatus.isError) Color(0xFFFF6B8A) else Color.White.copy(alpha = 0.8f), fontSize = 15.5.sp)
                 }
             }
         }
@@ -1416,7 +1416,7 @@ fun VoiceSpeechScreen(
                         "Choose your Voice Engine",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -1496,7 +1496,7 @@ fun VoiceSpeechScreen(
                     "सीमा की बोलने वाली आवाज़ चुनें (Tap on an engine to activate):",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White.copy(alpha = 0.75f),
-                        fontSize = 12.sp
+                        fontSize = 15.sp
                     )
                 )
             }
@@ -1555,7 +1555,7 @@ fun VoiceSpeechScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("⚙️ Voice Settings & Fine-Tune ➔", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("⚙️ Voice Settings & Fine-Tune ➔", fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
                 }
             }
 
@@ -1566,7 +1566,7 @@ fun VoiceSpeechScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.VolumeUp, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                    Text("🎙️ आवाज़ चुनें (Meera, Roopa, Suman) ➔", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    Text("🎙️ आवाज़ चुनें (Meera, Roopa, Suman) ➔", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
         }
@@ -1660,7 +1660,7 @@ fun VoiceEngineCard(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 11.5.sp
+                            fontSize = 14.5.sp
                         )
                     )
                 }
@@ -1675,7 +1675,7 @@ fun VoiceEngineCard(
                             .border(1.dp, SuccessGreen, RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text("Active", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text("Active", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
                 RadioButton(
@@ -1735,7 +1735,7 @@ fun VoiceFineTuneScreen(
                         "Fine-tune your voice",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -1765,7 +1765,7 @@ fun VoiceFineTuneScreen(
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF00E5FF),
-                    fontSize = 14.5.sp
+                    fontSize = 17.sp
                 )
             )
 
@@ -1809,7 +1809,7 @@ fun VoiceFineTuneScreen(
                             preset,
                             color = if (isSelected) Color(0xFF030712) else Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = 15.sp,
                             maxLines = 1
                         )
                     }
@@ -1836,13 +1836,13 @@ fun VoiceFineTuneScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Speech Speed", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Speech Speed", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
                         }
                         Text(
                             "${String.format("%.1f", s.speechRate)}x",
                             color = Color(0xFF00E5FF),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontSize = 16.5.sp
                         )
                     }
                     Slider(
@@ -1861,13 +1861,13 @@ fun VoiceFineTuneScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Pitch (टोन)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Pitch (टोन)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
                         }
                         Text(
                             "${String.format("%.1f", s.speechPitch)}x",
                             color = Color(0xFF00E5FF),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontSize = 16.5.sp
                         )
                     }
                     Slider(
@@ -1895,8 +1895,8 @@ fun VoiceFineTuneScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Direct Message Reading", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("मैसेज आने पर सीधा पढ़ना (बिना अनुमति पॉप-अप)", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Direct Message Reading", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("मैसेज आने पर सीधा पढ़ना (बिना अनुमति पॉप-अप)", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(
                         checked = !s.askBeforeReading,
@@ -1910,8 +1910,8 @@ fun VoiceFineTuneScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto Speak Replies", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("AI उत्तर स्वतः बोलकर सुनाए", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Auto Speak Replies", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("AI उत्तर स्वतः बोलकर सुनाए", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(
                         checked = s.autoSpeakReplies,
@@ -1933,7 +1933,7 @@ fun VoiceFineTuneScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text("Test Voice", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Test Voice", fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
                 }
             }
 
@@ -1944,13 +1944,13 @@ fun VoiceFineTuneScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Filled.Stop, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(20.dp))
-                    Text("Stop", color = ErrorRed, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Stop", color = ErrorRed, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
                 }
             }
         }
 
         (voiceTest ?: previewStatus)?.let {
-            Text("🔊 $it", color = Color(0xFF00E5FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("🔊 $it", color = Color(0xFF00E5FF), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -1987,7 +1987,7 @@ fun VoiceCatalogScreen(
             Text("पसंदीदा आवाज़ों की सूची (Voices)", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
         }
 
-        Text("🌟 Cartesia Sonic Voices:", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF), fontSize = 14.5.sp))
+        Text("🌟 Cartesia Sonic Voices:", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF), fontSize = 17.sp))
 
         VoiceEngineSecretCard(
             secretId = SecretId.CARTESIA_API_KEY,
@@ -2009,8 +2009,8 @@ fun VoiceCatalogScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("★ " + voice.name + (if (voice.name.contains("Meera")) " (Bright Companion - पसंदीदा)" else " (Paced Helper)"), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.5.sp)
-                        Text(voice.detail, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 11.5.sp))
+                        Text("★ " + voice.name + (if (voice.name.contains("Meera")) " (Bright Companion - पसंदीदा)" else " (Paced Helper)"), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                        Text(voice.detail, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 14.5.sp))
                     }
                     RadioButton(selected = isSelected, onClick = { viewModel.setCartesiaVoice(voice) })
                 }
@@ -2018,7 +2018,7 @@ fun VoiceCatalogScreen(
         }
 
         Spacer(Modifier.height(6.dp))
-        Text("🌸 Sarvam AI Indian Voices (Bulbul v3 / v4):", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFFF4081), fontSize = 14.5.sp))
+        Text("🌸 Sarvam AI Indian Voices (Bulbul v3 / v4):", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFFF4081), fontSize = 17.sp))
 
         VoiceEngineSecretCard(
             secretId = SecretId.SARVAM_API_KEY,
@@ -2041,8 +2041,8 @@ fun VoiceCatalogScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text((if (isFavorite) "★ " else "") + speaker.name + (if (isFavorite) " (राजू जी की पसंद)" else ""), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.5.sp)
-                        Text(speaker.note, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 11.5.sp))
+                        Text((if (isFavorite) "★ " else "") + speaker.name + (if (isFavorite) " (राजू जी की पसंद)" else ""), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                        Text(speaker.note, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 14.5.sp))
                     }
                     RadioButton(selected = isSelected, onClick = { viewModel.setSarvamSpeaker(speaker.id) })
                 }
@@ -2096,7 +2096,7 @@ fun VoiceEngineSecretCard(
                     Text(
                         secretStatus.maskedValue,
                         color = Color(0xFF00E5FF),
-                        fontSize = 11.5.sp,
+                        fontSize = 14.5.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -2133,7 +2133,7 @@ fun VoiceEngineSecretCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(if (secretStatus.busy) "Testing…" else "Test Connection", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(if (secretStatus.busy) "Testing…" else "Test Connection", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -2149,7 +2149,7 @@ fun VoiceEngineSecretCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Save", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2169,12 +2169,12 @@ fun VoiceEngineSecretCard(
                         Text(
                             "Get key: " + secretId.helpUrl.removePrefix("https://").removePrefix("http://").substringBefore('/'),
                             color = Color(0xFF00E5FF),
-                            fontSize = 11.5.sp
+                            fontSize = 14.5.sp
                         )
                     }
 
                     TextButton(onClick = { confirmRemove = true }) {
-                        Text("Remove key", color = ErrorRed, fontSize = 11.5.sp)
+                        Text("Remove key", color = ErrorRed, fontSize = 14.5.sp)
                     }
                 }
             }
@@ -2215,12 +2215,12 @@ fun VoiceEngineSecretCard(
                                 if (isSuccess) "Connection Status" else "Error",
                                 fontWeight = FontWeight.Bold,
                                 color = if (isSuccess) SuccessGreen else ErrorRed,
-                                fontSize = 13.sp
+                                fontSize = 15.5.sp
                             )
                             Text(
                                 secretStatus.message,
                                 color = Color.White.copy(alpha = 0.9f),
-                                fontSize = 11.5.sp
+                                fontSize = 14.5.sp
                             )
                         }
                     }
@@ -2274,7 +2274,7 @@ fun AppearanceScreen(
             Spacer(Modifier.width(6.dp))
             Column {
                 Text("Appearance & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
-                Text("Personalize your experience", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+                Text("Personalize your experience", color = Color.White.copy(alpha = 0.65f), fontSize = 15.sp)
             }
         }
 
@@ -2291,7 +2291,7 @@ fun AppearanceScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Filled.Palette, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(46.dp))
                 Text("UI Style & Core Aesthetics", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
-                Text("Futuristic Glassy Cyan & Deep Navy Glow", color = Color(0xFF00E5FF), fontSize = 12.5.sp)
+                Text("Futuristic Glassy Cyan & Deep Navy Glow", color = Color(0xFF00E5FF), fontSize = 15.5.sp)
             }
         }
 
@@ -2306,16 +2306,16 @@ fun AppearanceScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Smooth Animations", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("तरल और आकर्षक विज़ुअल्स", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Smooth Animations", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("तरल और आकर्षक विज़ुअल्स", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(checked = !s.reducedMotion, onCheckedChange = { viewModel.setReducedMotion(!it) })
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Battery Saver Mode", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("बैटरी बचाने के लिए ऑप्टिमाइज़ेशन", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Battery Saver Mode", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("बैटरी बचाने के लिए ऑप्टिमाइज़ेशन", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(checked = s.lowPowerMode, onCheckedChange = viewModel::setLowPowerMode)
                 }
@@ -2329,7 +2329,7 @@ fun AppearanceScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Apply Changes", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Apply Changes", fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
             }
         }
 
@@ -2377,7 +2377,7 @@ fun PrivacyScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("System Permissions Status", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Notification Access", color = Color.White, fontSize = 13.5.sp)
+                    Text("Notification Access", color = Color.White, fontSize = 16.sp)
                     val hasNotif = viewModel.notificationAccessEnabled()
                     Box(
                         modifier = Modifier
@@ -2385,7 +2385,7 @@ fun PrivacyScreen(
                             .background(if (hasNotif) Color(0x2400E676) else Color(0x24FFB300))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text(if (hasNotif) "Granted" else "Needed", color = if (hasNotif) SuccessGreen else WarningAmber, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text(if (hasNotif) "Granted" else "Needed", color = if (hasNotif) SuccessGreen else WarningAmber, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
                 OutlinedButton(
@@ -2472,16 +2472,16 @@ fun AutomationScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Announce WhatsApp & Messages", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("मैसेज आने पर बोलकर सुनाए", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Announce WhatsApp & Messages", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("मैसेज आने पर बोलकर सुनाए", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(checked = s.announceNotifications, onCheckedChange = viewModel::setAnnounce)
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Announce Calls", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("फ़ोन आने पर कॉलर का नाम बोले", color = Color.White.copy(alpha = 0.65f), fontSize = 11.5.sp)
+                        Text("Announce Calls", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("फ़ोन आने पर कॉलर का नाम बोले", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
                     }
                     Switch(checked = s.announceCalls, onCheckedChange = viewModel::setAnnounceCalls)
                 }

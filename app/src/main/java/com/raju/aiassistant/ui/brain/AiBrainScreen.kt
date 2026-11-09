@@ -244,7 +244,7 @@ fun AiBrainScreen(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
                             color = SuccessGreen,
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -270,7 +270,7 @@ fun AiBrainScreen(
                                 "Active Provider",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = Color.White.copy(alpha = 0.65f),
-                                    fontSize = 11.sp
+                                    fontSize = 14.sp
                                 )
                             )
                             Spacer(Modifier.height(2.dp))
@@ -312,7 +312,7 @@ fun AiBrainScreen(
                                 "Model",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = Color.White.copy(alpha = 0.65f),
-                                    fontSize = 11.sp
+                                    fontSize = 14.sp
                                 )
                             )
                             Spacer(Modifier.height(2.dp))
@@ -329,7 +329,7 @@ fun AiBrainScreen(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFD4E5FF),
-                                        fontSize = 13.5.sp
+                                        fontSize = 16.sp
                                     )
                                 )
                             }
@@ -434,7 +434,7 @@ fun AiBrainScreen(
                         else "❌ Test failed: ${res.error}",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White,
-                            fontSize = 11.5.sp,
+                            fontSize = 14.5.sp,
                             fontWeight = FontWeight.Medium
                         )
                     )

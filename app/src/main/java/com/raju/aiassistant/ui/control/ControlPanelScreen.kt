@@ -212,7 +212,7 @@ fun ControlPanelScreen(
                                 "Run Routines Automatically",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = Color.White.copy(alpha = 0.65f),
-                                    fontSize = 11.5.sp
+                                    fontSize = 14.5.sp
                                 )
                             )
                         }
@@ -261,7 +261,7 @@ fun ControlPanelScreen(
                         "View All",
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = SciFiCyanGlow,
-                            fontSize = 12.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -338,7 +338,7 @@ fun ControlPanelScreen(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            fontSize = 14.5.sp,
+                            fontSize = 17.sp,
                             letterSpacing = 0.8.sp
                         )
                     )
@@ -365,7 +365,7 @@ fun ControlPanelScreen(
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = if (automationEnabled) SuccessGreen else Color.Gray,
-                        fontSize = 13.sp
+                        fontSize = 15.5.sp
                     )
                 )
             }
@@ -384,7 +384,7 @@ fun ControlPanelScreen(
                         .padding(10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Battery: $batteryPct%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Battery: $batteryPct%", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
                 Box(
                     modifier = Modifier
@@ -395,7 +395,7 @@ fun ControlPanelScreen(
                         .padding(10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("RAM: $ramPct%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("RAM: $ramPct%", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -492,7 +492,7 @@ private fun RoutineItemCard(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 11.5.sp
+                            fontSize = 14.5.sp
                         )
                     )
                 }

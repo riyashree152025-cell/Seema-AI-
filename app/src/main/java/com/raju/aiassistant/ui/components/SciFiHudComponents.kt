@@ -108,25 +108,9 @@ fun SciFiCard(
 
     Box(
         modifier = modifier
-            .clip(SciFiCardShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(SciFiCardDark, SciFiCardDeep)
-                )
-            )
-            .border(
-                1.2.dp,
-                Brush.horizontalGradient(
-                    listOf(
-                        borderColor.copy(alpha = borderAlpha * 0.4f),
-                        borderColor.copy(alpha = borderAlpha),
-                        borderColor.copy(alpha = borderAlpha * 0.4f)
-                    )
-                ),
-                SciFiCardShape
-            )
+            .premiumSurface(shape = RoundedCornerShape(20.dp), accent = borderColor, lit = (borderAlpha - 0.75f).coerceIn(0f, 1f))
             .then(clickModifier)
-            .padding(14.dp),
+            .padding(16.dp),
         content = content
     )
 }
@@ -138,44 +122,35 @@ fun SciFiCard(
 fun SciFiHomeNavButton(
     title: String,
     icon: ImageVector,
-    iconColor: Color = SciFiCyanGlow,
+    iconColor: Color = Premium.Aqua,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     /** Shows a small status dot: green = on/working, null = nothing to show. */
     active: Boolean? = null,
 ) {
-    // Frosted glass in the Living Eye style: a glowing cyan → violet → cyan edge, a light from the top,
-    // and on press a small dip (0.96) with a brighter glow.
+    // Premium tile: ink glass, a hairline from champagne gold to the tile's own colour, the icon in a
+    // softly lit glass disc, and a large clear label. Pressed: a gentle dip, a brighter edge, a light tick.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.96f else 1f, tween(120), label = "tileScale")
-    val glow by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(160), label = "tileGlow")
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.97f else 1f, tween(140), label = "tileScale")
+    val lit by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(180), label = "tileLit")
     Box(
         modifier = modifier
-            .height(92.dp)
+            .height(108.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.verticalGradient(listOf(Color(0x33102445), Color(0x22091426))))
-            // Inner radial highlight, then a soft sheen from the top edge: layered frosted glass.
-            .background(Brush.radialGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.10f + 0.12f * glow), Color.Transparent)))
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent, Color.Transparent)))
-            .border(
-                1.2.dp,
-                Brush.linearGradient(
-                    listOf(
-                        Color(0xFF00E5FF).copy(alpha = 0.75f + 0.25f * glow),
-                        Color(0xFF7000FF).copy(alpha = 0.75f + 0.25f * glow),
-                        Color(0xFF00E5FF).copy(alpha = 0.75f + 0.25f * glow),
-                    )
-                ),
-                RoundedCornerShape(16.dp)
-            )
+            .premiumSurface(shape = RoundedCornerShape(22.dp), accent = iconColor, lit = lit)
+            // The tile's own colour, very faint, glowing up from the bottom.
+            .background(Brush.radialGradient(listOf(iconColor.copy(alpha = 0.09f + 0.10f * lit), Color.Transparent), radius = 260f))
             .clickable(
                 interactionSource = interaction,
                 indication = null,
-                onClick = onClick
+                onClick = {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onClick()
+                },
             )
-            .padding(horizontal = 6.dp, vertical = 8.dp),
+            .padding(horizontal = 6.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -183,33 +158,19 @@ fun SciFiHomeNavButton(
             verticalArrangement = Arrangement.Center
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Luminous neon halo behind the icon in its own (iris) colour; brighter while pressed.
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
-                        .background(
-                            Brush.radialGradient(listOf(iconColor.copy(alpha = 0.50f + 0.25f * glow), iconColor.copy(alpha = 0.14f), Color.Transparent)),
-                            CircleShape
-                        )
-                )
-                // Circular glass halo: a frosted disc lit from the centre in the icon's own neon hue.
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                listOf(iconColor.copy(alpha = 0.32f), Color(0x2614243B), Color(0x1A14243B))
-                            )
-                        )
-                        .border(1.dp, Brush.linearGradient(listOf(iconColor.copy(alpha = 0.75f), Color(0x337C4DFF))), CircleShape),
+                        .background(Brush.radialGradient(listOf(iconColor.copy(alpha = 0.26f + 0.14f * lit), iconColor.copy(alpha = 0.06f))))
+                        .border(1.dp, Brush.linearGradient(listOf(Premium.Gold.copy(alpha = 0.55f), iconColor.copy(alpha = 0.55f))), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         icon,
                         contentDescription = title,
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                        tint = iconColor,
+                        modifier = Modifier.size(25.dp)
                     )
                 }
                 if (active != null) {
@@ -217,24 +178,23 @@ fun SciFiHomeNavButton(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .size(9.dp)
-                            .background(if (active) Color(0xFF00E676) else Color(0xFF5D7083), CircleShape)
-                            .border(1.dp, Color(0xFF030A18), CircleShape)
+                            .size(10.dp)
+                            .background(if (active) Color(0xFF5EF2A8) else Color(0xFF5D7083), CircleShape)
+                            .border(1.5.dp, Color(0xFF060B15), CircleShape)
                     )
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 title,
-                style = MaterialTheme.typography.labelMedium.copy(
+                style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                    fontSize = 12.5.sp,
-                    letterSpacing = 0.5.sp,
-                    // A soft cyan glow under the label.
-                    shadow = androidx.compose.ui.graphics.Shadow(Color(0x9900E5FF), androidx.compose.ui.geometry.Offset.Zero, 8f),
+                    color = Premium.TextHigh,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.2.sp,
                 ),
-                maxLines = 1
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }
@@ -257,32 +217,13 @@ fun SciFiListCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF0C1F42),
-                        Color(0xFF06132C)
-                    )
-                )
-            )
-            .border(
-                1.5.dp,
-                Brush.horizontalGradient(
-                    listOf(
-                        emblemBorder.copy(alpha = 0.7f),
-                        Color(0xFF00E5FF).copy(alpha = 0.95f),
-                        emblemBorder.copy(alpha = 0.7f)
-                    )
-                ),
-                RoundedCornerShape(20.dp)
-            )
+            .premiumSurface(accent = emblemBorder)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 18.dp, vertical = 18.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -296,17 +237,17 @@ fun SciFiListCard(
                 // Circular Glowing Emblem Matching Reference Image Panel 1
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(50.dp)
                         .clip(CircleShape)
-                        .background(iconTint.copy(alpha = 0.18f))
-                        .border(1.4.dp, emblemBorder.copy(alpha = 0.85f), CircleShape),
+                        .background(Brush.radialGradient(listOf(iconTint.copy(alpha = 0.24f), iconTint.copy(alpha = 0.06f))))
+                        .border(1.dp, Brush.linearGradient(listOf(Premium.Gold.copy(alpha = 0.55f), iconTint.copy(alpha = 0.5f))), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         icon,
                         contentDescription = null,
                         tint = iconTint,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -315,18 +256,18 @@ fun SciFiListCard(
                 Column {
                     Text(
                         title,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 16.sp
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Premium.TextHigh,
+                            fontSize = 18.sp
                         )
                     )
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 12.sp
+                            color = Premium.TextLow,
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -335,8 +276,8 @@ fun SciFiListCard(
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = Color(0xFF00E5FF).copy(alpha = 0.85f),
-                modifier = Modifier.size(22.dp)
+                tint = Premium.Gold.copy(alpha = 0.85f),
+                modifier = Modifier.size(26.dp)
             )
         }
     }
@@ -406,17 +347,17 @@ fun SciFiProgressRing(
 fun SciFiGradientButton(
     text: String,
     icon: ImageVector? = null,
-    gradient: Brush = Brush.horizontalGradient(listOf(Color(0xFF0052D4), Color(0xFF4364F7), Color(0xFF6FB1FC))),
+    gradient: Brush = Brush.horizontalGradient(listOf(Color(0xFF16324F), Color(0xFF1E4A6E), Color(0xFF16324F))),
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(SciFiButtonShape)
+            .height(56.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(gradient)
-            .border(1.2.dp, SciFiCyanGlow.copy(alpha = 0.9f), SciFiButtonShape)
+            .border(1.dp, Brush.linearGradient(listOf(Premium.Gold.copy(alpha = 0.7f), Premium.Aqua.copy(alpha = 0.45f))), RoundedCornerShape(18.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -440,10 +381,10 @@ fun SciFiGradientButton(
             Text(
                 text,
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    color = Color.White,
-                    fontSize = 14.5.sp
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.4.sp,
+                    color = Premium.TextHigh,
+                    fontSize = 17.sp
                 )
             )
         }
@@ -531,7 +472,7 @@ fun SciFiStatTile(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 10.sp
+                    fontSize = 13.sp
                 )
             )
             Spacer(Modifier.height(4.dp))
@@ -540,7 +481,7 @@ fun SciFiStatTile(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Black,
                     color = valueColor,
-                    fontSize = 13.5.sp
+                    fontSize = 16.sp
                 ),
                 maxLines = 1
             )
@@ -584,7 +525,7 @@ fun SciFiPill(
             style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 color = if (selected) Color.White else Color.White.copy(alpha = 0.75f),
-                fontSize = 12.sp
+                fontSize = 15.sp
             )
         )
     }
@@ -865,7 +806,7 @@ fun SciFiStateCapsule(
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Black,
                         color = statusColor,
-                        fontSize = 11.5.sp,
+                        fontSize = 14.5.sp,
                         letterSpacing = 1.sp
                     )
                 )
@@ -925,31 +866,32 @@ fun SciFiSettingsRow(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClickLabel = title, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 Modifier
-                    .size(36.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(iconTint.copy(alpha = 0.16f))
-                    .border(1.dp, iconTint.copy(alpha = 0.8f), CircleShape),
+                    .background(Brush.radialGradient(listOf(iconTint.copy(alpha = 0.24f), iconTint.copy(alpha = 0.05f))))
+                    .border(1.dp, Brush.linearGradient(listOf(Premium.Gold.copy(alpha = 0.5f), iconTint.copy(alpha = 0.5f))), CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp)) }
-            Spacer(Modifier.width(14.dp))
+            ) { Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(23.dp)) }
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 15.5.sp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
+                Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, color = Premium.TextHigh, fontSize = 18.sp))
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall.copy(color = Premium.TextLow, fontSize = 15.sp))
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF00E5FF))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Premium.Gold.copy(alpha = 0.85f), modifier = Modifier.size(26.dp))
         }
         if (showDivider) {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 66.dp, end = 16.dp)
+                    .padding(start = 78.dp, end = 18.dp)
                     .height(1.dp)
-                    .background(Brush.horizontalGradient(listOf(Color(0x4400E5FF), Color(0x1100E5FF)))),
+                    .background(Brush.horizontalGradient(listOf(Premium.Gold.copy(alpha = 0.22f), Color.White.copy(alpha = 0.04f)))),
             )
         }
     }

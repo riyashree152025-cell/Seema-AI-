@@ -172,7 +172,7 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("👑", fontSize = 14.sp)
+                Text("👑", fontSize = 16.5.sp)
                 Text(
                     "Premium User",
                     style = MaterialTheme.typography.labelMedium.copy(
@@ -347,7 +347,7 @@ private fun StatColumn(label: String, value: String) {
             label,
             style = MaterialTheme.typography.labelSmall.copy(
                 color = Color(0xFF8BA5CC),
-                fontSize = 11.sp,
+                fontSize = 14.sp,
             ),
         )
     }

@@ -52,6 +52,16 @@ jobs:
             demo-*.mp4
             logcat.txt
           if-no-files-found: ignore
+      - name: Publish screenshots (API 35)
+        # Lets the design be reviewed without the artifact storage: the API 35 screenshots of the latest
+        # branch run, as assets of the "smoke-shots" pre-release (replaced on every run).
+        if: always() && matrix.api-level == 35 && hashFiles('smoke-*.png') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view smoke-shots > /dev/null 2>&1 || gh release create smoke-shots --prerelease --title "Smoke screenshots" --notes "Emulator screenshots (API 35) from the latest branch run."
+          gh release upload smoke-shots smoke-*.png --clobber
       - name: Publish demo recordings
         # Publishing the demo pre-release only when started by hand (Actions → Run workflow), never on a branch push.
         if: always() && github.event_name == 'workflow_dispatch' && matrix.api-level == 35 && hashFiles('demo-*.mp4') != ''
