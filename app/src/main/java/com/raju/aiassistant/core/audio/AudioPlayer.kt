@@ -30,8 +30,17 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
-    private val mediaFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(mediaAttributes).build()
-    private val callFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(callAttributes).build()
+    /**
+     * Another app took the audio for good (music, a video): she stops talking. A short, temporary loss is
+     * ignored on purpose: her own microphone asks for temporary focus while listening, and a phone call
+     * is already handled by the engine (it pauses her).
+     */
+    @Volatile private var focusLost = false
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS) focusLost = true
+    }
+    private val mediaFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(mediaAttributes).setOnAudioFocusChangeListener(focusListener).build()
+    private val callFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(callAttributes).setOnAudioFocusChangeListener(focusListener).build()
     @Volatile private var focus: AudioFocusRequest = mediaFocus
 
     /** What is playing right now, for [levelNow]. */
@@ -39,6 +48,7 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
 
     override fun requestFocus() {
         focus = if (callStyle()) callFocus else mediaFocus
+        focusLost = false
         audioManager.requestAudioFocus(focus)
     }
 
@@ -82,7 +92,7 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
             track.play()
             var offset = 0
             var stalls = 0
-            while (offset < pcm.data.size) {
+            while (offset < pcm.data.size && !focusLost) {
                 coroutineContext.ensureActive()
                 val len = minOf(chunk, pcm.data.size - offset)
                 onLevel(pcmLevel(pcm.data, offset, len))
@@ -95,7 +105,7 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
             // plus a second (a stuck output must not leave Seema "speaking" forever).
             val totalFrames = pcm.frameCount
             val deadline = System.nanoTime() + (totalFrames * 1_000_000_000L / pcm.sampleRate) + 1_000_000_000L
-            while (track.playbackHeadPosition < totalFrames && track.playState == AudioTrack.PLAYSTATE_PLAYING && System.nanoTime() < deadline) {
+            while (!focusLost && track.playbackHeadPosition < totalFrames && track.playState == AudioTrack.PLAYSTATE_PLAYING && System.nanoTime() < deadline) {
                 coroutineContext.ensureActive()
                 delay(20)
             }

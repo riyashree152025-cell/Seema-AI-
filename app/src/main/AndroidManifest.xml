@@ -66,6 +66,10 @@
         <package android:name="com.spotify.music" />
         <package android:name="com.google.android.apps.youtube.music" />
         <package android:name="com.google.android.apps.maps" />
+        <!-- Music apps Seema hands a song to (also visible through the launcher query above). -->
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.google.android.apps.youtube.music" />
+        <package android:name="com.spotify.music" />
     </queries>
 
     <application

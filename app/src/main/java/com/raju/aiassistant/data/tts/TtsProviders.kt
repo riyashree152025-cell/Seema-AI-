@@ -100,7 +100,7 @@ class CartesiaTtsProvider(
             }.getOrNull()
             ?: VoiceCatalog.defaultCartesiaVoices.first().id
         val language = languageTag.substringBefore('-').lowercase().ifBlank { "hi" }
-        return wavOrFailure(client.synthesize(text, voice, s.cartesiaModel, language, rate, s.cartesiaMood), "Cartesia")
+        return wavOrFailure(client.synthesize(text, voice, s.cartesiaModel, language, rate, com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood)), "Cartesia")
     }
 }
 

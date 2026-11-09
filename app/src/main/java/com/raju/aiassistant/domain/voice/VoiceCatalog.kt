@@ -83,6 +83,19 @@ object VoiceCatalog {
         "happy" to "Excited (उत्साहित)",
     )
 
+    /**
+     * The emotion sent to Cartesia for a saved mood, or null for none. Older versions of the mood buttons
+     * saved names Cartesia does not know ("natural", "pyaar_bhari", "khush", "shaant"); those are mapped,
+     * and anything else unknown is not sent at all.
+     */
+    fun cartesiaEmotion(mood: String?): String? = when (val m = mood?.trim()?.lowercase().orEmpty()) {
+        "", "natural", "normal" -> null
+        "pyaar_bhari" -> "affectionate"
+        "khush" -> "content"
+        "shaant" -> "calm"
+        else -> m.takeIf { v -> cartesiaMoods.any { it.first == v } }
+    }
+
     fun mergeCartesiaVoices(available: List<CloudVoice>): List<CloudVoice> {
         if (available.isEmpty()) return defaultCartesiaVoices
         val ids = available.map { it.id }.toSet()

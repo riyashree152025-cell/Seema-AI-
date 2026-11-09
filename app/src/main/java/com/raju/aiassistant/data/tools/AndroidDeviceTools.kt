@@ -51,6 +51,8 @@ private const val A11Y_ACT_MS = 3_000L
 private const val WHATSAPP_FLOW_MS = 60_000L
 private const val WHATSAPP_DOCUMENT_FLOW_MS = 90_000L
 
+private const val YOUTUBE = "com.google.android.youtube"
+
 class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     private fun granted(permission: String) =
@@ -216,6 +218,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             if (!canOpenScreens()) return blockedInBackground()
             if (tryStart(playFromSearch)) return ToolOutcome.Done("Asked ${service.label} to play \"$query\". Playback depends on the app and your subscription.")
             if (tryStart(Intent(Intent.ACTION_VIEW, Uri.parse(deepLink)).setPackage(pkg))) return ToolOutcome.Done("Opened ${service.label} search for \"$query\".")
+        }
+        // No YouTube Music: the YouTube app (on almost every Android phone) searches the song, not the browser.
+        if (service == MusicService.YOUTUBE_MUSIC && isInstalled(YOUTUBE)) {
+            if (!canOpenScreens()) return blockedInBackground()
+            val search = Intent(Intent.ACTION_SEARCH).setPackage(YOUTUBE).putExtra("query", query)
+            if (tryStart(search)) return ToolOutcome.Done("Opened YouTube search for \"$query\" (YouTube Music is not installed).")
+            val link = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded")).setPackage(YOUTUBE)
+            if (tryStart(link)) return ToolOutcome.Done("Opened YouTube search for \"$query\".")
         }
         val web = if (service == MusicService.SPOTIFY) "https://open.spotify.com/search/$encoded" else "https://music.youtube.com/search?q=$encoded"
         return start(Intent(Intent.ACTION_VIEW, Uri.parse(web)),

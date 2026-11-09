@@ -1775,10 +1775,10 @@ fun VoiceFineTuneScreen(
             ) {
                 presets.forEach { preset ->
                     val isSelected = when (preset) {
-                        "Normal" -> s.cartesiaMood == "natural"
-                        "Pyaar bhari" -> s.cartesiaMood == "pyaar_bhari"
-                        "Khush" -> s.cartesiaMood == "khush"
-                        "Calm" -> s.cartesiaMood == "shaant"
+                        "Normal" -> VoiceCatalog.cartesiaEmotion(s.cartesiaMood) == null
+                        "Pyaar bhari" -> VoiceCatalog.cartesiaEmotion(s.cartesiaMood) == "affectionate"
+                        "Khush" -> VoiceCatalog.cartesiaEmotion(s.cartesiaMood) == "content"
+                        "Calm" -> VoiceCatalog.cartesiaEmotion(s.cartesiaMood) == "calm"
                         else -> false
                     }
 
@@ -1797,10 +1797,10 @@ fun VoiceFineTuneScreen(
                             )
                             .clickable {
                                 when (preset) {
-                                    "Normal" -> viewModel.setCartesiaMood("natural")
-                                    "Pyaar bhari" -> viewModel.setCartesiaMood("pyaar_bhari")
-                                    "Khush" -> viewModel.setCartesiaMood("khush")
-                                    "Calm" -> viewModel.setCartesiaMood("shaant")
+                                    "Normal" -> viewModel.setCartesiaMood("")
+                                    "Pyaar bhari" -> viewModel.setCartesiaMood("affectionate")
+                                    "Khush" -> viewModel.setCartesiaMood("content")
+                                    "Calm" -> viewModel.setCartesiaMood("calm")
                                 }
                             },
                         contentAlignment = Alignment.Center

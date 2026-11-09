@@ -41,4 +41,15 @@ class VoiceCatalogTest {
         assertTrue(VoiceCatalog.isPaidVoiceError("Unexpected error (HTTP 402): payment_required: Free users cannot use library voices via the API."))
         assertTrue(!VoiceCatalog.isPaidVoiceError("API key was rejected (HTTP 401)"))
     }
+
+    @Test
+    fun onlyEmotionsCartesiaKnowsAreSent() {
+        assertEquals(null, VoiceCatalog.cartesiaEmotion(""))
+        assertEquals(null, VoiceCatalog.cartesiaEmotion("natural")) // older "Normal" button
+        assertEquals("affectionate", VoiceCatalog.cartesiaEmotion("pyaar_bhari"))
+        assertEquals("content", VoiceCatalog.cartesiaEmotion("khush"))
+        assertEquals("calm", VoiceCatalog.cartesiaEmotion("shaant"))
+        assertEquals("happy", VoiceCatalog.cartesiaEmotion("happy"))
+        assertEquals(null, VoiceCatalog.cartesiaEmotion("angry_robot")) // unknown: not sent
+    }
 }

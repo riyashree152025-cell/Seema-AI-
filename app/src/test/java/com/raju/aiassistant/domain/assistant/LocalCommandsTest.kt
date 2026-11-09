@@ -49,6 +49,12 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.TatkalCancelAll, p("sab tatkal alarm hata do"))
         assertEquals(AssistantAction.LedgerRecord("Rahul", 50_000, com.raju.aiassistant.domain.ledger.LedgerKind.GOT), p("Rahul se 500 rupaye mile"))
         assertEquals(AssistantAction.LedgerBalance("Rahul"), p("Rahul ka hisaab batao"))
+        // "Hey Seema" in front is not part of the client's name.
+        assertEquals(AssistantAction.LedgerRecord("राहुल", 50_000, com.raju.aiassistant.domain.ledger.LedgerKind.GOT), p("हे सीमा, राहुल से 500 मिले"))
+        assertEquals(AssistantAction.LedgerRecord("Rahul", 50_000, com.raju.aiassistant.domain.ledger.LedgerKind.GOT), p("Seema, Rahul se 500 rupaye mile"))
+        assertEquals(AssistantAction.TatkalList, p("Hey Seema tatkal alarm list karo"))
+        // A dotted time from speech recognition is a time.
+        assertEquals(AssistantAction.SetAlarm(6, 30, ""), p("6.30 baje subah ka alarm"))
         assertNull(p("6 baje ka alarm")) // morning or evening? the AI asks
     }
 

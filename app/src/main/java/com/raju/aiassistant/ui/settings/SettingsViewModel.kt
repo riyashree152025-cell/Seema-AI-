@@ -393,7 +393,9 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setTtsEngine(v: TtsEngine) = launch { repo.setTtsEngine(v) }
     fun setActiveVoiceEngine(engine: TtsEngine) = launch {
         repo.setTtsEngine(engine)
-        repo.setVoiceEngineAuto(engine == TtsEngine.KOKORO || engine == TtsEngine.PIPER)
+        // A voice picked by hand stays the user's choice. Automatic would put Kokoro first whenever it is
+        // fast, so picking Piper (or Cartesia, Sarvam…) was quietly undone. "Automatic" has its own button.
+        repo.setVoiceEngineAuto(false)
     }
     fun setSarvamSpeaker(v: String) = launch { repo.setSarvamSpeaker(v) }
     fun setElevenModel(v: String) = launch { repo.setElevenModel(v) }

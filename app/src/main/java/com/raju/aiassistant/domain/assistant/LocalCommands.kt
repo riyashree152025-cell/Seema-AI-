@@ -23,11 +23,13 @@ object LocalCommands {
         whatsApp(text)?.let { return it }
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
-        parseLedger(text)?.let { return when (it) {
+        // "Hey Seema, Rahul se 500 mile": the name and polite words in front are not part of the client's name.
+        val plain = withoutLeadingFillers(text)
+        parseLedger(plain)?.let { return when (it) {
             is LedgerCommand.Record -> AssistantAction.LedgerRecord(it.name, it.amountPaise, it.kind)
             is LedgerCommand.Balance -> AssistantAction.LedgerBalance(it.name)
         } }
-        parseTatkalCommand(text)?.let { return when (it) {
+        parseTatkalCommand(plain)?.let { return when (it) {
             is TatkalCommand.Set -> AssistantAction.SetTatkalAlarm(it.alarm.hour, it.alarm.minute, it.alarm.label)
             TatkalCommand.List -> AssistantAction.TatkalList
             is TatkalCommand.Cancel -> AssistantAction.TatkalCancel(it.hour, it.minute, it.kind)
@@ -42,13 +44,25 @@ object LocalCommands {
 
     // ------------------------------------------------------------------ text clean-up
 
+    private val LEAD_FILLER = Regex("^\\s*(?:please|plz|pls|zara|jara|जरा|ज़रा|seema|सीमा|hey|hi|हे|हाय)(?:[\\s,.!।]+|$)", RegexOption.IGNORE_CASE)
+
+    /** The sentence without "Hey Seema", "please", "zara" in front; the rest keeps its own spelling and case. */
+    internal fun withoutLeadingFillers(text: String): String {
+        var t = text.trim()
+        repeat(3) { t = t.replace(LEAD_FILLER, "") }
+        return t.trim()
+    }
+
     private val FILLER_START = Regex("^(please|plz|pls|zara|jara|जरा|ज़रा|seema|सीमा|hey|हे)\\s+")
     private val FILLER_END = Regex("\\s+(please|plz|pls|na|ना|ji|जी|jaldi|जल्दी)$")
 
     /** Lower case, local digits as 0-9, no punctuation, single spaces, polite words at the ends removed. */
     internal fun normalize(text: String): String {
+        // "6.30" from speech recognition is a time: keep it as "6:30" before dots become spaces
+        // (it became "6 30", and "6.30 baje subah ka alarm" went to the AI).
+        val timed = text.lowercase().replace(Regex("(?<![\\d.])(\\d{1,2})\\.(\\d{2})(?![\\d.])"), "$1:$2")
         var t = buildString {
-            for (ch in text.lowercase()) {
+            for (ch in timed) {
                 append(
                     when (ch) {
                         in '०'..'९' -> '0' + (ch - '०')

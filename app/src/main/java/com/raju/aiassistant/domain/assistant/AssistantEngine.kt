@@ -574,7 +574,8 @@ class AssistantEngine(
                 trace("listen error: ${err.message}")
                 // Waiting for "haan / nahi" to a screen action: keep listening until the window ends.
                 if (voiceConfirmOpen()) {
-                    scope.launch { delay(300); if (voiceConfirmOpen()) listen() }
+                    val g = listenGen
+                    scope.launch { delay(300); if (g == listenGen && voiceConfirmOpen()) listen() }
                     return@start
                 }
                 // "Padh ke sunau kya?": a short "haan / nahi" often comes back as low-confidence. Its
@@ -583,7 +584,10 @@ class AssistantEngine(
                     val unsure = err.heard?.let { readReply(it) }
                     when {
                         unsure != null -> { trace("read reply: ${if (unsure) "yes" else "no"} (low confidence)"); finishReadReply(unsure) }
-                        (err.noSpeech || err.unclear) && clock() < replyUntil - 1_000 -> scope.launch { delay(250); if (replyHandler != null) listen() }
+                        (err.noSpeech || err.unclear) && clock() < replyUntil - 1_000 -> {
+                            val g = listenGen
+                            scope.launch { delay(250); if (g == listenGen && replyHandler != null) listen() }
+                        }
                         else -> finishReadReply(null)
                     }
                     return@start
@@ -596,7 +600,8 @@ class AssistantEngine(
                         handleCallCommand(err.heard)
                     } else if ((err.noSpeech || err.unclear) && clock() < callCommandUntil - 1_500) {
                         trace("call: nothing clear yet, listening again")
-                        scope.launch { delay(250); if (clock() < callCommandUntil) listen() }
+                        val g = listenGen
+                        scope.launch { delay(250); if (g == listenGen && clock() < callCommandUntil) listen() }
                     } else {
                         callCommandUntil = 0
                         trace("call: no answer heard, stop listening")
@@ -2433,6 +2438,9 @@ class AssistantEngine(
      */
     private suspend fun askOutLoud(request: PendingRequest, spoken: String?, listenForAnswer: Boolean, interpret: (String) -> Decision?): Decision? {
         val d = CompletableDeferred<Decision>()
+        // Two questions at once (a call announcement during a khata question): the older one is answered
+        // "no" instead of waiting for ever on an answer that now goes to the new one.
+        decision?.complete(Decision.Deny)
         decision = d
         answeredByVoice = false
         _pending.value = request
@@ -3031,6 +3039,7 @@ class AssistantEngine(
 
     private suspend fun ask(request: PendingRequest): Decision {
         val d = CompletableDeferred<Decision>()
+        decision?.complete(Decision.Deny) // see askOutLoud
         decision = d
         _pending.value = request
         val before = _state.value
@@ -3126,8 +3135,11 @@ class AssistantEngine(
     )
 
     /** Error is shown briefly, then the reactor returns to Ready. */
+    private var errorResetJob: Job? = null
+
     private fun scheduleErrorReset() {
-        scope.launch {
+        errorResetJob?.cancel()
+        errorResetJob = scope.launch {
             delay(4_000)
             if (_state.value == AssistantState.Error || _state.value == AssistantState.WaitingPermission) _state.value = AssistantState.Idle
         }

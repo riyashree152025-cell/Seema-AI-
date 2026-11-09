@@ -45,7 +45,10 @@ class SeemaWakeService : Service() {
         }
         running = true
 
-        runCatching {
+        // The CPU is kept awake only for "Hey Seema" standby (screen off, phone in the pocket). Without the
+        // wake word nothing listens with the screen off, so holding it for 12 h only drained the battery.
+        val wakeWordOn = runCatching { (application as com.raju.aiassistant.RajuApp).container.currentSettings.value.wakeWord }.getOrDefault(true)
+        if (wakeWordOn) runCatching {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "seema:continuous_mic_wakelock").apply {
                 setReferenceCounted(false)
