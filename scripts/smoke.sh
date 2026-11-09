@@ -25,6 +25,8 @@ tap_text() {
   local n=($(echo "$b" | grep -oE '[0-9]+'))
   adb shell input tap $(( (n[0] + n[2]) / 2 )) $(( (n[1] + n[3]) / 2 ))
 }
+# The one-time "default caller ID & spam app" question covers the home screen on a fresh install.
+tap_text "Cancel" && sleep 3
 for page in "AI Brain:brain" "Automation:automation" "Settings:settings"; do
   label=${page%%:*}; name=${page##*:}
   if tap_text "$label"; then
