@@ -33,7 +33,8 @@ import java.time.ZoneId
 object TatkalAlarms {
     private const val PREFS = "tatkal_alarms"
     private const val KEY = "list"
-    private const val CHANNEL_ID = "tatkal_alarm"
+    /** v2: the notification is silent; the alarm sound plays on the alarm stream ([TatkalAlarmReceiver]). */
+    private const val CHANNEL_ID = "tatkal_alarm_v2"
     private const val NOTIFY_BASE = 4500
     internal const val EXTRA_HOUR = "tatkal_hour"
     internal const val EXTRA_MINUTE = "tatkal_minute"
@@ -98,13 +99,35 @@ object TatkalAlarms {
     }
 
     internal fun createChannel(context: Context) {
-        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.deleteNotificationChannel("tatkal_alarm") // the first version, which played the tone as a notification sound
         val channel = NotificationChannel(CHANNEL_ID, "Tatkal alarm", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Alert before a Tatkal booking window opens"
-            setSound(sound, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            setSound(null, null)
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 800, 400, 800)
         }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        nm.createNotificationChannel(channel)
+    }
+
+    /**
+     * The alarm tone on the alarm stream for [ms]: a notification sound is muted by Do Not Disturb and
+     * silent mode, the alarm stream is not (Android lets alarms through by default).
+     */
+    internal fun ring(context: Context, ms: Long, done: () -> Unit) {
+        val tone = runCatching {
+            RingtoneManager.getRingtone(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))?.apply {
+                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+            }
+        }.getOrNull()
+        if (tone == null || runCatching { tone.play() }.isFailure) {
+            done()
+            return
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            runCatching { tone.stop() }
+            done()
+        }, ms)
     }
 
     internal fun notify(context: Context, alarm: TatkalAlarm) {
@@ -122,7 +145,6 @@ object TatkalAlarms {
             .setContentText("Tatkal khulne wala hai. Login aur details tayyar rakhiye.")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             .setVibrate(longArrayOf(0, 800, 400, 800))
             .setAutoCancel(true)
             .setContentIntent(open)
@@ -139,8 +161,11 @@ class TatkalAlarmReceiver : BroadcastReceiver() {
         val label = intent.getStringExtra(TatkalAlarms.EXTRA_LABEL) ?: return
         if (hour !in 0..23 || minute !in 0..59) return
         val alarm = TatkalAlarm(hour, minute, label)
-        TatkalAlarms.notify(context, alarm)
         TatkalAlarms.schedule(context, alarm, LocalDateTime.now().plusMinutes(1))
+        TatkalAlarms.notify(context, alarm)
+        // A receiver may only run briefly: ring for 8 s, then let Android finish it.
+        val pending = goAsync()
+        TatkalAlarms.ring(context, 8_000) { pending.finish() }
     }
 }
 

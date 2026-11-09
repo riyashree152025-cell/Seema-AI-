@@ -173,6 +173,7 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
             }
         }
 
+        item { TatkalAlarmsPanel() }
         item {
             HudPanel(title = "Action history") {
                 Text("Every phone action the assistant tried, with its real result.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)

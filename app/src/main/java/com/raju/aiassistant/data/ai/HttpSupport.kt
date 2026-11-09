@@ -36,8 +36,23 @@ private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
 fun JsonElement.toRequestBody(): RequestBody = toString().toRequestBody(JSON_MEDIA)
 
+/**
+ * Refuses plain http:// to anything outside the phone and the home network (see [isLocalNetworkHost]).
+ * A network interceptor, so a redirect from https to http is caught too.
+ */
+class CleartextGuard : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): Response {
+        val url = chain.request().url
+        if (!url.isHttps && !com.raju.aiassistant.core.security.isLocalNetworkHost(url.host)) {
+            throw IOException("Blocked insecure http:// to an internet address — use https://")
+        }
+        return chain.proceed(chain.request())
+    }
+}
+
 /** Shared HTTPS client: sane timeouts, no logging of bodies or headers (keys stay out of logs). */
 fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    .addNetworkInterceptor(CleartextGuard())
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(60, TimeUnit.SECONDS)
     .writeTimeout(30, TimeUnit.SECONDS)

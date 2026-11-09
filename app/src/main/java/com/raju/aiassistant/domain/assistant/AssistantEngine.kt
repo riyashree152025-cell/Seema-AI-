@@ -1881,7 +1881,13 @@ class AssistantEngine(
             is AssistantAction.Remember -> remember(action)
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))
             is AssistantAction.SetAlarm -> report(action, tools.setAlarm(action.hour, action.minute, action.note))
-            is AssistantAction.SetTatkalAlarm -> report(action, tools.setTatkalAlarm(action.hour, action.minute, action.kind))
+            is AssistantAction.SetTatkalAlarm -> {
+                val outcome = tools.setTatkalAlarm(action.hour, action.minute, action.kind)
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Done && outcome.message.contains(com.raju.aiassistant.domain.tools.TATKAL_INEXACT)) {
+                    say(phrase(lang(), "अलार्म ठीक समय पर बजे, इसके लिए फ़ोन में Alarms & reminders की अनुमति दीजिए।", "অ্যালার্ম ঠিক সময়ে বাজার জন্য ফোনে Alarms & reminders অনুমতি দিন।"))
+                }
+            }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
@@ -1949,13 +1955,23 @@ class AssistantEngine(
         when (action) {
             is AssistantAction.LedgerRecord -> {
                 trace("offline command: ledger entry")
+                val paid = formatRupees(action.amountPaise)
+                val got = action.kind == com.raju.aiassistant.domain.ledger.LedgerKind.GOT
+                // Money is never written on a guess: a misheard amount or the same sentence heard twice
+                // would stay in the book. The user hears (or sees) the entry and says yes first.
+                val question = if (got) phrase(lang(), "${action.name} से $paid मिले — खाते में लिख दूँ?", "${action.name} থেকে $paid পেলাম — খাতায় লিখব?")
+                    else phrase(lang(), "${action.name} को $paid दिए — खाते में लिख दूँ?", "${action.name}-কে $paid দিলাম — খাতায় লিখব?")
+                if (!confirmScreenAction("Udhaar entry?", question, speak)) {
+                    report(action, ActionStatus.CANCELLED, "Udhaar entry not saved.")
+                    if (speak) say(phrase(lang(), "ठीक है, नहीं लिखा।", "ঠিক আছে, লিখিনি।"))
+                    return
+                }
                 val balance = runCatching { business.recordLedger(action.name, action.amountPaise, action.kind) }.getOrNull()
                 if (balance == null) {
                     report(action, ActionStatus.FAILED, "Udhaar book could not save the entry.")
                     return
                 }
-                val paid = formatRupees(action.amountPaise)
-                val head = if (action.kind == com.raju.aiassistant.domain.ledger.LedgerKind.GOT)
+                val head = if (got)
                     phrase(lang(), "Entry saved: ${action.name} se $paid mile।", "Entry saved: ${action.name} থেকে $paid পেলাম।")
                 else phrase(lang(), "Entry saved: ${action.name} ko $paid diye।", "Entry saved: ${action.name}-কে $paid দিলাম।")
                 val text = head + " " + ledgerBalanceText(action.name, balance)

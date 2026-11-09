@@ -174,4 +174,12 @@ class ContactMatchTest {
         assertTrue(!ContactMatch.isSpellingGuess("Rahul", c))
         assertTrue(!ContactMatch.isSpellingGuess("Rahul Sharma", c))
     }
+
+    @Test
+    fun aNameIsNotFoundInsideTheMiddleOfAnotherWord() {
+        val c = listOf(Contact("Malik Traders", "98765 11111"), Contact("Ali Hospital", "98765 44444"), Contact("Mummy", "98765 55555"))
+        assertEquals(listOf("Ali Hospital"), ContactMatch.best("Ali", c).map { it.name }) // not "Malik Traders"
+        assertEquals(listOf("Malik Traders"), ContactMatch.best("Traders", c).map { it.name })
+        assertEquals(listOf("Mummy"), ContactMatch.best("Mum", c).map { it.name })
+    }
 }

@@ -127,7 +127,7 @@ object ContactMatch {
         val q = normalize(query)
         if (q.isEmpty()) return emptyList()
         val named = contacts.map { it to normalize(it.name) }
-        val result = named.filter { it.second == q }.ifEmpty { named.filter { it.second.contains(q) } }.ifEmpty {
+        val result = named.filter { it.second == q }.ifEmpty { named.filter { (c, _) -> startsAtAWord(c.name, q) } }.ifEmpty {
             val words = query.lowercase().split(TOKEN_SEP).map(::normalize).filter { it.isNotEmpty() }
             if (words.size > 1) named.filter { (_, n) -> words.all { n.contains(it) } } else emptyList()
         }.map { it.first }.ifEmpty {
@@ -145,6 +145,22 @@ object ContactMatch {
             if (spelling) similarNames(stripHonorifics(query).ifBlank { query }, contacts) else emptyList()
         }
         return result.distinctBy { normalize(it.name) to digits(it.number).takeLast(10) }
+    }
+
+    /**
+     * True when [q] (normalised) is found in [name] starting at the beginning of one of its words:
+     * "sharma" and "rahulsharma" in "Rahul Sharma", "mum" in "Mummy", "travels" in "Rizwan (Travels)".
+     * Not in the middle of a word: "ali" is not in "Malik Traders" (that offered Malik for "Ali").
+     */
+    private fun startsAtAWord(name: String, q: String): Boolean {
+        val words = name.split(TOKEN_SEP).map(::normalize).filter { it.isNotEmpty() }
+        val joined = words.joinToString("")
+        var at = 0
+        for (w in words) {
+            if (joined.startsWith(q, at)) return true
+            at += w.length
+        }
+        return false
     }
 
     /**
