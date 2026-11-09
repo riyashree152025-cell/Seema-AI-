@@ -12,6 +12,10 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import com.raju.aiassistant.MainActivity
 import com.raju.aiassistant.R
 
@@ -23,6 +27,8 @@ import com.raju.aiassistant.R
 class SeemaWakeService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private var lockJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -45,14 +51,26 @@ class SeemaWakeService : Service() {
         }
         running = true
 
-        // The CPU is kept awake only for "Hey Seema" standby (screen off, phone in the pocket). Without the
-        // wake word nothing listens with the screen off, so holding it for 12 h only drained the battery.
-        val wakeWordOn = runCatching { (application as com.raju.aiassistant.RajuApp).container.currentSettings.value.wakeWord }.getOrDefault(true)
-        if (wakeWordOn) runCatching {
+        // The CPU is kept awake only while "Hey Seema" standby is on (screen off, phone in the pocket), and
+        // the lock is renewed before its 12 h safety limit. Switching the wake word on or off later takes
+        // effect at once (it used to be read only when the service started).
+        runCatching {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "seema:continuous_mic_wakelock").apply {
-                setReferenceCounted(false)
-                acquire(12 * 60 * 60 * 1000L) // 12 hours max safety
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "seema:continuous_mic_wakelock").apply { setReferenceCounted(false) }
+        }
+        val settings = runCatching { (application as com.raju.aiassistant.RajuApp).container.currentSettings }.getOrNull()
+        if (settings != null) {
+            lockJob = serviceScope.launch {
+                settings.map { it.wakeWord && !it.assistantPaused }.distinctUntilChanged().collectLatest { on ->
+                    if (on) {
+                        while (true) {
+                            runCatching { wakeLock?.acquire(12 * 60 * 60 * 1000L) }
+                            kotlinx.coroutines.delay(11 * 60 * 60 * 1000L)
+                        }
+                    } else {
+                        runCatching { if (wakeLock?.isHeld == true) wakeLock?.release() }
+                    }
+                }
             }
         }
     }
@@ -75,8 +93,10 @@ class SeemaWakeService : Service() {
 
     override fun onDestroy() {
         running = false
+        lockJob?.cancel()
+        serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
-        runCatching { wakeLock?.release() }
+        runCatching { if (wakeLock?.isHeld == true) wakeLock?.release() }
         wakeLock = null
     }
 

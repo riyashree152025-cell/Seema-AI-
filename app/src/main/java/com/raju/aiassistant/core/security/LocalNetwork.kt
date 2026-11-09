@@ -7,7 +7,8 @@ package com.raju.aiassistant.core.security
  */
 fun isLocalNetworkHost(host: String): Boolean {
     val h = host.trim().lowercase().removePrefix("[").removeSuffix("]")
-    if (h == "localhost" || h.endsWith(".local") || h == "::1") return true
+    // ".ts.net": a Tailscale name; the tunnel itself is encrypted (WireGuard), so http inside it is private.
+    if (h == "localhost" || h.endsWith(".local") || h.endsWith(".ts.net") || h == "::1") return true
     if (':' in h) return h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80") // IPv6 private / link-local
     val parts = h.split('.')
     if (parts.size != 4) return false

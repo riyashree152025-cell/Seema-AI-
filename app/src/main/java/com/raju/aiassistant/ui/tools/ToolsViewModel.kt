@@ -35,6 +35,15 @@ class ToolsViewModel(private val c: AppContainer) : ViewModel() {
     val journeys: StateFlow<List<Journey>> = c.businessRepository.upcomingJourneys(LocalDate.now())
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Udhaar book: every client with their balance, and the newest entry (for undo). */
+    val ledger: StateFlow<Pair<List<com.raju.aiassistant.domain.ledger.ClientBalance>, com.raju.aiassistant.domain.ledger.LedgerEntryInfo?>> =
+        c.businessRepository.ledgerView
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList<com.raju.aiassistant.domain.ledger.ClientBalance>() to null)
+
+    fun removeLedgerEntry(id: Long) {
+        viewModelScope.launch { runCatching { c.businessRepository.deleteLedgerEntry(id) } }
+    }
+
     /** Today's and this week's totals, computed from the same records Seema uses. */
     val totals: StateFlow<Pair<Long, Long>> = expenses.map {
         val now = System.currentTimeMillis()

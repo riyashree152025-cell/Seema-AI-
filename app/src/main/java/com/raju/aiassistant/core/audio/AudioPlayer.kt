@@ -35,10 +35,18 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
      * ignored on purpose: her own microphone asks for temporary focus while listening, and a phone call
      * is already handled by the engine (it pauses her).
      */
-    @Volatile private var focusLost = false
+    @Volatile private var focusLostAt = 0L
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
-        if (change == AudioManager.AUDIOFOCUS_LOSS) focusLost = true
+        if (change == AudioManager.AUDIOFOCUS_LOSS) focusLostAt = android.os.SystemClock.elapsedRealtime()
     }
+
+    /**
+     * A reply is often spoken in two parts (first sentence, then the rest), each asking for focus again.
+     * The loss stays in force for a few seconds, so the rest of the same reply is not spoken over the
+     * music or video the user just started; a new question later is answered normally.
+     */
+    private val focusLost: Boolean
+        get() = focusLostAt != 0L && android.os.SystemClock.elapsedRealtime() - focusLostAt < FOCUS_LOSS_HOLD_MS
     private val mediaFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(mediaAttributes).setOnAudioFocusChangeListener(focusListener).build()
     private val callFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(callAttributes).setOnAudioFocusChangeListener(focusListener).build()
     @Volatile private var focus: AudioFocusRequest = mediaFocus
@@ -48,7 +56,6 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
 
     override fun requestFocus() {
         focus = if (callStyle()) callFocus else mediaFocus
-        focusLost = false
         audioManager.requestAudioFocus(focus)
     }
 
@@ -117,3 +124,6 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
         }
     }
 }
+
+/** How long another app's taking of the audio keeps her quiet (the rest of the reply). */
+private const val FOCUS_LOSS_HOLD_MS = 6_000L

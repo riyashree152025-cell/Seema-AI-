@@ -55,4 +55,19 @@ interface BusinessDao {
 
     @Query("SELECT * FROM ledger_entries WHERE clientId = :clientId ORDER BY createdAt ASC, id ASC")
     suspend fun ledgerFor(clientId: Long): List<LedgerEntryEntity>
+
+    @Query("SELECT * FROM ledger_entries ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun lastLedgerEntry(): LedgerEntryEntity?
+
+    @Query("SELECT * FROM clients WHERE id = :id LIMIT 1")
+    suspend fun clientById(id: Long): ClientEntity?
+
+    @Query("DELETE FROM ledger_entries WHERE id = :id")
+    suspend fun deleteLedgerEntry(id: Long): Int
+
+    @Query("SELECT * FROM clients ORDER BY name COLLATE NOCASE ASC")
+    fun observeClients(): Flow<List<ClientEntity>>
+
+    @Query("SELECT * FROM ledger_entries ORDER BY createdAt DESC, id DESC")
+    fun observeLedgerEntries(): Flow<List<LedgerEntryEntity>>
 }

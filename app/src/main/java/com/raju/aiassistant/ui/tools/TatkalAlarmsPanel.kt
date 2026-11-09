@@ -31,7 +31,19 @@ import com.raju.aiassistant.ui.theme.WarningAmber
 fun TatkalAlarmsPanel() {
     val context = LocalContext.current
     var alarms by remember { mutableStateOf(TatkalAlarms.all(context).sortedBy { it.hour * 60 + it.minute }) }
-    val exact = remember { TatkalAlarms.canExact(context) }
+    var exact by remember { mutableStateOf(TatkalAlarms.canExact(context)) }
+    // Back from the system's "Alarms & reminders" page (or after a voice command): read both again.
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                exact = TatkalAlarms.canExact(context)
+                alarms = TatkalAlarms.all(context).sortedBy { it.hour * 60 + it.minute }
+            }
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
     HudPanel(title = "Tatkal alarms") {
         Text("रोज़ बजने वाले alarm। बोलकर लगाइए: \"tatkal alarm 9:58 AC\"", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         if (!exact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

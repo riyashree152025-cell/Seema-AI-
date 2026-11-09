@@ -41,6 +41,9 @@ interface BusinessStore {
     suspend fun recordLedger(name: String, amountPaise: Long, kind: com.raju.aiassistant.domain.ledger.LedgerKind): Long? = null
     /** What [name] still owes me (negative: I owe them), or null when there is no such client. */
     suspend fun ledgerBalance(name: String): Long? = null
+    /** The newest udhaar entry, for "aakhri entry hatao". */
+    suspend fun lastLedgerEntry(): com.raju.aiassistant.domain.ledger.LedgerEntryInfo? = null
+    suspend fun deleteLedgerEntry(id: Long): Boolean = false
 }
 
 object NoBusinessStore : BusinessStore {

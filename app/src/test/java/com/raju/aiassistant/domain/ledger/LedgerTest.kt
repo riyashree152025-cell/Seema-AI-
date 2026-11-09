@@ -50,4 +50,13 @@ class LedgerTest {
         assertNull(parseLedger("Rahul se 0 rupaye mile"))
         assertNull(parseLedger("Rahul se 9999999999999 rupaye mile"))
     }
+
+    @Test
+    fun neSentencesAreUnderstood() {
+        assertEquals(LedgerCommand.Record("Rahul", 50_000, LedgerKind.GOT), parseLedger("Rahul ne mujhe 500 rupaye diye"))
+        assertEquals(LedgerCommand.Record("राहुल", 50_000, LedgerKind.GOT), parseLedger("राहुल ने 500 रुपये लौटाए"))
+        assertEquals(LedgerCommand.Record("Zaid", 30_000, LedgerKind.GAVE), parseLedger("Zaid ne mujhse 300 udhaar liye"))
+        assertEquals(LedgerCommand.Undo, parseLedger("aakhri entry hatao"))
+        assertEquals(LedgerCommand.Undo, parseLedger("आखिरी एंट्री हटा दो"))
+    }
 }

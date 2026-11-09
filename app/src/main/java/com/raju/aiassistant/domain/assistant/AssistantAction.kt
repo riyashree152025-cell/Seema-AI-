@@ -85,6 +85,9 @@ sealed interface AssistantAction {
     data class LedgerBalance(val name: String) : AssistantAction {
         override val label get() = "Ledger balance: $name"
     }
+    data object LedgerUndo : AssistantAction {
+        override val label get() = "Ledger: remove the newest entry"
+    }
     data class Flashlight(val on: Boolean) : AssistantAction {
         override val label get() = "Flashlight " + if (on) "on" else "off"
     }
@@ -343,6 +346,37 @@ private fun parseAction(json: String): AssistantAction? {
             AssistantAction.Navigate(d, mode)
         }
         "copy", "copy_text" -> str("text")?.let { AssistantAction.CopyText(it) }
+        "ledger_add", "udhaar_add" -> {
+            val name = str("name")
+            val paise = str("amount")?.let { rupeesToPaise(it) }
+            val kind = when (str("type")?.lowercase()) {
+                "got", "received", "mila", "mile" -> com.raju.aiassistant.domain.ledger.LedgerKind.GOT
+                "gave", "given", "diya", "diye" -> com.raju.aiassistant.domain.ledger.LedgerKind.GAVE
+                else -> null
+            }
+            if (name == null || paise == null || kind == null) null else AssistantAction.LedgerRecord(name, paise, kind)
+        }
+        "ledger_balance" -> str("name")?.let { AssistantAction.LedgerBalance(it) }
+        "ledger_undo" -> AssistantAction.LedgerUndo
+        "tatkal_set" -> {
+            val m = str("time")?.let { Regex("^(\\d{1,2}):(\\d{2})$").matchEntire(it) }
+            val h = m?.groupValues?.get(1)?.toIntOrNull()
+            val min = m?.groupValues?.get(2)?.toIntOrNull()
+            val cls = if (str("class")?.lowercase()?.startsWith("s") == true) "Sleeper" else "AC"
+            if (h == null || min == null || h !in 0..23 || min !in 0..59) null else AssistantAction.SetTatkalAlarm(h, min, cls)
+        }
+        "tatkal_list" -> AssistantAction.TatkalList
+        "tatkal_cancel" -> {
+            if (str("all")?.lowercase() == "true") AssistantAction.TatkalCancelAll
+            else {
+                val m = str("time")?.let { Regex("^(\\d{1,2}):(\\d{2})$").matchEntire(it) }
+                val h = m?.groupValues?.get(1)?.toIntOrNull()
+                val min = m?.groupValues?.get(2)?.toIntOrNull()
+                val cls = str("class")?.let { if (it.lowercase().startsWith("s")) "Sleeper" else "AC" }
+                if (h == null || min == null || h !in 0..23 || min !in 0..59) null else AssistantAction.TatkalCancel(h, min, cls)
+            }
+        }
+        "lock_screen" -> AssistantAction.LockScreen
         "expense_add", "expense", "kharcha" -> {
             val paise = str("amount")?.let { rupeesToPaise(it) }
             if (paise == null) null else AssistantAction.ExpenseAdd(paise, str("note") ?: str("category") ?: "kharcha", normalizeCategory(str("category")))

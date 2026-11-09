@@ -113,7 +113,7 @@ private const val BACKGROUND_GUARD_MS = 3_000L
  * After she has done something for the user, the next sentence needs no "Hey Seema" for this long
  * (also while another app is on screen). Every new command starts it again.
  */
-private const val FOLLOW_UP_MS = 90_000L
+private const val FOLLOW_UP_MS = 20_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
 /** How long a WhatsApp Send / Call press is waited for (slow networks, a dialog in between). */
 private const val AUTO_ACTION_WAIT_MS = 14_000L
@@ -1479,7 +1479,7 @@ class AssistantEngine(
                 trace("offline command: ${if (action.date) "date" else "time"}")
                 informational(action, spokenClock(action), speak)
             }
-            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
+            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             AssistantAction.LockScreen -> {
                 trace("offline command: lock screen")
@@ -1923,7 +1923,7 @@ class AssistantEngine(
                     say(phrase(lang(), "अलार्म ठीक समय पर बजे, इसके लिए फ़ोन में Alarms & reminders की अनुमति दीजिए।", "অ্যালার্ম ঠিক সময়ে বাজার জন্য ফোনে Alarms & reminders অনুমতি দিন।"))
                 }
             }
-            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance,
+            is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
             is AssistantAction.Volume -> report(action, tools.setVolume(action.percent))
@@ -2019,6 +2019,28 @@ class AssistantEngine(
                 val text = if (balance == null) phrase(lang(), "${action.name} के नाम से कोई हिसाब नहीं मिला।", "${action.name}-এর নামে কোনো হিসাব পাইনি।")
                     else ledgerBalanceText(action.name, balance)
                 report(action, if (balance == null) ActionStatus.FAILED else ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            AssistantAction.LedgerUndo -> {
+                trace("offline command: ledger undo")
+                val last = runCatching { business.lastLedgerEntry() }.getOrNull()
+                if (last == null) {
+                    val text = phrase(lang(), "खाते में कोई entry नहीं है।", "খাতায় কোনো entry নেই।")
+                    report(action, ActionStatus.FAILED, text)
+                    if (speak) say(text)
+                    return
+                }
+                val paid = formatRupees(last.amountPaise)
+                val what = if (last.kind == com.raju.aiassistant.domain.ledger.LedgerKind.GOT) phrase(lang(), "${last.name} से $paid मिले", "${last.name} থেকে $paid পেলাম")
+                    else phrase(lang(), "${last.name} को $paid दिए", "${last.name}-কে $paid দিলাম")
+                if (!confirmScreenAction("Remove entry?", phrase(lang(), "आख़िरी entry: $what — हटा दूँ?", "শেষ entry: $what — সরিয়ে দেব?"), speak)) {
+                    report(action, ActionStatus.CANCELLED, "Entry kept.")
+                    if (speak) say(phrase(lang(), "ठीक है, रहने दिया।", "ঠিক আছে, রেখে দিলাম।"))
+                    return
+                }
+                val removed = runCatching { business.deleteLedgerEntry(last.id) }.getOrDefault(false)
+                val text = if (removed) phrase(lang(), "हटा दी: $what।", "সরিয়ে দিয়েছি: $what।") else phrase(lang(), "entry हट नहीं पाई।", "entry সরানো গেল না।")
+                report(action, if (removed) ActionStatus.SUCCESS else ActionStatus.FAILED, text)
                 if (speak) say(text)
             }
             AssistantAction.TatkalList -> {

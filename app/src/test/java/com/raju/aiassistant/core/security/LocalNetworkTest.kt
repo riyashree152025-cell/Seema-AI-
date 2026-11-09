@@ -7,7 +7,7 @@ import org.junit.Test
 class LocalNetworkTest {
     @Test
     fun theHomeNetworkMayUsePlainHttp() {
-        for (h in listOf("192.168.31.55", "10.0.0.2", "172.20.1.1", "127.0.0.1", "localhost", "raju-pc.local", "[::1]", "fd12::1", "100.101.1.2")) {
+        for (h in listOf("192.168.31.55", "10.0.0.2", "172.20.1.1", "127.0.0.1", "localhost", "raju-pc.local", "[::1]", "fd12::1", "100.101.1.2", "raju-pc.tail1234.ts.net")) {
             assertTrue(h, isLocalNetworkHost(h))
         }
     }

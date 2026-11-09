@@ -28,6 +28,7 @@ object LocalCommands {
         parseLedger(plain)?.let { return when (it) {
             is LedgerCommand.Record -> AssistantAction.LedgerRecord(it.name, it.amountPaise, it.kind)
             is LedgerCommand.Balance -> AssistantAction.LedgerBalance(it.name)
+            LedgerCommand.Undo -> AssistantAction.LedgerUndo
         } }
         parseTatkalCommand(plain)?.let { return when (it) {
             is TatkalCommand.Set -> AssistantAction.SetTatkalAlarm(it.alarm.hour, it.alarm.minute, it.alarm.label)

@@ -280,6 +280,9 @@ class AppContainer(context: Context) {
             voiceInput,
             deepgramVoiceInput,
             useDeepgram = {
+                // Without internet Deepgram cannot answer: the phone's own recogniser takes the turn, so
+                // the offline commands (torch, alarm, call…) still work by voice.
+                online.value &&
                 // Deepgram's models used here understand Hindi/Hinglish, not Bengali: Bengali uses the phone's recogniser.
                 (com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(currentSettings.value.speechLanguage) ?: conversationLanguage.value) !=
                     com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI &&

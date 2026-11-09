@@ -1348,6 +1348,11 @@ class AssistantEngineTest {
         override suspend fun saveJourney(journey: com.raju.aiassistant.domain.business.Journey): Long { journeys += journey; return 1 }
         override suspend fun journeysFrom(date: java.time.LocalDate) = journeys.filter { !it.date.isBefore(date) }
         override suspend fun removeJourney(pnr: String) = journeys.removeIf { it.pnr == pnr }
+        val ledger = mutableListOf<Triple<String, Long, com.raju.aiassistant.domain.ledger.LedgerKind>>()
+        override suspend fun recordLedger(name: String, amountPaise: Long, kind: com.raju.aiassistant.domain.ledger.LedgerKind): Long? {
+            ledger += Triple(name, amountPaise, kind)
+            return ledger.sumOf { if (it.third == com.raju.aiassistant.domain.ledger.LedgerKind.GAVE) it.second else -it.second }
+        }
     }
 
     private fun TestScope.businessEngine(khata: FakeBusiness, vararg replies: AiResult<String>): AssistantEngine {
@@ -2275,5 +2280,64 @@ class AssistantEngineTest {
         assertEquals("Saade paanch baje hain.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
         assertEquals(ProviderId.GEMINI to "gemini-3.8-flash-lite", remembered)
         assertNull(e.lastError.value)
+    }
+
+    // ---------------------------------------------------------------- review fixes
+
+    @Test
+    fun aUdhaarEntryIsSavedOnlyAfterYes() = runTest {
+        val khata = FakeBusiness()
+        val e = businessEngine(khata)
+        e.submit("Rahul se 500 rupaye mile")
+        settle()
+        assertNotNull(e.pending.value) // asked first
+        assertTrue(khata.ledger.isEmpty())
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(listOf(Triple("Rahul", 50_000L, com.raju.aiassistant.domain.ledger.LedgerKind.GOT)), khata.ledger)
+
+        e.submit("Zaid ko 300 udhaar diya")
+        settle()
+        e.resolve(Decision.Deny)
+        settle()
+        assertEquals(1, khata.ledger.size) // "no": nothing written
+    }
+
+    @Test
+    fun screenLockAndTatkalListRunWithoutAi() = runTest {
+        online = false
+        val e = engine(AiResult.Success("unused"))
+        e.submit("screen lock karo")
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("लॉक")) // FakeTools cannot lock: says so
+        e.submit("tatkal alarm list karo")
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Tatkal"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun behindAnotherAppTheNextSentenceNeedsNoNameForAShortWhile() = runTest {
+        settings.value = settings.value.copy(wakeWord = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.SESSION)
+        val wake = FakeWake()
+        val heard = FakeTranscriber("Seema, kya haal hai")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Badhiya hoon."), AiResult.Success("Kal dhoop rahegi."))
+        e.startVoice()
+        e.suspendListening()
+        wake.onUtterance!!(speech())
+        settle()
+        assertEquals("Badhiya hoon.", speaker.spoken.last())
+
+        now += 3_000 // past her own echo
+        heard.text = "aur kal ka mausam kaisa rahega" // no "Seema"
+        wake.onUtterance!!(speech())
+        settle()
+        assertEquals("Kal dhoop rahegi.", speaker.spoken.last())
+
+        now += 25_000 // the follow-up window has closed
+        heard.text = "koi gaana sunao"
+        wake.onUtterance!!(speech())
+        settle()
+        assertEquals("Kal dhoop rahegi.", speaker.spoken.last()) // without her name: not taken
     }
 }

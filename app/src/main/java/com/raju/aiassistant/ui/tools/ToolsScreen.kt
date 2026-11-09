@@ -56,6 +56,7 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
     val totals by viewModel.totals.collectAsStateWithLifecycle()
     val voiceEvents by viewModel.voiceDiagnostics.collectAsStateWithLifecycle()
     val latencies by viewModel.latencies.collectAsStateWithLifecycle()
+    val ledger by viewModel.ledger.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<Memory?>(null) }
 
     LazyColumn(
@@ -173,6 +174,7 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
             }
         }
 
+        item { LedgerPanel(ledger.first, ledger.second, viewModel::removeLedgerEntry) }
         item { TatkalAlarmsPanel() }
         item {
             HudPanel(title = "Action history") {

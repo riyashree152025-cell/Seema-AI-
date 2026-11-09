@@ -78,7 +78,39 @@ class BusinessRepository(private val dao: BusinessDao, private val clock: () -> 
     private suspend fun balanceOfClient(clientId: Long): Long =
         balanceOf(dao.ledgerFor(clientId).map { LedgerLine(LedgerKind.valueOf(it.type), it.amountPaise) })
 
-    private fun clientKey(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
+    override suspend fun lastLedgerEntry(): com.raju.aiassistant.domain.ledger.LedgerEntryInfo? {
+        val e = dao.lastLedgerEntry() ?: return null
+        val name = dao.clientById(e.clientId)?.name ?: return null
+        return com.raju.aiassistant.domain.ledger.LedgerEntryInfo(e.id, name, e.amountPaise, LedgerKind.valueOf(e.type), e.createdAt)
+    }
+
+    override suspend fun deleteLedgerEntry(id: Long): Boolean = dao.deleteLedgerEntry(id) > 0
+
+    /** Every client with what they owe now, and the newest entry (for the screen and its undo button). */
+    val ledgerView: Flow<Pair<List<com.raju.aiassistant.domain.ledger.ClientBalance>, com.raju.aiassistant.domain.ledger.LedgerEntryInfo?>> =
+        kotlinx.coroutines.flow.combine(dao.observeClients(), dao.observeLedgerEntries()) { clients, entries ->
+            val byClient = entries.groupBy { it.clientId }
+            val balances = clients.mapNotNull { c ->
+                val list = byClient[c.id].orEmpty()
+                if (list.isEmpty()) null
+                else com.raju.aiassistant.domain.ledger.ClientBalance(c.name, balanceOf(list.map { LedgerLine(LedgerKind.valueOf(it.type), it.amountPaise) }), list.size)
+            }
+            val newest = entries.firstOrNull()?.let { e ->
+                clients.firstOrNull { it.id == e.clientId }?.let { c ->
+                    com.raju.aiassistant.domain.ledger.LedgerEntryInfo(e.id, c.name, e.amountPaise, LedgerKind.valueOf(e.type), e.createdAt)
+                }
+            }
+            balances to newest
+        }
+
+    /**
+     * The same person, however the name was said: case, spaces and punctuation ignored, and "Bhai", "ji",
+     * "Sahab" … left out, so "Jalal Bhai" and "Jalal" share one account.
+     */
+    private fun clientKey(name: String): String {
+        val core = com.raju.aiassistant.domain.tools.ContactMatch.stripHonorifics(name).ifBlank { name }
+        return core.lowercase().filter { it.isLetterOrDigit() }
+    }
 }
 
 private fun ExpenseEntity.toDomain() = Expense(id, amountPaise, note, category, createdAt)
