@@ -302,9 +302,14 @@ fun HomeScreen(
 
 
 
-                // Center Title Banner
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Center Title Banner: takes the room that is left, so the state capsule on the right is
+                // never squeezed ("STANDBY" was cut to "STAN").
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
 
                     Text(
 
@@ -331,19 +336,14 @@ fun HomeScreen(
                     Text(
 
                         "Your Intelligent Companion",
-
-                        style = MaterialTheme.typography.labelSmall.copy(
-
+                        style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 13.sp,
-
-                            letterSpacing = 1.sp,
-
-                            fontWeight = FontWeight.SemiBold,
-
+                            letterSpacing = 0.3.sp,
+                            fontWeight = FontWeight.Medium,
                             color = Color.White.copy(alpha = 0.8f),
-
-                        )
-
+                        ),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
 
                 }
