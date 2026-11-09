@@ -83,6 +83,7 @@ fun LivingEyeVisualizer(
 private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, richEffects: Boolean, centerY: Float) {
     val w = size.width
     val h = size.height
+    if (!(w > 1f && h > 1f)) return // nothing to draw on (and no zero-radius glow)
     val layers = waveLayerCount(richEffects)
     val points = wavePointCount(richEffects)
     val gradient = WAVE_GRADIENT_ARGB.map { Color(it) }
@@ -147,6 +148,10 @@ private fun DrawScope.drawLivingEye(
     val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
     val side = area?.let { minOf(it.width, it.height) } ?: minOf(size.width, size.height)
     val r = side * EYE_RADIUS_SHARE * eyeBreath(t) * (1f + 0.05f * energy)
+    // No room for the eye (a very small screen, split screen, or the first frame before the layout is
+    // measured): draw nothing. A zero radius made Android throw ("ending radius must be > 0") and the
+    // app closed on launch — seen on the CI emulator.
+    if (!(r > 1f)) return
     val dim = if (asleep) 0.55f else 1f
 
     // Glow around the eye in the state colour.
