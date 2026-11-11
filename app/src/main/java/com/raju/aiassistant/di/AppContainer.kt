@@ -424,6 +424,8 @@ class AppContainer(context: Context) {
             restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
+            replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
+            sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,

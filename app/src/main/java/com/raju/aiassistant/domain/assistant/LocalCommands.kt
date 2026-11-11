@@ -30,6 +30,8 @@ object LocalCommands {
             is LedgerCommand.Balance -> AssistantAction.LedgerBalance(it.name)
             LedgerCommand.Undo -> AssistantAction.LedgerUndo
         } }
+        com.raju.aiassistant.domain.notify.parseReplyCommand(plain)?.let { return AssistantAction.NotificationReply(it.who, it.text) }
+        com.raju.aiassistant.domain.calendar.parseCalendarQuestion(plain)?.let { return AssistantAction.CalendarRead(it) }
         com.raju.aiassistant.domain.reminder.parseReminder(plain, java.time.LocalDateTime.now())?.let { return when (it) {
             is com.raju.aiassistant.domain.reminder.ReminderCommand.Add ->
                 AssistantAction.ReminderAdd(it.at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), it.text)

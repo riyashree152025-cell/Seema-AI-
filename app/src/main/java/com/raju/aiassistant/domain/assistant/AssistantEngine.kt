@@ -217,6 +217,9 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** Messages that can be answered from their notification (newest first), and the sender for one of them. */
+    private val replyTargets: () -> List<com.raju.aiassistant.domain.notify.ReplyTarget> = { emptyList() },
+    private val sendNotificationReply: (key: String, text: String) -> Boolean = { _, _ -> false },
     /** Privacy-safe diagnostics (stages, error codes, lengths — never what the user said). */
     private val log: (String) -> Unit = {},
     /** Hindi or Bengali, shared with speech output so the voice speaks the conversation's language. */
@@ -1486,6 +1489,14 @@ class AssistantEngine(
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
             is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
+            is AssistantAction.NotificationReply -> {
+                trace("offline command: notification reply")
+                notificationReply(action, speak)
+            }
+            is AssistantAction.CalendarRead -> {
+                trace("offline command: calendar")
+                calendarRead(action, speak)
+            }
             AssistantAction.NotificationSummary -> {
                 trace("offline command: notification summary")
                 informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
@@ -1924,6 +1935,8 @@ class AssistantEngine(
             }
             AssistantAction.LockScreen -> report(action, tools.lockScreen())
             is AssistantAction.LookAtScreen -> lookAtScreen(action, speak)
+            is AssistantAction.NotificationReply -> notificationReply(action, speak)
+            is AssistantAction.CalendarRead -> calendarRead(action, speak)
             AssistantAction.NotificationSummary -> informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
@@ -2481,6 +2494,46 @@ class AssistantEngine(
                 }
             }
         }
+    }
+
+    /** "Reply karo ki …": into the reply field of the message's own notification, after the user says yes. */
+    private suspend fun notificationReply(action: AssistantAction.NotificationReply, speak: Boolean) {
+        val target = com.raju.aiassistant.domain.notify.pickReplyTarget(action.who, replyTargets())
+        if (target == null) {
+            val text = if (action.who == null) phrase(lang(), "जवाब देने लायक कोई नया संदेश अभी नहीं दिख रहा।", "উত্তর দেওয়ার মতো কোনো নতুন বার্তা নেই।")
+                else phrase(lang(), "${action.who} का कोई संदेश अभी notification में नहीं है। \"${action.who} को message करो कि …\" बोलिए।", "${action.who}-এর কোনো বার্তা notification-এ নেই।")
+            report(action, ActionStatus.FAILED, text)
+            if (speak) say(text)
+            return
+        }
+        val question = phrase(lang(), "${target.app} पर ${target.who} को जवाब भेजूँ: \"${action.text}\"?", "${target.app}-এ ${target.who}-কে উত্তর পাঠাব: \"${action.text}\"?")
+        if (!confirmScreenAction("Send reply?", question, speak)) {
+            report(action, ActionStatus.CANCELLED, "Reply not sent.")
+            if (speak) say(phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।"))
+            return
+        }
+        val sent = sendNotificationReply(target.key, action.text)
+        val text = if (sent) phrase(lang(), "${target.who} को जवाब भेज दिया।", "${target.who}-কে উত্তর পাঠিয়ে দিয়েছি।")
+            else phrase(lang(), "जवाब नहीं जा पाया, वह notification अब नहीं है।", "উত্তর পাঠানো গেল না।")
+        report(action, if (sent) ActionStatus.SUCCESS else ActionStatus.FAILED, text)
+        if (speak) say(text)
+    }
+
+    /** "Aaj ki meetings batao": the day's calendar entries, read on the phone (never sent anywhere). */
+    private suspend fun calendarRead(action: AssistantAction.CalendarRead, speak: Boolean) {
+        var r = tools.calendarEvents(action.dayOffset)
+        if (r is com.raju.aiassistant.domain.calendar.CalendarLookup.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Calendar permission", r.reason, permission = r.permission))
+            r = if (d is Decision.PermissionResult && d.granted) tools.calendarEvents(action.dayOffset)
+            else return report(action, ActionStatus.CANCELLED, "Calendar permission was denied.")
+        }
+        val (status, text) = when (r) {
+            is com.raju.aiassistant.domain.calendar.CalendarLookup.Found -> ActionStatus.SUCCESS to com.raju.aiassistant.domain.calendar.spokenEvents(r.events, action.dayOffset)
+            is com.raju.aiassistant.domain.calendar.CalendarLookup.Failed -> ActionStatus.FAILED to r.message
+            is com.raju.aiassistant.domain.calendar.CalendarLookup.NeedsPermission -> ActionStatus.FAILED to r.reason
+        }
+        report(action, status, text)
+        if (speak) say(text)
     }
 
     /**

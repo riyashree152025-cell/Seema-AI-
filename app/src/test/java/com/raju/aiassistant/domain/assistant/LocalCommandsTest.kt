@@ -58,6 +58,10 @@ class LocalCommandsTest {
         assertEquals("dawai leni hai", (p("10 minute baad yaad dilana ki dawai leni hai") as AssistantAction.ReminderAdd).text)
         assertEquals(AssistantAction.ReminderList, p("mere reminder batao"))
         assertEquals(AssistantAction.NotificationSummary, p("notification ka saar batao"))
+        assertEquals(AssistantAction.NotificationReply(null, "main aa raha hoon"), p("reply karo ki main aa raha hoon"))
+        assertEquals(AssistantAction.NotificationReply("Rahul", "kal milte hain"), p("Rahul ko reply karo ki kal milte hain"))
+        assertEquals(AssistantAction.CalendarRead(0), p("aaj ki meetings batao"))
+        assertEquals(AssistantAction.CalendarRead(1), p("kal ka calendar batao"))
         assertEquals(AssistantAction.NotificationSummary, p("aaj kitne message aaye"))
         assertEquals(AssistantAction.ReadNotification, p("message padho")) // one message stays one message
         assertEquals(AssistantAction.ReminderCancel(all = true), p("sab reminder hata do"))

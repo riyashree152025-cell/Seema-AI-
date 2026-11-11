@@ -2370,4 +2370,16 @@ class AssistantEngineTest {
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("याद दिला दूँगी") && speaker.spoken.last().contains("dawai leni hai"))
         assertTrue(provider.calls.isEmpty())
     }
+
+    @Test
+    fun aReplyWithNoMessageToAnswerSaysSoAndSendsNothing() = runTest {
+        online = false
+        val e = engine(AiResult.Success("unused"))
+        e.submit("reply karo ki main aa raha hoon")
+        settle()
+        assertNull(e.pending.value) // nothing to confirm: there is no message
+        assertEquals(ActionStatus.FAILED, store.logs.last().second)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कोई नया संदेश"))
+        assertTrue(provider.calls.isEmpty())
+    }
 }

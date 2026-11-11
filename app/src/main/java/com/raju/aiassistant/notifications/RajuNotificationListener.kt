@@ -55,6 +55,12 @@ class RajuNotificationListener : NotificationListenerService() {
         val item = parseNotification(fields, label) ?: return
         val now = System.currentTimeMillis()
         c.recentNotifications.add(item, now)
+        // A reply field offered by the app (WhatsApp, Messages …): remembered so "reply karo ki …" can answer.
+        if (!item.isCall) {
+            n.actions?.firstOrNull { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true }?.let { action ->
+                NotificationReplies.remember(item.key, item.sender ?: item.group ?: item.appLabel, item.appLabel, action)
+            }
+        }
         if (!c.announcementDeduper.shouldAnnounce(item.packageName, item.sender.orEmpty() + item.group.orEmpty(), (item.preview ?: "") + item.isCall, now)) return
 
         if (item.isCall) {
@@ -66,5 +72,6 @@ class RajuNotificationListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         container?.announcements?.onRemoved(sbn.key)
+        NotificationReplies.forget(sbn.key)
     }
 }

@@ -377,6 +377,41 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return ToolOutcome.Done("Reminder set." + if (exact) "" else " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
     }
 
+    override fun calendarEvents(dayOffset: Int): com.raju.aiassistant.domain.calendar.CalendarLookup {
+        if (!granted(Manifest.permission.READ_CALENDAR)) {
+            return com.raju.aiassistant.domain.calendar.CalendarLookup.NeedsPermission(Manifest.permission.READ_CALENDAR, "Calendar padhne ki anumati chahiye.")
+        }
+        return try {
+            val zone = java.time.ZoneId.systemDefault()
+            val day = java.time.LocalDate.now(zone).plusDays(dayOffset.toLong())
+            val from = day.atStartOfDay(zone).toInstant().toEpochMilli()
+            val to = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val uri = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon().let {
+                android.content.ContentUris.appendId(it, from); android.content.ContentUris.appendId(it, to); it.build()
+            }
+            val events = mutableListOf<com.raju.aiassistant.domain.calendar.CalEvent>()
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.CalendarContract.Instances.TITLE, android.provider.CalendarContract.Instances.BEGIN, android.provider.CalendarContract.Instances.ALL_DAY),
+                null, null, android.provider.CalendarContract.Instances.BEGIN + " ASC",
+            )?.use { c ->
+                while (c.moveToNext() && events.size < 30) {
+                    val title = c.getString(0)?.trim().orEmpty().ifEmpty { "(no title)" }
+                    val allDay = c.getInt(2) == 1
+                    val begin = java.time.Instant.ofEpochMilli(c.getLong(1)).atZone(zone)
+                    // An entry that began before this day (a trip over several days) is shown as all day.
+                    val before = begin.toLocalDate().isBefore(day)
+                    events += com.raju.aiassistant.domain.calendar.CalEvent(if (before) 0 else begin.hour * 60 + begin.minute, allDay || before, title.take(60))
+                }
+            }
+            com.raju.aiassistant.domain.calendar.CalendarLookup.Found(events)
+        } catch (e: SecurityException) {
+            com.raju.aiassistant.domain.calendar.CalendarLookup.NeedsPermission(Manifest.permission.READ_CALENDAR, "Calendar padhne ki anumati chahiye.")
+        } catch (e: Exception) {
+            com.raju.aiassistant.domain.calendar.CalendarLookup.Failed("Calendar nahi padh payi.")
+        }
+    }
+
     override fun listReminders() = com.raju.aiassistant.notifications.Reminders.all(context)
 
     override fun cancelReminders(all: Boolean): ToolOutcome {

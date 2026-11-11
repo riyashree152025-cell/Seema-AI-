@@ -195,6 +195,14 @@ sealed interface AssistantAction {
         override val label get() = "Check last call"
     }
     /** A spoken summary of the messages of the last hours: how many, from whom, the newest two. */
+    /** Answers a message from its notification ([who] null: the newest); the app asks first. */
+    data class NotificationReply(val who: String?, val text: String) : AssistantAction {
+        override val label get() = "Reply to ${who ?: "the newest message"}"
+    }
+    /** The calendar of today (+[dayOffset] days), read aloud. */
+    data class CalendarRead(val dayOffset: Int) : AssistantAction {
+        override val label get() = "Calendar (+$dayOffset)"
+    }
     data object NotificationSummary : AssistantAction {
         override val label get() = "Notification summary"
     }
@@ -277,6 +285,8 @@ private fun parseAction(json: String): AssistantAction? {
         }
         "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
         "notification_summary", "notifications_summary" -> AssistantAction.NotificationSummary
+        "notification_reply", "reply_notification" -> str("text")?.let { AssistantAction.NotificationReply(str("who"), it) }
+        "calendar_read", "calendar" -> AssistantAction.CalendarRead((int("day_offset") ?: 0).coerceIn(0, 7))
         "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification
         "screenshot", "take_screenshot" -> AssistantAction.Screenshot
         "look_at_screen", "analyze_screen", "screenshot_explain" -> AssistantAction.LookAtScreen(str("question"))
