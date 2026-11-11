@@ -107,6 +107,8 @@ interface DeviceTools {
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
     /** Loudspeaker on or off for the current call. */
     fun setSpeakerphone(on: Boolean): ToolOutcome = ToolOutcome.Failed("Speaker control is not supported here.")
+    /** A "कॉल काटें" button (notification) for the call Seema just placed; removed when the call ends. */
+    fun showHangUpButton(name: String) {}
     /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */
     suspend fun takePhoto(front: Boolean, save: Boolean): PhotoResult = PhotoResult.Failed("Camera is not supported here.")
     /** A picture of the screen as it is now (not saved), for "screen dekh ke batao". */
@@ -137,3 +139,6 @@ fun distinctContacts(contacts: List<Contact>): List<Contact> =
 
 /** Added to a Tatkal alarm's reply when exact alarms are off: it may ring a little late. */
 const val TATKAL_INEXACT = "(exact alarm off: may ring late)"
+
+/** lockScreen() could not lock yet and has opened Android's one-time "Activate" screen for it. */
+const val LOCK_PERMISSION_ASKED = "फ़ोन लॉक की अनुमति वाली स्क्रीन खोल दी है — एक बार \"Activate\" दबाइए, फिर दोबारा बोलिए \"फ़ोन लॉक करो\"।"

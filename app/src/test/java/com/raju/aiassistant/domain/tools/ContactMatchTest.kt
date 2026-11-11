@@ -115,6 +115,20 @@ class ContactMatchTest {
     }
 
     @Test
+    fun aNumberedChoiceIsUnderstoodWithTheCallWordsAroundIt() {
+        val riya = listOf(Contact("Riya", "+919604686087"), Contact("Riya", "+919711945150"))
+        assertEquals(riya[0], ContactMatch.pick("1 नंबर", riya))
+        assertEquals(riya[1], ContactMatch.pick("2 नंबर वाला लगाओ", riya))
+        assertEquals(riya[1], ContactMatch.pick("दो नंबर पे कॉल करो", riya))
+        assertEquals(riya[0], ContactMatch.pick("ek number", riya))
+        assertEquals(riya[1], ContactMatch.pick("doosra wala laga do", riya))
+        assertEquals(null, ContactMatch.pick("laga do", riya)) // "do" alone is not "2"
+        assertEquals(null, ContactMatch.pick("ठीक है लगा दो", riya))
+        assertEquals("पहला नंबर या दूसरा नंबर", ContactMatch.ordinalChoices(2))
+        assertEquals("पहला नंबर, दूसरा नंबर या तीसरा नंबर", ContactMatch.ordinalChoices(3))
+    }
+
+    @Test
     fun bracketsAndWordsOfAContactNameAreFound() {
         val rizwan = listOf(Contact("Rizwan (Travels)", "99999 11111"), Contact("Rahul Sharma", "91234 56789"))
         assertEquals("Rizwan (Travels)", ContactMatch.best("Rizwan", rizwan).single().name)

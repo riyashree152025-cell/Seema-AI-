@@ -2,6 +2,7 @@
 
 | Commit | Change | Test |
 |---|---|---|
+| (next) | Calls: name only (no digits read), "1 नंबर / 2 नंबर" choice, spoken choice dials at once, "लगाओ" = yes, speaker on, "कॉल काटें" notification button; voice lock opens the one-time Activate screen | ContactMatchTest, engine call tests |
 | `5304006` | Ringing call: quick answer (0.6 s cut), keeps listening after a wrong hearing, more words | CallCommandTest, engine test; CI 544 tests |
 | `0e16a5d`–`8848e31` | Premium look, larger type, home tiles; design fixes from emulator screenshots | CI 543 tests; smoke screenshots |
 | `b4c1614` | Living Eye: no crash when the eye has no room (crash at launch on small screens) | Smoke test: no FATAL |

@@ -123,6 +123,8 @@ private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 private const val SCREEN_VERIFY_DELAY_MS = 900L
 /** How long Seema waits for the phone to report that a call she placed has started. */
 private const val CALL_START_WAIT_MS = 8_000L
+/** After the phone reports the call, the loudspeaker is switched on (once the dialer has set up its audio). */
+private const val SPEAKER_AFTER_DIAL_MS = 1_200L
 /** Failures where another provider may still answer (not a blocked or empty request). */
 private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with the single word OK."
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
@@ -1509,7 +1511,15 @@ class AssistantEngine(
                 trace("offline command: lock screen")
                 val outcome = tools.lockScreen()
                 report(action, outcome)
-                if (speak) say(phrase(lang(), if (outcome is ToolOutcome.Done) "स्क्रीन लॉक कर दी है।" else "स्क्रीन लॉक नहीं हो पाई। Settings → Permissions & Privacy में \"Lock by voice\" चालू कीजिए।", if (outcome is ToolOutcome.Done) "স্ক্রিন লক করে দিয়েছি।" else "স্ক্রিন লক হয়নি। Settings → Permissions & Privacy-তে \"Lock by voice\" চালু করুন।"))
+                val asked = outcome is ToolOutcome.Failed && outcome.message == com.raju.aiassistant.domain.tools.LOCK_PERMISSION_ASKED
+                if (speak) say(
+                    when {
+                        outcome is ToolOutcome.Done -> phrase(lang(), "स्क्रीन लॉक कर दी है।", "স্ক্রিন লক করে দিয়েছি।")
+                        // First time: Android's own permission screen is now open; one tap and it works from then on.
+                        asked -> phrase(lang(), "फ़ोन लॉक करने की एक बार की अनुमति चाहिए — स्क्रीन पर Activate दबाइए, फिर दोबारा बोलिए।", "ফোন লক করার জন্য একবার অনুমতি লাগবে — স্ক্রিনে Activate চাপুন, তারপর আবার বলুন।")
+                        else -> phrase(lang(), "स्क्रीन लॉक नहीं हो पाई। Settings → Permissions & Privacy में \"Lock by voice\" चालू कीजिए।", "স্ক্রিন লক হয়নি। Settings → Permissions & Privacy-তে \"Lock by voice\" চালু করুন।")
+                    },
+                )
             }
             else -> return false
         }
@@ -1861,7 +1871,13 @@ class AssistantEngine(
      */
     fun pauseForCall() {
         // The call Seema just placed has really started: that is the proof she reports.
-        if (callToVerify != null) scope.launch { reportCallStarted() }
+        if (callToVerify != null) scope.launch {
+            reportCallStarted()
+            // Her own call goes on the loudspeaker (also with phone apps that ignore "start on speaker").
+            // Launched apart from the turn: cancelWork() below stops the turn that placed the call.
+            delay(SPEAKER_AFTER_DIAL_MS)
+            tools.setSpeakerphone(true)
+        }
         callCommandUntil = 0
         if (pausedForCall) return
         pausedForCall = true
@@ -2336,9 +2352,10 @@ class AssistantEngine(
                 speak = speak,
                 verbHi = "कॉल लगाऊँ",
                 verbBn = "কল করব",
+                confirmSpokenPick = false,
             )
         } ?: return endWith(phrase(lang(), "ठीक है, कॉल नहीं लगाई।", "ঠিক আছে, কল করিনি।"), ActionStatus.CANCELLED)
-        // The user has confirmed the person and number: call straight away when Android allows it,
+        // The user has confirmed the person: call straight away when Android allows it,
         // otherwise open the dialer and say plainly that the green button is theirs to press.
         val direct = tools.hasPermission("android.permission.CALL_PHONE")
         if (speak && direct) say(phrase(lang(), "${chosen.name} को कॉल लगा रही हूँ।", "${chosen.name} কে কল করছি।"))
@@ -2357,8 +2374,19 @@ class AssistantEngine(
         // "Call lag gayi" only when the phone itself reports a call in progress.
         callToVerify = action to chosen
         trace("call: placed, waiting for the phone to report the call")
+        // The button is there from the first ring: "नहीं उठाया" → one tap ends it (her mic is silent during a call).
+        tools.showHangUpButton(chosen.name)
         when (tools.awaitCallStarted(CALL_START_WAIT_MS)) {
-            true -> reportCallStarted() // no speech: her voice would go into the call
+            true -> {
+                val ours = callToVerify != null
+                reportCallStarted() // no speech: her voice would go into the call
+                // Loudspeaker, also for phone apps that ignore the "start on speaker" request
+                // (when pauseForCall saw the call first, it does this instead).
+                if (ours) {
+                    delay(SPEAKER_AFTER_DIAL_MS)
+                    tools.setSpeakerphone(true)
+                }
+            }
             false -> {
                 callToVerify = null
                 endWith(phrase(lang(), "${chosen.name} को कॉल शुरू होने की पुष्टि फ़ोन से नहीं मिली — एक बार फ़ोन पर देख लीजिए।", "${chosen.name} কে কল শুরু হওয়ার নিশ্চয়তা ফোন থেকে পাইনি — একবার ফোনে দেখে নিন।"))
@@ -2652,9 +2680,9 @@ class AssistantEngine(
 
     /**
      * Smart Contact Brain (on the phone only — contacts are never sent to the AI): one way for calls
-     * and WhatsApp to settle on the person. One match: "नाम, नंबर — कॉल लगाऊँ?". Several: she lists
-     * them and the user says the name or "पहला / दूसरा" (or taps one); a spoken choice is confirmed
-     * once more with the full number. Returns null when the user said no or did not answer.
+     * and WhatsApp to settle on the person. One match: "नाम — कॉल लगाऊँ?". Several: she lists
+     * them and the user says the name or "पहला / दूसरा / 1 नंबर" (or taps one); for a call that choice is
+     * the go-ahead, a message asks once more. Numbers are shown on the card, never read out. Returns null when the user said no or did not answer.
      */
     private suspend fun chooseContact(
         title: String,
@@ -2664,9 +2692,11 @@ class AssistantEngine(
         speak: Boolean,
         verbHi: String,
         verbBn: String,
+        confirmSpokenPick: Boolean = true,
     ): Contact? {
         val byVoice = speak && voiceTurn
-        fun question(c: Contact) = phrase(lang(), "${c.name}, नंबर ${c.number} — $verbHi?", "${c.name}, নম্বর ${c.number} — $verbBn?")
+        // The number stays on the card; reading ten digits out loud only slows the call down.
+        fun question(c: Contact) = phrase(lang(), "${c.name} — $verbHi?", "${c.name} — $verbBn?")
         if (candidates.size == 1) {
             val c = candidates[0]
             val d = askOutLoud(
@@ -2678,10 +2708,11 @@ class AssistantEngine(
         }
         val sameNames = candidates.map { it.name.trim().lowercase() }.distinct().size < candidates.size
         val names = ContactMatch.spokenChoices(candidates, hindi = lang() != SeemaLanguage.BENGALI)
+        val shown = candidates.size.coerceAtMost(4)
         val q = if (sameNames) phrase(
             lang(),
-            "${candidates[0].name} के ${candidates.size} नंबर हैं: $names। किसमें? पहला, दूसरा, या नंबर के आख़िरी अंक बोलिए।",
-            "${candidates[0].name}-এর ${candidates.size}টা নম্বর: $names। কোনটায়? প্রথম, দ্বিতীয় বা শেষ সংখ্যাগুলো বলুন।",
+            "${candidates[0].name} के $shown नंबर हैं — स्क्रीन पर दिख रहे हैं। ${ContactMatch.ordinalChoices(shown, hindi = true)}?",
+            "${candidates[0].name}-এর $shown টা নম্বর — স্ক্রিনে দেখা যাচ্ছে। ${ContactMatch.ordinalChoices(shown, hindi = false)}?",
         ) else phrase(
             lang(),
             "\"${query.orEmpty()}\" से ${candidates.size} कॉन्टैक्ट मिले: $names। किसे? नाम या पहला, दूसरा बोलिए।",
@@ -2694,8 +2725,9 @@ class AssistantEngine(
         ) { heard -> ContactMatch.pick(heard, candidates.take(8))?.let { Decision.Approve(it) } ?: if (confirmReply(heard) == false) Decision.Deny else null }
         if (d !is Decision.Approve) return null
         val chosen = d.option ?: return null
-        // A tap on a name is the confirmation; a spoken choice is checked once more with the number.
-        if (!answeredByVoice) return chosen
+        // For a call the choice itself ("दूसरा नंबर", a name, or a tap) is the go-ahead. A message is
+        // checked once more when the choice was spoken (a misheard name must not get the text).
+        if (!confirmSpokenPick || !answeredByVoice) return chosen
         val again = askOutLoud(
             PendingRequest(PendingRequest.Kind.CONFIRM, title, "${chosen.name} (${chosen.number})", options = listOf(chosen)),
             spoken = question(chosen),

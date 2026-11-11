@@ -220,11 +220,20 @@ object ContactMatch {
     const val FUZZY_MIN_LETTERS = 5
 
     private val ORDINALS: List<Regex> = listOf(
-        "1|pehla|pahla|pehle|pahle|pehli|first|पहला|पहले|पहली|প্রথম|প্রথমটা",
-        "2|doosra|dusra|doosre|dusre|doosri|second|दूसरा|दूसरे|दूसरी|দ্বিতীয়|দ্বিতীয়টা",
-        "3|teesra|tisra|teesre|teesri|third|तीसरा|तीसरे|तीसरी|তৃতীয়",
-        "4|chautha|chauthe|chauthi|fourth|चौथा|चौथे|चौथी|চতুর্থ",
+        "1|१|pehla|pahla|pehle|pahle|pehli|first|पहला|पहले|पहली|প্রথম|প্রথমটা|(?:ek|one|एक)$NUMBER_WORD",
+        "2|२|doosra|dusra|doosre|dusre|doosri|second|दूसरा|दूसरे|दूसरी|দ্বিতীয়|দ্বিতীয়টা|(?:do|two|दो)$NUMBER_WORD",
+        "3|३|teesra|tisra|teesre|teesri|third|तीसरा|तीसरे|तीसरी|তৃতীয়|(?:teen|three|तीन)$NUMBER_WORD",
+        "4|४|chautha|chauthe|chauthi|fourth|चौथा|चौथे|चौथी|চতুর্থ|(?:char|chaar|four|चार)$NUMBER_WORD",
     ).map { Regex("(^|\\s)(?:$it)(\\s|$)", RegexOption.IGNORE_CASE) }
+
+    /** "ek number", "do nambar wala": a spoken count only counts as a choice with a word like this after it. */
+    private const val NUMBER_WORD = "\\s+(?:number|nambar|numbar|no|नंबर|नम्बर|वाला|wala|vala|wali|वाली)"
+
+    /** "पहला वाला लगा दो", "1 नंबर पे कॉल करो": the call words around a choice are not part of it. */
+    private val CHOICE_FILLER = Regex(
+        "(?:^|\\s)(?:wala|vala|wali|वाला|वाली|pe|par|पे|पर|ko|को|wale|वाले|lagao|laga|lagado|do|दो|करो|karo|kar|कर|लगाओ|लगा|call|phone|फ़ोन|फोन|कॉल|theek|thik|hai|है|ठीक|ok|okay|ओके|haan|हाँ|हां|wale)(?=\\s|$)",
+        RegexOption.IGNORE_CASE,
+    )
 
     /**
      * Which of the offered [candidates] the user means by a spoken answer: a name ("राहुल शर्मा"),
@@ -234,7 +243,7 @@ object ContactMatch {
         if (candidates.isEmpty()) return null
         val t = heard.trim().trimEnd('.', '!', '?', '।').trim()
         if (t.isEmpty()) return null
-        if (t.split(Regex("\\s+")).size <= 3) {
+        if (t.split(Regex("\\s+")).size <= 3 || CHOICE_FILLER.replace(t, " ").trim().split(Regex("\\s+")).size <= 3) {
             ORDINALS.forEachIndexed { i, r -> if (r.containsMatchIn(t) && i < candidates.size) return candidates[i] }
         }
         // "6087" / "chhe zero aath saat" as digits: the one number that ends with (or contains) them.
@@ -248,6 +257,14 @@ object ContactMatch {
         val found = best(t, candidates)
         return found.singleOrNull()
             ?: found.filter { normalize(it.name) == normalize(t) }.singleOrNull()
+    }
+
+    /** "पहला नंबर, दूसरा नंबर या तीसरा नंबर" — how same-name choices are offered, without any digits. */
+    fun ordinalChoices(count: Int, hindi: Boolean = true): String {
+        val words = if (hindi) listOf("पहला", "दूसरा", "तीसरा", "चौथा") else listOf("প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ")
+        val each = words.take(count.coerceIn(1, 4)).map { if (hindi) "$it नंबर" else "$it নম্বর" }
+        if (each.size == 1) return each[0]
+        return each.dropLast(1).joinToString(", ") + (if (hindi) " या " else " না ") + each.last()
     }
 
     /**

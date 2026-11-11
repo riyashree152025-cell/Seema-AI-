@@ -162,6 +162,9 @@
         <receiver
             android:name=".notifications.ReminderReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".notifications.HangUpReceiver"
+            android:exported="false" />
         <!-- Device admin: only to lock the screen on request (see res/xml/device_admin.xml). -->
         <receiver
             android:name=".notifications.SeemaDeviceAdmin"

@@ -81,6 +81,10 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        val speakerCalls = mutableListOf<Boolean>()
+        override fun setSpeakerphone(on: Boolean): ToolOutcome { speakerCalls += on; return ToolOutcome.Done("Speaker") }
+        val hangUpButtons = mutableListOf<String>()
+        override fun showHangUpButton(name: String) { hangUpButtons += name }
         var photos = mutableListOf<Pair<Boolean, Boolean>>() // front, saved
         override suspend fun takePhoto(front: Boolean, save: Boolean): com.raju.aiassistant.domain.tools.PhotoResult {
             photos += front to save
@@ -414,10 +418,11 @@ class AssistantEngineTest {
         e.submit("Firoz ko message karo ki abhi tak payment nahi mila hai", fromVoice = true)
         advanceTimeBy(2_000); runCurrent()
         val asked = speaker.spoken.last()
-        assertTrue(asked, asked.contains("2 नंबर") && asked.contains("6 0 8 7") && asked.contains("5 1 5 0"))
+        assertTrue(asked, asked.contains("2 नंबर") && asked.contains("दूसरा नंबर") && !asked.contains("6 0 8 7")) // no digits read out
         voice.onResult!!("doosra")
         runCurrent()
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("+919711945150"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("Firoz —"))
+        assertFalse(speaker.spoken.last(), speaker.spoken.last().contains("9711945150"))
         assertTrue(tools.sms.isEmpty()) // a spoken choice is confirmed once more
         voice.onResult!!("haan")
         settle()
@@ -1208,7 +1213,7 @@ class AssistantEngineTest {
         val e = engine()
         e.submit("rahul sharma ko call karo", fromVoice = true)
         runCurrent()
-        assertEquals("Rahul Sharma, नंबर 91234 56789 — कॉल लगाऊँ?", speaker.spoken.last()) // name + full number
+        assertEquals("Rahul Sharma — कॉल लगाऊँ?", speaker.spoken.last()) // the name only; the number is on the card
         assertTrue(tools.dialed.isEmpty()) // nothing before the yes
         voice.onResult!!("haan")
         settle()
@@ -1282,19 +1287,54 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun threeRahulsAreAskedAboutAndTheSpokenOneIsConfirmed() = runTest {
+    fun threeRahulsAreAskedAboutAndTheSpokenOneIsCalledStraightAway() = runTest {
         tools.contacts = ContactLookup.Found(rahuls)
         val e = engine()
         e.submit("rahul ko call karo", fromVoice = true)
         runCurrent()
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("3 कॉन्टैक्ट मिले"))
         voice.onResult!!("राहुल शर्मा")
-        runCurrent()
-        assertEquals("Rahul Sharma, नंबर 98000 00002 — कॉल लगाऊँ?", speaker.spoken.last())
-        assertTrue(tools.dialed.isEmpty())
-        voice.onResult!!("हाँ")
         settle()
+        // The spoken choice is the go-ahead: no second "कॉल लगाऊँ?".
         assertEquals(listOf(Contact("Rahul Sharma", "98000 00002")), tools.dialed)
+        assertTrue(speaker.spoken.none { it.contains("98000") })
+    }
+
+    @Test
+    fun aContactWithTwoNumbersIsOfferedAsFirstOrSecondAndOneNumberIsCalled() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Riya", "+919604686087"), Contact("Riya", "+919711945150")))
+        val e = engine()
+        e.submit("riya ko phone karo", fromVoice = true)
+        runCurrent()
+        val asked = speaker.spoken.last()
+        assertTrue(asked, asked.contains("पहला नंबर") && asked.contains("दूसरा नंबर") && !asked.contains("6087"))
+        voice.onResult!!("1 नंबर वाला लगाओ")
+        settle()
+        assertEquals(listOf(Contact("Riya", "+919604686087")), tools.dialed)
+    }
+
+    @Test
+    fun herOwnCallGoesOnSpeakerWithAHangUpButton() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Riya", "+919604686087")))
+        val e = engine()
+        e.submit("riya ko phone karo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(listOf("Riya"), tools.hangUpButtons)
+        assertEquals(listOf(true), tools.speakerCalls)
+    }
+
+    @Test
+    fun oneMatchIsCalledOnLagao() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Riya", "+919604686087")))
+        val e = engine()
+        e.submit("riya ko phone karo", fromVoice = true)
+        runCurrent()
+        assertEquals("Riya — कॉल लगाऊँ?", speaker.spoken.last())
+        voice.onResult!!("ठीक है इसको लगाओ")
+        settle()
+        assertEquals(listOf(Contact("Riya", "+919604686087")), tools.dialed)
     }
 
     @Test
@@ -1305,7 +1345,7 @@ class AssistantEngineTest {
         advanceTimeBy(2_000); runCurrent()
         voice.onResult!!("doosra")
         runCurrent()
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("Rahul Sharma, नंबर 98000 00002"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("Rahul Sharma —"))
         assertTrue(tools.whatsApps.isEmpty())
         voice.onResult!!("haan")
         settle()

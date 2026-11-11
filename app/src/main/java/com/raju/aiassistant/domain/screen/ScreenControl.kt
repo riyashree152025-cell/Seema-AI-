@@ -237,7 +237,7 @@ private val CONFIRM_NO = Regex(
     RegexOption.IGNORE_CASE,
 )
 private val CONFIRM_YES = Regex(
-    "\\b(haan|han|ha|haa|haanji|ji haan|yes|yeah|ok|okay|theek hai|thik hai|kar do|kardo|daba do|dabao|bhej do|likh do|chalo|sure)\\b|हाँ|हां|जी हाँ|ठीक है|कर दो|दबा दो|दबाओ|भेज दो|लिख दो|ओके|হ্যাঁ|ঠিক আছে|করো|দাও",
+    "\\b(haan|han|ha|haa|haanji|ji haan|yes|yeah|ok|okay|theek hai|thik hai|kar do|kardo|daba do|dabao|bhej do|likh do|chalo|sure|lagao|laga do|lagado|laga dijiye|lagaiye|milao|mila do|call karo|call kar do|phone karo|phone lagao)\\b|हाँ|हां|जी हाँ|ठीक है|कर दो|दबा दो|दबाओ|भेज दो|लिख दो|ओके|लगाओ|लगा दो|लगा दीजिए|लगाइए|मिलाओ|मिला दो|कॉल करो|फ़ोन करो|फोन करो|হ্যাঁ|ঠিক আছে|করো|দাও",
     RegexOption.IGNORE_CASE,
 )
 

@@ -196,6 +196,7 @@ class AppContainer(context: Context) {
                     }
                     com.raju.aiassistant.core.audio.CallPhase.NONE -> {
                         ringDucker.restore()
+                        com.raju.aiassistant.notifications.CallControls.clear(appContext)
                         engine.resumeAfterCall()
                         if (currentSettings.value.micHub) micHub.resumeAfterCall()
                     }

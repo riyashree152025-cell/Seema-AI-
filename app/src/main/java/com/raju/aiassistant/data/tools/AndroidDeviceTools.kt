@@ -113,23 +113,20 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override fun dial(contact: Contact, direct: Boolean): ToolOutcome {
         val uri = Uri.parse("tel:" + contact.number.filter { it.isDigit() || it == '+' })
         val useDirect = direct && granted(Manifest.permission.CALL_PHONE)
-        if (useDirect) {
-            val am = context.getSystemService(AudioManager::class.java)
-            am?.let {
-                it.mode = AudioManager.MODE_IN_COMMUNICATION
-                it.isSpeakerphoneOn = true
-            }
-        }
+        // Loudspeaker from the first ring: the phone app is asked to start the call on speaker
+        // (setSpeakerphone() is applied again once the call is up, for dialers that ignore this).
+        val extras = android.os.Bundle().apply { putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true) }
         if (useDirect) {
             // Telecom places the call without opening a screen, so it also works while another
             // app (WhatsApp, YouTube…) is on top; ACTION_CALL from behind would be ignored.
             val placed = runCatching {
-                context.getSystemService(TelecomManager::class.java)?.placeCall(uri, android.os.Bundle())
+                context.getSystemService(TelecomManager::class.java)?.placeCall(uri, extras)
                     ?: error("no telecom")
             }.isSuccess
             if (placed) return ToolOutcome.Done("कॉल लगाई जा रही है ${contact.name} को (लाउडस्पीकर चालू)।")
         }
         val intent = Intent(if (useDirect) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri)
+            .putExtra(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
         return start(intent,
             success = if (useDirect) "कॉल लगाई जा रही है ${contact.name} को (लाउडस्पीकर चालू)।" else "Dialer opened for ${contact.name} (${contact.number}). Tap the call button to call.",
             failure = "No phone app found to make the call.")
@@ -275,6 +272,10 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override fun endCall(): ToolOutcome = telecomCall(answer = false)
 
     override fun answerCall(): ToolOutcome = telecomCall(answer = true)
+
+    override fun showHangUpButton(name: String) {
+        com.raju.aiassistant.notifications.CallControls.showHangUp(context, name)
+    }
 
     override fun setSpeakerphone(on: Boolean): ToolOutcome {
         val am = context.getSystemService(AudioManager::class.java) ?: return ToolOutcome.Failed("Audio service nahi mila.")
@@ -828,7 +829,16 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.lockScreen()) {
             return ToolOutcome.Done("Screen locked.")
         }
-        return ToolOutcome.Failed("Phone lock karne ki anumati chahiye: Settings → Permissions & Privacy → \"Lock by voice\" ON kijiye (ya Seema ki Accessibility chालू kijiye).")
+        // Not granted yet: open Android's own "Activate device admin app" screen right away, so one tap
+        // on "Activate" is all it takes; next time "phone lock karo" works from anywhere.
+        val opened = canOpenScreens() && runCatching {
+            context.startActivity(
+                com.raju.aiassistant.notifications.DeviceLock.requestIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.isSuccess
+        return ToolOutcome.Failed(
+            if (opened) com.raju.aiassistant.domain.tools.LOCK_PERMISSION_ASKED else "फ़ोन लॉक की अनुमति चाहिए: Settings → Permissions & Privacy → \"Lock by voice\" चालू कीजिए।",
+        )
     }
 
     override fun goHome(): ToolOutcome {
