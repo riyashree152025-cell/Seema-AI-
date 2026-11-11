@@ -30,4 +30,5 @@ object SubRoutes {
     const val VOICE_CONTROL = "voice_control"
     const val SEEMA_PRO = "seema_pro"
     const val TOOLS = "tools"
+    const val VISION = "vision"
 }

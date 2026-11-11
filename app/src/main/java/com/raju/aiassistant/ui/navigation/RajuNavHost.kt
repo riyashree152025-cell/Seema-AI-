@@ -201,6 +201,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
             composable(Destination.Apps.route) {
                 AppsScreen(
                     onOpenTools = { navController.navigate(SubRoutes.TOOLS) },
+                    onOpenVision = { navController.navigate(SubRoutes.VISION) },
                 )
             }
             composable(Destination.Settings.route) {
@@ -242,6 +243,9 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                 SeemaProScreen(
                     onBack = { navController.popBackStack() },
                 )
+            }
+            composable(SubRoutes.VISION) {
+                com.raju.aiassistant.ui.vision.VisionScreen(onBack = { navController.popBackStack() })
             }
             composable(SubRoutes.TOOLS) {
                 ToolsScreen(

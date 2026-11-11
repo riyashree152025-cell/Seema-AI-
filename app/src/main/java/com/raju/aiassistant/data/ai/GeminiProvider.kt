@@ -86,7 +86,11 @@ class GeminiProvider(
     }
 
     /** One photo + a question ("kya dikh raha hai?"), answered by the same Gemini model (all Flash models accept images). */
-    suspend fun describeImage(model: String, systemPrompt: String, question: String, jpeg: ByteArray): AiResult<String> = withRetry {
+    suspend fun describeImage(model: String, systemPrompt: String, question: String, jpeg: ByteArray): AiResult<String> =
+        describeImages(model, systemPrompt, question, listOf(jpeg))
+
+    /** One question about one or more images (a photo, a screenshot, two pictures to compare). */
+    suspend fun describeImages(model: String, systemPrompt: String, question: String, jpegs: List<ByteArray>): AiResult<String> = withRetry {
         val body = buildJsonObject {
             putJsonObject("systemInstruction") { putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } } }
             putJsonArray("contents") {
@@ -94,10 +98,12 @@ class GeminiProvider(
                     put("role", "user")
                     putJsonArray("parts") {
                         addJsonObject { put("text", question) }
-                        addJsonObject {
-                            putJsonObject("inline_data") {
-                                put("mime_type", "image/jpeg")
-                                put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))
+                        jpegs.forEach { jpeg ->
+                            addJsonObject {
+                                putJsonObject("inline_data") {
+                                    put("mime_type", "image/jpeg")
+                                    put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))
+                                }
                             }
                         }
                     }
@@ -105,7 +111,7 @@ class GeminiProvider(
             }
             putJsonObject("generationConfig") {
                 put("temperature", 0.4)
-                put("maxOutputTokens", 1024)
+                put("maxOutputTokens", 2048)
                 if (model.contains("2.5-flash")) putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
             }
         }

@@ -199,6 +199,10 @@ sealed interface AssistantAction {
     data class ReadScreen(val question: String?) : AssistantAction {
         override val label get() = "Read the screen"
     }
+    /** Looks at a picture of the screen (not only its text) and answers [question]; asks before sending it. */
+    data class LookAtScreen(val question: String?) : AssistantAction {
+        override val label get() = "Look at the screen"
+    }
     data class ScreenTap(val target: String) : AssistantAction {
         override val label get() = "Tap \"$target\" on screen"
     }
@@ -260,6 +264,7 @@ private fun parseAction(json: String): AssistantAction? {
         "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
         "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification
         "screenshot", "take_screenshot" -> AssistantAction.Screenshot
+        "look_at_screen", "analyze_screen", "screenshot_explain" -> AssistantAction.LookAtScreen(str("question"))
         "read_screen", "screen", "what_is_on_screen", "look_screen" -> AssistantAction.ReadScreen(str("question"))
         "tap", "click", "press", "tap_button" -> (str("target") ?: str("button") ?: str("text") ?: str("name"))?.let { AssistantAction.ScreenTap(it) }
         "go_back", "back" -> AssistantAction.ScreenBack

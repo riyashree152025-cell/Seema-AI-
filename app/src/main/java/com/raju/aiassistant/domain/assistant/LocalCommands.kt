@@ -409,7 +409,18 @@ object LocalCommands {
             "^$SCREEN (?:par|pe|पर|पे) (?:kya|क्या) (?:hai|he|likha hai|likha he|dikh raha hai|है|लिखा है|दिख रहा है)$",
     )
 
-    private fun readScreen(t: String): AssistantAction? = if (READ_SCREEN.matches(t)) AssistantAction.ReadScreen(null) else null
+    private fun readScreen(t: String): AssistantAction? = when {
+        READ_SCREEN.matches(t) -> AssistantAction.ReadScreen(null)
+        LOOK_SCREEN.matches(t) -> AssistantAction.LookAtScreen(null)
+        else -> null
+    }
+
+    // "Screen dekho", "screen dekh ke batao", "ye error kya hai", "screenshot samjhao": a picture, not only the text.
+    private val LOOK_SCREEN = Regex(
+        "^(?:(?:is|iss|ye|yeh|इस|ये|यह) )?$SCREEN(?: (?:ko|को))? (?:dekho|dekh lo|dekh ke batao|dekh kar batao|dekhkar batao|samjhao|samjha do|देखो|देख लो|देख के बताओ|देख कर बताओ|देखकर बताओ|समझाओ|समझा दो)$|" +
+            "^(?:screenshot|स्क्रीनशॉट) (?:samjhao|samjha do|dekh ke batao|समझाओ|समझा दो|देख के बताओ)$|" +
+            "^(?:ye|yeh|ये|यह) (?:error|एरर) (?:kya hai|kya he|samjhao|क्या है|समझाओ)$",
+    )
 
     // ------------------------------------------------------------------ PNR
 

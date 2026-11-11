@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
@@ -77,6 +78,7 @@ private data class AppItem(
 @Composable
 fun AppsScreen(
     onOpenTools: () -> Unit,
+    onOpenVision: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as RajuApp).container
@@ -86,6 +88,15 @@ fun AppsScreen(
 
     val appList = remember {
         listOf(
+            // Seema's own Vision page: pick photos, ask, read text, compare.
+            AppItem(
+                id = "vision",
+                name = "Vision",
+                icon = Icons.Filled.Visibility,
+                iconColor = Color(0xFFE6C98F),
+                category = "Tools",
+                action = { onOpenVision() },
+            ),
             // Row 1
             AppItem(
                 id = "camera",

@@ -2345,4 +2345,16 @@ class AssistantEngineTest {
         settle()
         assertEquals("Kal dhoop rahegi.", speaker.spoken.last()) // without her name: not taken
     }
+
+    @Test
+    fun aPictureOfTheScreenIsSentOnlyAfterYes() = runTest {
+        val e = engine(AiResult.Success("unused"))
+        e.submit("screen dekh ke batao")
+        settle()
+        assertNotNull(e.pending.value) // asks before a picture of the screen leaves the phone
+        e.resolve(Decision.Deny)
+        settle()
+        assertEquals(ActionStatus.CANCELLED, store.logs.last().second)
+        assertTrue(provider.calls.isEmpty())
+    }
 }

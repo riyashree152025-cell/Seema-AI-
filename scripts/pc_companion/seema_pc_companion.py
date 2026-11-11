@@ -253,7 +253,9 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
                 # Strict scheme whitelist (prevent file:// or command injection)
                 if url.startswith("http://") or url.startswith("https://"):
                     if platform.system() == "Windows":
-                        os.system(f'start "" "{url}"')
+                        # No shell: a URL with quotes or "&" could otherwise run a command on this PC.
+                        import webbrowser
+                        webbrowser.open(url)
                     elif platform.system() == "Darwin":
                         subprocess.run(["open", url])
                     else:

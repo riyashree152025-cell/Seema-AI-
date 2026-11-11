@@ -7,12 +7,13 @@ Branch `claude/voice-fixes` · baseline of the original project: `main` at `b58c
 | 1 | Repository audit | DONE — `docs/master/SEEMA_AUDIT.md` (at `5304006`) |
 | 2 | Project protection | DONE — work on a branch, `main` untouched, baseline recorded, change log started |
 | 3 | Architecture and plan | DONE — in the audit (sections 2 and 7) |
-| 4 | Repair existing features | NEXT |
-| 5–20 | see the audit plan | not started |
+| 4 | Repair existing features | DONE (code) — PC `open_url` without a shell, honest Automation routines, ringing-call fix `5304006`; phone result pending |
+| 5 | Vision | IN PROGRESS — Photo Picker + ask / read text / compare (cloud vision), look_at_screen with consent. Not done: live camera preview, on-device OCR / objects |
+| 6–11, 13–20 | see the audit plan | not started |
+| 12 | PC pairing / remote | SKIPPED — the user said not to work on it |
 
 ## Next exact task
-Step 4: (a) PC companion `open_url` without a shell (A1); (b) confirm the ringing-call fix `5304006` on CI and get
-the user's phone result; (c) Automation screen: routines that do nothing are marked honestly or wired (A6).
+Finish Step 5 on CI and screenshots (Vision page), then Step 6 (vision capability table, feedback learning) and Step 9 (own reminders, calendar read, notification reply).
 
 ## Rules in force
 `main` is never changed · no PR unless asked · no secrets in code, logs or chat · status words:

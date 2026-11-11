@@ -351,6 +351,52 @@ class SeemaAccessibilityService : AccessibilityService() {
             return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && service.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
         }
 
+        /**
+         * A picture of what is on the screen now, as a JPEG (longest side 1280 px), or null when it cannot be
+         * taken (Android 10 or older, the service is off, a protected screen such as a banking app).
+         * Nothing is saved; the caller decides what happens to it.
+         */
+        suspend fun captureScreenJpeg(): ByteArray? {
+            val service = instance ?: return null
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+            return kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                kotlinx.coroutines.suspendCancellableCoroutine<ByteArray?> { cont ->
+                    runCatching {
+                        service.takeScreenshot(
+                            android.view.Display.DEFAULT_DISPLAY, service.mainExecutor,
+                            object : android.accessibilityservice.AccessibilityService.TakeScreenshotCallback {
+                                override fun onSuccess(result: android.accessibilityservice.AccessibilityService.ScreenshotResult) {
+                                    val jpeg = runCatching {
+                                        val hw = android.graphics.Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                                        result.hardwareBuffer.close()
+                                        val soft = hw?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                                        hw?.recycle()
+                                        soft?.let { bmp ->
+                                            val longest = maxOf(bmp.width, bmp.height)
+                                            val scaled = if (longest > 1280) {
+                                                val f = 1280f / longest
+                                                android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt(), (bmp.height * f).toInt(), true)
+                                            } else bmp
+                                            val out = java.io.ByteArrayOutputStream()
+                                            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                                            if (scaled !== bmp) scaled.recycle()
+                                            bmp.recycle()
+                                            out.toByteArray()
+                                        }
+                                    }.getOrNull()
+                                    if (cont.isActive) cont.resumeWith(Result.success(jpeg))
+                                }
+
+                                override fun onFailure(errorCode: Int) {
+                                    if (cont.isActive) cont.resumeWith(Result.success(null))
+                                }
+                            },
+                        )
+                    }.onFailure { if (cont.isActive) cont.resumeWith(Result.success(null)) }
+                }
+            }
+        }
+
         fun goHome(): Boolean {
             val service = instance ?: return false
             return service.performGlobalAction(GLOBAL_ACTION_HOME)

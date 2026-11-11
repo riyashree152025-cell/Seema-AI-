@@ -99,6 +99,8 @@ interface DeviceTools {
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
     /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */
     suspend fun takePhoto(front: Boolean, save: Boolean): PhotoResult = PhotoResult.Failed("Camera is not supported here.")
+    /** A picture of the screen as it is now (not saved), for "screen dekh ke batao". */
+    suspend fun captureScreen(): PhotoResult = PhotoResult.Failed("Screen capture is not supported here.")
     fun goHome(): ToolOutcome = ToolOutcome.Failed("Going home is not supported here.")
     fun lockScreen(): ToolOutcome = ToolOutcome.Failed("Locking is not supported here.")
     fun openSeema(): ToolOutcome = ToolOutcome.Failed("Opening Seema is not supported here.")

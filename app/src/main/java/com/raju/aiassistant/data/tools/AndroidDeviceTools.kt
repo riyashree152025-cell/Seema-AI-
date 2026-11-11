@@ -309,6 +309,15 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     override fun hasPermission(permission: String): Boolean = granted(permission)
 
+    override suspend fun captureScreen(): com.raju.aiassistant.domain.tools.PhotoResult {
+        val svc = com.raju.aiassistant.accessibility.SeemaAccessibilityService
+        if (!svc.isRunning()) return com.raju.aiassistant.domain.tools.PhotoResult.Failed("Screen dekhne ke liye Settings → Accessibility mein Seema ko ON kijiye.")
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return com.raju.aiassistant.domain.tools.PhotoResult.Failed("Screen ki tasveer Android 11 ya naye phone par hi li ja sakti hai.")
+        val jpeg = svc.captureScreenJpeg()
+            ?: return com.raju.aiassistant.domain.tools.PhotoResult.Failed("Is screen ki tasveer nahi li ja saki (kuch apps, jaise bank, ise rokte hain).")
+        return com.raju.aiassistant.domain.tools.PhotoResult.Taken(jpeg, null)
+    }
+
     override suspend fun takePhoto(front: Boolean, save: Boolean): com.raju.aiassistant.domain.tools.PhotoResult {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             return com.raju.aiassistant.domain.tools.PhotoResult.NeedsPermission(Manifest.permission.CAMERA, "फोटो लेने के लिए कैमरा की अनुमति चाहिए।")

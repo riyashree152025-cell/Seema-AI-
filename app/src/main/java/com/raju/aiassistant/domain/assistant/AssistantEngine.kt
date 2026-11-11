@@ -1483,6 +1483,10 @@ class AssistantEngine(
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
+            is AssistantAction.LookAtScreen -> {
+                trace("command: look at screen")
+                lookAtScreen(action, speak)
+            }
             AssistantAction.LockScreen -> {
                 trace("offline command: lock screen")
                 val outcome = tools.lockScreen()
@@ -1912,6 +1916,7 @@ class AssistantEngine(
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
             }
             AssistantAction.LockScreen -> report(action, tools.lockScreen())
+            is AssistantAction.LookAtScreen -> lookAtScreen(action, speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
                 report(action, outcome)
@@ -2434,6 +2439,35 @@ class AssistantEngine(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * "Screen dekh ke batao": a picture of the screen goes to the vision model only after the user says yes
+     * (it may show private things), and it is never saved.
+     */
+    private suspend fun lookAtScreen(action: AssistantAction.LookAtScreen, speak: Boolean) {
+        val ask = phrase(lang(), "स्क्रीन की तस्वीर समझने के लिए AI को भेजूँ?", "স্ক্রিনের ছবি বোঝার জন্য AI-কে পাঠাব?")
+        if (!confirmScreenAction("Send a picture of the screen?", ask, speak)) {
+            report(action, ActionStatus.CANCELLED, "Screen picture not sent.")
+            if (speak) say(phrase(lang(), "ठीक है, नहीं भेजी।", "ঠিক আছে, পাঠাইনি।"))
+            return
+        }
+        when (val shot = tools.captureScreen()) {
+            is PhotoResult.Taken -> {
+                _state.value = AssistantState.Thinking
+                val q = (action.question?.takeIf { it.isNotBlank() } ?: "Is screen par kya hai? Agar koi error ya zaroori baat hai to wahi batao.") +
+                    " (" + (if (lang() == SeemaLanguage.BENGALI) "Answer in Bengali" else "Answer in short, natural Hindi") + ")"
+                when (val answer = describeImage(shot.jpeg, q)) {
+                    is AiResult.Success -> { report(action, ActionStatus.SUCCESS, answer.value); if (speak) say(answer.value) }
+                    is AiResult.Failure -> {
+                        report(action, ActionStatus.FAILED, answer.message)
+                        if (speak) say(phrase(lang(), "स्क्रीन की तस्वीर समझ नहीं पाई: ${answer.message}", "স্ক্রিনের ছবি বুঝতে পারিনি।"))
+                    }
+                }
+            }
+            is PhotoResult.Failed -> { report(action, ActionStatus.FAILED, shot.message); if (speak) say(shot.message) }
+            is PhotoResult.NeedsPermission -> { report(action, ActionStatus.FAILED, shot.reason); if (speak) say(shot.reason) }
         }
     }
 

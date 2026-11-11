@@ -295,6 +295,28 @@ class AppContainer(context: Context) {
             scope = appScope,
         )
     }
+/**
+     * A question about one or more pictures, answered by Gemini (the only vision model set up here).
+     * The pictures leave the phone for this, so callers ask the user first unless the user picked them.
+     */
+    suspend fun askAboutImages(jpegs: List<ByteArray>, question: String, system: String): com.raju.aiassistant.domain.ai.AiResult<String> {
+        val key = secureKeyStore.get(SecretId.GEMINI_API_KEY)
+        if (key.isNullOrBlank()) {
+            return com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Photo samajhne ke liye Gemini key chahiye (Settings → Brain).")
+        }
+        if (!online.value) {
+            return com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NETWORK, "Photo samajhne ke liye internet chahiye.")
+        }
+        val gemini = com.raju.aiassistant.data.ai.GeminiProvider(http, key)
+        // The saved Gemini model, or (auto / retired) the newest Flash model the key lists.
+        val model = currentSettings.value.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
+            ?.takeUnless { com.raju.aiassistant.domain.ai.ModelAdvice.isRetiredGemini(it) }
+            ?: (gemini.listModels() as? com.raju.aiassistant.domain.ai.AiResult.Success)?.value
+                ?.let { com.raju.aiassistant.domain.ai.pickDefaultModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, it)?.id }
+            ?: "gemini-flash-latest"
+        return gemini.describeImages(model, system, question, jpegs)
+    }
+
     val deviceTools by lazy { AndroidDeviceTools(appContext) }
     val announcementDeduper = AnnouncementDeduper()
     val callDeduper = CallDeduper()
@@ -390,23 +412,10 @@ class AppContainer(context: Context) {
                 }
             },
             describeImage = { jpeg, question ->
-                val key = secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.GEMINI_API_KEY)
-                if (key.isNullOrBlank()) {
-                    com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Photo samajhne ke liye Gemini key chahiye (Settings → Brain).")
-                } else {
-                    val gemini = com.raju.aiassistant.data.ai.GeminiProvider(http, key)
-                    // The saved Gemini model, or (auto / retired) the newest Flash model the key lists.
-                    val model = currentSettings.value.modelFor(com.raju.aiassistant.domain.ai.ProviderId.GEMINI)
-                        ?.takeUnless { com.raju.aiassistant.domain.ai.ModelAdvice.isRetiredGemini(it) }
-                        ?: (gemini.listModels() as? com.raju.aiassistant.domain.ai.AiResult.Success)?.value
-                            ?.let { com.raju.aiassistant.domain.ai.pickDefaultModel(com.raju.aiassistant.domain.ai.ProviderId.GEMINI, it)?.id }
-                        ?: "gemini-flash-latest"
-                    gemini.describeImage(
-                        model,
-                        "You are Seema, the user's phone assistant, looking through the phone camera. Describe briefly and helpfully what is in the photo; answer the user's question about it.",
-                        question, jpeg,
-                    )
-                }
+                askAboutImages(
+                    listOf(jpeg), question,
+                    "You are Seema, the user's phone assistant, looking at one picture (the phone camera or the phone's screen). Describe briefly and helpfully what is in it; answer the user's question about it. Say what you see and what you only guess.",
+                )
             },
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },

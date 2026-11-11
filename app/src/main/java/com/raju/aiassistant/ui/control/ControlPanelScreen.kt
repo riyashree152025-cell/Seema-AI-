@@ -97,9 +97,9 @@ fun ControlPanelScreen(
     val scope = rememberCoroutineScope()
 
     var automationEnabled by remember { mutableStateOf(!settings.assistantPaused) }
-    var goodMorningActive by remember { mutableStateOf(true) }
+    var goodMorningActive by remember { mutableStateOf(false) }
     var nightModeActive by remember { mutableStateOf(settings.lowPowerMode) }
-    var smartHomeActive by remember { mutableStateOf(true) }
+    var smartHomeActive by remember { mutableStateOf(false) }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var newRoutineName by remember { mutableStateOf("") }
@@ -277,7 +277,7 @@ fun ControlPanelScreen(
             // 4. Three Routines Cards
             RoutineItemCard(
                 title = "Good Morning",
-                subtitle = "Start with greetings",
+                subtitle = "ON करते ही आज की briefing सुनाती है",
                 icon = Icons.Filled.WbSunny,
                 iconTint = Color(0xFFFFD600),
                 active = goodMorningActive,
@@ -291,7 +291,7 @@ fun ControlPanelScreen(
 
             RoutineItemCard(
                 title = "Night Mode",
-                subtitle = "Reduce activity",
+                subtitle = "Animation और background काम कम (battery बचत)",
                 icon = Icons.Filled.Bedtime,
                 iconTint = SciFiCyanGlow,
                 active = nightModeActive,
@@ -305,11 +305,12 @@ fun ControlPanelScreen(
 
             RoutineItemCard(
                 title = "Smart Home",
-                subtitle = "Control devices",
+                // Honest: nothing is connected to this yet, so it cannot be switched on.
+                subtitle = "अभी उपलब्ध नहीं — कोई device जुड़ा नहीं है",
                 icon = Icons.Filled.Home,
-                iconTint = Color(0xFF40C4FF),
-                active = smartHomeActive,
-                onToggle = { smartHomeActive = it }
+                iconTint = Color(0xFF8A97A8),
+                active = false,
+                onToggle = { smartHomeActive = false }
             )
 
             Spacer(Modifier.height(4.dp))
