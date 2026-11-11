@@ -134,15 +134,14 @@ fun SciFiHomeNavButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.97f else 1f, tween(140), label = "tileScale")
-    val lit by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(180), label = "tileLit")
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.94f else 1f, tween(130), label = "tileScale")
+    val lit by androidx.compose.animation.core.animateFloatAsState(if (pressed) 1f else 0f, tween(160), label = "tileLit")
     Box(
         modifier = modifier
             .height(104.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .premiumSurface(shape = RoundedCornerShape(22.dp), accent = iconColor, lit = lit)
-            // The tile's own colour, very faint, glowing up from the bottom.
-            .background(Brush.radialGradient(listOf(iconColor.copy(alpha = 0.09f + 0.10f * lit), Color.Transparent), radius = 260f))
+            // Crystal glass tile with a neon rim in the tile's own colour; pressed, it dips and glows.
+            .crystalSurface(shape = RoundedCornerShape(22.dp), accent = iconColor, lit = lit)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -162,15 +161,14 @@ fun SciFiHomeNavButton(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Brush.radialGradient(listOf(iconColor.copy(alpha = 0.26f + 0.14f * lit), iconColor.copy(alpha = 0.06f))))
-                        .border(1.dp, Brush.linearGradient(listOf(Premium.Gold.copy(alpha = 0.55f), iconColor.copy(alpha = 0.55f))), CircleShape),
+                        // A floating glass orb with its own halo, not a flat circle.
+                        .glowingOrb(iconColor, lit),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         icon,
                         contentDescription = title,
-                        tint = iconColor,
+                        tint = Color.White,
                         modifier = Modifier.size(25.dp)
                     )
                 }
@@ -701,19 +699,7 @@ fun SciFiDigitalClock(
 
     Box(
         modifier = modifier
-            .clip(CutCornerShape(8.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0x3800D0FF), Color(0x1F003366))
-                )
-            )
-            .border(
-                1.2.dp,
-                Brush.horizontalGradient(
-                    listOf(SciFiCyanGlow.copy(alpha = 0.8f), SciFiBlueAccent.copy(alpha = 0.4f))
-                ),
-                CutCornerShape(8.dp)
-            )
+            .crystalSurface(shape = CutCornerShape(8.dp), accent = SciFiCyanGlow)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Column {
@@ -772,7 +758,7 @@ fun SciFiStateCapsule(
 
     Box(
         modifier = modifier
-            .premiumSurface(shape = RoundedCornerShape(14.dp), accent = statusColor, lit = 0.3f)
+            .crystalSurface(shape = RoundedCornerShape(14.dp), accent = statusColor, lit = 0.25f)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

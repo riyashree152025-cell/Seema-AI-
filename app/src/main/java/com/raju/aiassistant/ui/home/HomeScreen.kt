@@ -2,6 +2,7 @@ package com.raju.aiassistant.ui.home
 
 
 
+import com.raju.aiassistant.ui.components.crystalSurface
 import android.Manifest
 
 import android.os.SystemClock
@@ -371,9 +372,7 @@ fun HomeScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xCC0B1C3A), Color(0xCC061026))))
-                    .border(1.dp, Brush.horizontalGradient(listOf(Color(0x6638E1FF), Color(0xB300F0FF), Color(0x667000FF))), RoundedCornerShape(16.dp))
+                    .crystalSurface(shape = RoundedCornerShape(16.dp), accent = Color(0xFF38C8FF))
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -410,19 +409,7 @@ fun HomeScreen(
 
                     modifier = Modifier
 
-                        .clip(RoundedCornerShape(20.dp))
-
-                        .background(if (isMuted) Color(0x33FF1744) else Color(0x1F00E5FF))
-
-                        .border(
-
-                            width = 1.2.dp,
-
-                            color = if (isMuted) Color(0xFFFF1744) else Color(0xFF00E5FF).copy(alpha = 0.6f),
-
-                            shape = RoundedCornerShape(20.dp)
-
-                        )
+                        .crystalSurface(shape = RoundedCornerShape(20.dp), accent = if (isMuted) Color(0xFFFF1744) else Color(0xFF00E5FF))
 
                         .clickable { viewModel.toggleMute() }
 
@@ -643,7 +630,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Psychology,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Brain,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonBrain,
 
                             onClick = onOpenAiBrain,
 
@@ -657,7 +644,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.GraphicEq,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Voice,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonVoice,
 
                             onClick = onOpenVoiceControl,
 
@@ -671,7 +658,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Storage,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Memory,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonMemory,
 
                             onClick = onOpenMemoryCenter,
 
@@ -699,7 +686,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.AutoAwesome,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Automation,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonAutomation,
 
                             onClick = onOpenControlPanel,
 
@@ -713,7 +700,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Apps,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Apps,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonApps,
 
                             onClick = onOpenApps,
 
@@ -727,7 +714,7 @@ fun HomeScreen(
 
                             icon = Icons.Filled.Settings,
 
-                            iconColor = com.raju.aiassistant.ui.components.Premium.Settings,
+                            iconColor = com.raju.aiassistant.ui.components.Premium.NeonSettings,
 
                             onClick = onOpenSettings,
 
@@ -751,19 +738,7 @@ fun HomeScreen(
 
                         .padding(top = 2.dp)
 
-                        .clip(CutCornerShape(8.dp))
-
-                        .background(
-
-                            Brush.horizontalGradient(
-
-                                listOf(Color(0x3800D0FF), Color(0x1F002244), Color(0x3800D0FF))
-
-                            )
-
-                        )
-
-                        .border(1.2.dp, SciFiCyanGlow.copy(alpha = 0.5f), CutCornerShape(8.dp))
+                        .crystalSurface(shape = CutCornerShape(8.dp), accent = SciFiCyanGlow)
 
                         .clickable(
 

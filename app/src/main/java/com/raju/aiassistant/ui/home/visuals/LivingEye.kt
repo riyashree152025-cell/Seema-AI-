@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.raju.aiassistant.domain.model.AssistantState
 import kotlin.math.PI
@@ -76,7 +78,7 @@ fun LivingEyeVisualizer(
         val area = eyeArea()
         val centerY = area?.let { (it.center.y / size.height).coerceIn(0.1f, 0.9f) } ?: waveCenterY
         if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, centerY)
-        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeTexture)
+        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeTexture, richEffects)
     }
 }
 
@@ -143,6 +145,7 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
 private fun DrawScope.drawLivingEye(
     t: Float, energy: Float, state: AssistantState, accent: Color, area: Rect?, touch: Pair<Offset, Float>?,
     texture: androidx.compose.ui.graphics.ImageBitmap,
+    richEffects: Boolean,
 ) {
     val c = area?.center ?: center
     val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
@@ -177,6 +180,9 @@ private fun DrawScope.drawLivingEye(
         filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
     )
 
+    // Life in the outer blue fibres only (the pupil, the hazel collar and the glass highlight stay as drawn).
+    drawFiberLife(t, energy, eyeAt, r, dim, texture, richEffects)
+
     // Pupil: the texture's own pupil is its resting size; when she listens or speaks it dilates with the
     // voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at its
     // edge so it recedes into the eye. It never shrinks below the drawn pupil.
@@ -200,3 +206,107 @@ private fun DrawScope.drawLivingEye(
         drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, r * 0.28f), r * 0.28f, glow)
     }
 }
+
+private val FIBER_CYAN = Color(0xFF4FF3FF)
+private val FIBER_BLUE = Color(0xFF3D8BFF)
+private val FIBER_VIOLET = Color(0xFFA57CFF)
+private val LIMBAL = Color(0xFF01040F)
+
+/** Where the blue fibres begin (outside the hazel collar) and end, as shares of the eye's radius. */
+private const val FIBER_INNER = 0.50f
+private const val FIBER_OUTER = 0.985f
+
+/** A fixed pseudo-random number 0..1 for fibre [i] (the same every frame, so fibres do not jump). */
+private fun fiberSeed(i: Int, k: Float): Float {
+    val x = sin(i * 12.9898f + k * 78.233f) * 43758.547f
+    return x - kotlin.math.floor(x)
+}
+
+/**
+ * The outer iris, alive: the ring of blue fibres breathes (and stretches with the voice), small
+ * lights travel outward inside the fibres like nerve pulses, a ripple runs through them while a voice
+ * is heard or spoken, and a dark limbal ring at the rim makes them sit deep inside the glass.
+ * Everything is drawn only between [FIBER_INNER] and the rim, so the pupil and the collar are untouched.
+ */
+private fun DrawScope.drawFiberLife(
+    t: Float, energy: Float, at: Offset, r: Float, dim: Float,
+    texture: androidx.compose.ui.graphics.ImageBitmap, richEffects: Boolean,
+) {
+    val inner = r * FIBER_INNER
+    val outer = r * FIBER_OUTER
+    // 0 while calm, up to 1 with a loud voice (hers or the user's).
+    val voice = ((energy - AMBIENT_ENERGY) / (1f - AMBIENT_ENERGY)).coerceIn(0f, 1f)
+
+    // 1. Breathing: the fibre ring alone is drawn again a touch larger or smaller. Fibres run outward,
+    // so a small radial stretch reads as the fibres themselves expanding, with no visible seam.
+    val stretch = 1f + 0.010f * sin(t * 0.9f) + 0.020f * voice * (0.6f + 0.4f * sin(t * 9f))
+    val ring = Path().apply {
+        fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+        addOval(Rect(at, r))
+        addOval(Rect(at, inner))
+    }
+    val d = (2f * r).toInt().coerceAtLeast(1)
+    clipPath(ring) {
+        scale(stretch, stretch, pivot = at) {
+            drawImage(
+                texture,
+                srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
+                srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
+                dstOffset = androidx.compose.ui.unit.IntOffset((at.x - r).toInt(), (at.y - r).toInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(d, d),
+                alpha = dim,
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+            )
+        }
+    }
+
+    // 2. Neural pulses: short lights moving outward along the fibres, added to the picture's own light.
+    val fibres = if (richEffects) 64 else 28
+    val span = outer - inner
+    for (i in 0 until fibres) {
+        val a0 = fiberSeed(i, 1f)
+        val a1 = fiberSeed(i, 2f)
+        val a2 = fiberSeed(i, 3f)
+        val p = (t * (0.09f + 0.13f * a1) + a2).let { it - kotlin.math.floor(it) }
+        val angle = ((i + 0.7f * a0) / fibres) * 2f * PI.toFloat() + 0.035f * sin(p * 3f + a0 * 6f)
+        // The glass highlight sits on the upper left: the pulses fade out under it.
+        val fromHighlight = kotlin.math.abs(kotlin.math.atan2(sin(angle - HIGHLIGHT_ANGLE), cos(angle - HIGHLIGHT_ANGLE)))
+        val clear = ((fromHighlight - 0.45f) / 0.45f).coerceIn(0f, 1f)
+        val fade = sin(PI.toFloat() * p) // in at the collar, out at the rim
+        val alpha = ((0.15f + 0.07f * sin(t * 2.1f + i) + 0.50f * voice) * fade * clear * dim).coerceIn(0f, 0.85f)
+        if (alpha < 0.02f) continue
+        val from = inner + span * p
+        val to = minOf(outer, from + r * (0.06f + 0.06f * a0) * (1f + 0.6f * voice))
+        val dx = cos(angle)
+        val dy = sin(angle)
+        val start = Offset(at.x + dx * from, at.y + dy * from)
+        val end = Offset(at.x + dx * to, at.y + dy * to)
+        val color = when {
+            a1 < 0.45f -> FIBER_CYAN
+            a1 < 0.78f -> FIBER_BLUE
+            else -> FIBER_VIOLET
+        }
+        val width = (1.0f + 0.9f * a0) * density
+        drawLine(color.copy(alpha = alpha * 0.30f), start, end, width * 3.2f, StrokeCap.Round, blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+        drawLine(color.copy(alpha = alpha), start, end, width, StrokeCap.Round, blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+    }
+
+    // 3. Voice ripple: rings of light run outward through the fibres with the voice.
+    if (voice > 0.03f) {
+        for (k in 0..1) {
+            val q = (t * 0.85f + k * 0.5f).let { it - kotlin.math.floor(it) }
+            val alpha = (0.34f * voice * sin(PI.toFloat() * q) * dim).coerceIn(0f, 0.6f)
+            if (alpha < 0.02f) continue
+            drawCircle(FIBER_CYAN.copy(alpha = alpha), inner + span * q, at, style = Stroke((1.6f + 2.2f * voice) * density), blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+        }
+    }
+
+    // 4. Limbal ring: a soft dark inner shadow at the rim, so the fibres lie deep inside the glass ball.
+    drawCircle(
+        Brush.radialGradient(0.78f to Color.Transparent, 0.92f to LIMBAL.copy(alpha = 0.42f * dim), 1f to LIMBAL.copy(alpha = 0.80f * dim), center = at, radius = r),
+        r, at,
+    )
+}
+
+/** The direction of the glass highlight on the eye picture (upper left), in canvas radians. */
+private const val HIGHLIGHT_ANGLE = -2.25f
