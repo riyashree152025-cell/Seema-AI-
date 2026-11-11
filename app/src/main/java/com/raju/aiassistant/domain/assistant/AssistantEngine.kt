@@ -1482,6 +1482,7 @@ class AssistantEngine(
                 informational(action, spokenClock(action), speak)
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
+            is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.LookAtScreen -> {
                 trace("command: look at screen")
@@ -1943,6 +1944,7 @@ class AssistantEngine(
                 }
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
+            is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
             is AssistantAction.Volume -> report(action, tools.setVolume(action.percent))
@@ -2060,6 +2062,38 @@ class AssistantEngine(
                 val removed = runCatching { business.deleteLedgerEntry(last.id) }.getOrDefault(false)
                 val text = if (removed) phrase(lang(), "हटा दी: $what।", "সরিয়ে দিয়েছি: $what।") else phrase(lang(), "entry हट नहीं पाई।", "entry সরানো গেল না।")
                 report(action, if (removed) ActionStatus.SUCCESS else ActionStatus.FAILED, text)
+                if (speak) say(text)
+            }
+            is AssistantAction.ReminderAdd -> {
+                trace("offline command: reminder")
+                val outcome = tools.addReminder(action.atMillis, action.text)
+                val now = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(clock()), zone())
+                val at = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(action.atMillis), zone())
+                val whenText = com.raju.aiassistant.domain.reminder.spokenReminderTime(at, now)
+                val text = if (outcome is ToolOutcome.Done) {
+                    phrase(lang(), "ठीक है, $whenText याद दिला दूँगी: ${action.text}।", "ঠিক আছে, $whenText মনে করিয়ে দেব: ${action.text}।") +
+                        if (outcome.message.contains(com.raju.aiassistant.domain.tools.TATKAL_INEXACT)) phrase(lang(), " ठीक समय पर आए, इसके लिए फ़ोन में Alarms & reminders की अनुमति दीजिए।", "") else ""
+                } else phrase(lang(), "Reminder नहीं लग पाया।", "Reminder দেওয়া গেল না।")
+                report(action, outcome)
+                if (speak) say(text)
+            }
+            AssistantAction.ReminderList -> {
+                trace("offline command: reminder list")
+                val list = tools.listReminders()
+                val now = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(clock()), zone())
+                val text = if (list.isEmpty()) phrase(lang(), "कोई reminder नहीं लगा है।", "কোনো reminder নেই।")
+                    else list.take(5).joinToString("; ") { r ->
+                        com.raju.aiassistant.domain.reminder.spokenReminderTime(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(r.atMillis), zone()), now) + " — " + r.text
+                    }
+                report(action, ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            is AssistantAction.ReminderCancel -> {
+                trace("offline command: reminder cancel")
+                val outcome = tools.cancelReminders(action.all)
+                val text = if (outcome is ToolOutcome.Done) phrase(lang(), if (action.all) "सारे reminder हटा दिए।" else "आख़िरी reminder हटा दिया।", "Reminder সরিয়ে দিয়েছি।")
+                    else phrase(lang(), "कोई reminder लगा नहीं था।", "কোনো reminder ছিল না।")
+                report(action, outcome)
                 if (speak) say(text)
             }
             AssistantAction.TatkalList -> {

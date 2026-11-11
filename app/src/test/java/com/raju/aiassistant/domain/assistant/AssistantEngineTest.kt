@@ -90,6 +90,8 @@ class AssistantEngineTest {
         val timers = mutableListOf<Int>()
         val sms = mutableListOf<Pair<String, String>>()
         override fun setTimer(seconds: Int, note: String): ToolOutcome { timers += seconds; return ToolOutcome.Done("Timer set") }
+        val reminders = mutableListOf<Pair<Long, String>>()
+        override fun addReminder(atMillis: Long, text: String): ToolOutcome { reminders += atMillis to text; return ToolOutcome.Done("Reminder set.") }
         override fun sendSms(contact: Contact, text: String): ToolOutcome { sms += contact.number to text; return ToolOutcome.Done("SMS sent") }
         val events = mutableListOf<Pair<String, Int>>()
         val eventStarts = mutableListOf<Long>()
@@ -2355,6 +2357,17 @@ class AssistantEngineTest {
         e.resolve(Decision.Deny)
         settle()
         assertEquals(ActionStatus.CANCELLED, store.logs.last().second)
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aReminderIsSetWithoutAiAndSpokenBack() = runTest {
+        online = false
+        val e = engine(AiResult.Success("unused"))
+        e.submit("10 minute baad yaad dilana ki dawai leni hai")
+        settle()
+        assertEquals("dawai leni hai", tools.reminders.single().second)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("याद दिला दूँगी") && speaker.spoken.last().contains("dawai leni hai"))
         assertTrue(provider.calls.isEmpty())
     }
 }

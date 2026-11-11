@@ -68,6 +68,16 @@ sealed interface AssistantAction {
     data class SetTatkalAlarm(val hour: Int, val minute: Int, val kind: String) : AssistantAction {
         override val label get() = "Tatkal $kind alarm: %02d:%02d".format(hour, minute)
     }
+    /** Seema's own reminder: say [text] at [atMillis]. */
+    data class ReminderAdd(val atMillis: Long, val text: String) : AssistantAction {
+        override val label get() = "Reminder: $text"
+    }
+    data object ReminderList : AssistantAction {
+        override val label get() = "Reminders: list"
+    }
+    data class ReminderCancel(val all: Boolean) : AssistantAction {
+        override val label get() = if (all) "Reminders: cancel all" else "Reminders: cancel the newest"
+    }
     data object TatkalList : AssistantAction {
         override val label get() = "Tatkal alarms: list"
     }
@@ -370,6 +380,19 @@ private fun parseAction(json: String): AssistantAction? {
             val cls = if (str("class")?.lowercase()?.startsWith("s") == true) "Sleeper" else "AC"
             if (h == null || min == null || h !in 0..23 || min !in 0..59) null else AssistantAction.SetTatkalAlarm(h, min, cls)
         }
+        "reminder_add" -> {
+            val text = str("text")
+            val inMin = int("in_minutes")
+            val at = str("at")?.let { runCatching { java.time.LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull() }
+            val millis = when {
+                inMin != null && inMin in 1..7 * 24 * 60 -> System.currentTimeMillis() + inMin * 60_000L
+                at != null -> at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                else -> null
+            }
+            if (text == null || millis == null) null else AssistantAction.ReminderAdd(millis, text)
+        }
+        "reminder_list" -> AssistantAction.ReminderList
+        "reminder_cancel" -> AssistantAction.ReminderCancel(str("all")?.lowercase() == "true")
         "tatkal_list" -> AssistantAction.TatkalList
         "tatkal_cancel" -> {
             if (str("all")?.lowercase() == "true") AssistantAction.TatkalCancelAll

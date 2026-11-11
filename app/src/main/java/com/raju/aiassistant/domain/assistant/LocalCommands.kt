@@ -30,6 +30,13 @@ object LocalCommands {
             is LedgerCommand.Balance -> AssistantAction.LedgerBalance(it.name)
             LedgerCommand.Undo -> AssistantAction.LedgerUndo
         } }
+        com.raju.aiassistant.domain.reminder.parseReminder(plain, java.time.LocalDateTime.now())?.let { return when (it) {
+            is com.raju.aiassistant.domain.reminder.ReminderCommand.Add ->
+                AssistantAction.ReminderAdd(it.at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), it.text)
+            com.raju.aiassistant.domain.reminder.ReminderCommand.List -> AssistantAction.ReminderList
+            com.raju.aiassistant.domain.reminder.ReminderCommand.CancelLast -> AssistantAction.ReminderCancel(all = false)
+            com.raju.aiassistant.domain.reminder.ReminderCommand.CancelAll -> AssistantAction.ReminderCancel(all = true)
+        } }
         parseTatkalCommand(plain)?.let { return when (it) {
             is TatkalCommand.Set -> AssistantAction.SetTatkalAlarm(it.alarm.hour, it.alarm.minute, it.alarm.label)
             TatkalCommand.List -> AssistantAction.TatkalList

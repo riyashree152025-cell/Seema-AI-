@@ -371,6 +371,20 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return ToolOutcome.Done(if (exact) msg else msg + " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
     }
 
+    override fun addReminder(atMillis: Long, text: String): ToolOutcome {
+        if (atMillis <= System.currentTimeMillis()) return ToolOutcome.Failed("That time has already passed.")
+        val (_, exact) = com.raju.aiassistant.notifications.Reminders.add(context, atMillis, text)
+        return ToolOutcome.Done("Reminder set." + if (exact) "" else " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
+    }
+
+    override fun listReminders() = com.raju.aiassistant.notifications.Reminders.all(context)
+
+    override fun cancelReminders(all: Boolean): ToolOutcome {
+        val newest = com.raju.aiassistant.notifications.Reminders.all(context).maxByOrNull { it.id }?.id
+        val n = com.raju.aiassistant.notifications.Reminders.remove(context) { all || it.id == newest }
+        return if (n == 0) ToolOutcome.Failed("No reminder is set.") else ToolOutcome.Done("Removed $n reminder(s).")
+    }
+
     override fun listTatkalAlarms() = com.raju.aiassistant.notifications.TatkalAlarms.all(context)
 
     override fun cancelTatkalAlarms(hour: Int, minute: Int, kind: String?): ToolOutcome {

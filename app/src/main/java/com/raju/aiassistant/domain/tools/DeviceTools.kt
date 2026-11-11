@@ -42,6 +42,11 @@ interface DeviceTools {
     /** Daily Tatkal alert. A Done message containing [TATKAL_INEXACT] means it may ring late (exact alarms off). */
     fun setTatkalAlarm(hour: Int, minute: Int, label: String): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
     fun listTatkalAlarms(): List<com.raju.aiassistant.domain.tatkal.TatkalAlarm> = emptyList()
+    /** Seema's own reminder at [atMillis]. A Done message containing [TATKAL_INEXACT] means it may come late. */
+    fun addReminder(atMillis: Long, text: String): ToolOutcome = ToolOutcome.Failed("Reminders are not supported here.")
+    fun listReminders(): List<com.raju.aiassistant.domain.reminder.Reminder> = emptyList()
+    /** Removes the newest reminder ([all] false) or every reminder. Done message carries the count. */
+    fun cancelReminders(all: Boolean): ToolOutcome = ToolOutcome.Failed("Reminders are not supported here.")
     /** Removes the alarms at that time ([kind] null: either class). Done message carries the count. */
     fun cancelTatkalAlarms(hour: Int, minute: Int, kind: String?): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")
     fun cancelAllTatkalAlarms(): ToolOutcome = ToolOutcome.Failed("Tatkal alarm is not supported here.")

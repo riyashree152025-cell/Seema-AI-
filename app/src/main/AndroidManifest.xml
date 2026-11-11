@@ -158,6 +158,9 @@
             android:name=".notifications.TatkalAlarmReceiver"
             android:exported="false" />
         <receiver
+            android:name=".notifications.ReminderReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".notifications.TatkalBootReceiver"
             android:exported="true">
             <intent-filter>
