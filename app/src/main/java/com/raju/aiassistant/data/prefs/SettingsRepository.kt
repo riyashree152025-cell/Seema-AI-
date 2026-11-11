@@ -75,6 +75,7 @@ class SettingsRepository(private val context: Context) {
             wakeWord = this[Keys.WAKE_WORD] ?: d.wakeWord,
             micHub = this[Keys.MIC_HUB] ?: d.micHub,
             hybridBrain = this[Keys.HYBRID_BRAIN] ?: d.hybridBrain,
+            appLock = this[Keys.APP_LOCK] ?: d.appLock,
             businessReminders = this[Keys.BUSINESS_REMINDERS] ?: d.businessReminders,
             smartPower = this[Keys.SMART_POWER] ?: d.smartPower,
             thermalProtection = this[Keys.THERMAL_PROTECTION] ?: d.thermalProtection,
@@ -140,6 +141,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
     suspend fun setMicHub(v: Boolean) = edit { it[Keys.MIC_HUB] = v }
     suspend fun setHybridBrain(v: Boolean) = edit { it[Keys.HYBRID_BRAIN] = v }
+    suspend fun setAppLock(v: Boolean) = edit { it[Keys.APP_LOCK] = v }
     suspend fun setBusinessReminders(v: Boolean) = edit { it[Keys.BUSINESS_REMINDERS] = v }
     suspend fun setPersonality(v: Personality) = edit { it[Keys.PERSONALITY] = v.name }
     suspend fun setAnnounce(v: Boolean) = edit { it[Keys.ANNOUNCE] = v }
@@ -204,6 +206,7 @@ class SettingsRepository(private val context: Context) {
         val WAKE_WORD = booleanPreferencesKey("wake_word")
         val MIC_HUB = booleanPreferencesKey("mic_hub")
         val HYBRID_BRAIN = booleanPreferencesKey("hybrid_brain")
+        val APP_LOCK = booleanPreferencesKey("app_lock")
         val BUSINESS_REMINDERS = booleanPreferencesKey("business_reminders")
         val PERSONALITY = stringPreferencesKey("personality")
         val ANNOUNCE = booleanPreferencesKey("announce_notifications")

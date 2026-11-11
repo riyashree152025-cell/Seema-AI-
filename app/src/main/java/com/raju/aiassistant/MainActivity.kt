@@ -11,6 +11,12 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -58,9 +64,54 @@ class MainActivity : ComponentActivity() {
         publishShortcuts()
         setContent {
             RajuTheme {
-                RajuNavHost()
+                val settings by (application as RajuApp).container.currentSettings.collectAsStateWithLifecycle()
+                val locked = settings.appLock && !unlocked.value && deviceSecure()
+                if (locked) {
+                    // Nothing of the app is composed while locked: no chat, khata or settings behind the gate.
+                    androidx.compose.foundation.layout.Box(
+                        androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF05070F)),
+                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                    ) {
+                        androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            androidx.compose.material3.Text("Seema lock है", style = androidx.compose.material3.MaterialTheme.typography.headlineMedium, color = androidx.compose.ui.graphics.Color.White)
+                            androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.height(16.dp))
+                            androidx.compose.material3.Button(onClick = { askUnlock() }) { androidx.compose.material3.Text("खोलें") }
+                        }
+                    }
+                    androidx.compose.runtime.LaunchedEffect(Unit) { askUnlock() }
+                } else {
+                    RajuNavHost()
+                }
             }
         }
+    }
+
+    // ---- App lock (optional): the phone's own fingerprint / PIN / pattern, asked by Android itself.
+    private val unlocked = androidx.compose.runtime.mutableStateOf(false)
+    private var leftAt = 0L
+    private val unlockLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == RESULT_OK) unlocked.value = true
+    }
+
+    private fun deviceSecure(): Boolean =
+        (getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isDeviceSecure == true
+
+    private fun askUnlock() {
+        val km = getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager
+        @Suppress("DEPRECATION")
+        val intent = km?.createConfirmDeviceCredentialIntent("Seema AI", "Seema खोलने के लिए")
+        if (intent == null) unlocked.value = true else runCatching { unlockLauncher.launch(intent) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        leftAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Away for more than half a minute: lock again (a quick trip to a permission page does not).
+        if (leftAt != 0L && android.os.SystemClock.elapsedRealtime() - leftAt > 30_000L) unlocked.value = false
     }
 
     override fun onResume() {

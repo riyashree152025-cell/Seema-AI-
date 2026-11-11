@@ -2366,6 +2366,26 @@ fun PrivacyScreen(
             Text("Permissions & Privacy", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
         }
 
+        // App lock and a plain statement of what leaves the phone.
+        com.raju.aiassistant.ui.components.HudPanel(title = "App lock") {
+            val secure = remember { (context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isDeviceSecure == true }
+            ToggleRow("Seema खोलने पर फ़ोन का lock माँगे", s.appLock && secure) { if (secure) viewModel.setAppLock(it) }
+            Text(
+                if (secure) "चालू होने पर chat, खाता, memory और settings फ़ोन के fingerprint / PIN / pattern के बाद ही खुलते हैं। बोलकर काम करवाना चलता रहता है।"
+                else "पहले फ़ोन में screen lock (PIN, pattern या fingerprint) लगाइए, तभी यह चालू होगा।",
+                style = MaterialTheme.typography.bodySmall, color = com.raju.aiassistant.ui.theme.TextSecondary,
+            )
+        }
+        com.raju.aiassistant.ui.components.HudPanel(title = "फ़ोन से बाहर क्या जाता है") {
+            listOf(
+                "आपका सवाल और जवाब के लिए ज़रूरी बातें: चुने हुए AI provider को।",
+                "आवाज़: Deepgram को (अगर उसकी key लगी है), वरना फ़ोन के recogniser को।",
+                "Photo: सिर्फ़ वही जो आप Vision में चुनें या कैमरे से खिंचवाएँ।",
+                "Screen की तस्वीर: हर बार पूछकर, आपके हाँ कहने पर ही।",
+                "कभी नहीं जाते: contacts, call log, खाता, reminders, OTP और API keys।",
+            ).forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, color = Color.White) }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

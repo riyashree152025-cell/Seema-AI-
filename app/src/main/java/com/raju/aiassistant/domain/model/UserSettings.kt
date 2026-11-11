@@ -127,6 +127,8 @@ data class UserSettings(
      * with only the context it needs. Only when that provider's key is saved; otherwise the chosen AI.
      */
     val hybridBrain: Boolean = true,
+    /** Seema's screens open only after the phone's own lock (fingerprint, PIN or pattern). Voice keeps working. */
+    val appLock: Boolean = false,
     /** Morning briefing (journeys, yesterday's spending) and the Sunday expense report as notifications. */
     val businessReminders: Boolean = true,
     /** Smart power: animations slow down and stop when nobody is using the app. */
