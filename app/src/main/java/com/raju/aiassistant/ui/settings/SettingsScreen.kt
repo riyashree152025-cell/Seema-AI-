@@ -243,6 +243,15 @@ fun SettingsScreen(
                     onBack = { currentScreen = "brain_ai" },
                     extra = {
                         Spacer(Modifier.height(16.dp))
+                        Text("🚆 RailKit (PNR, ट्रेनें, लाइव स्टेटस, सीट, किराया)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
+                        Text("railkit.in dashboard की API key यहाँ डालिए (Advance plan)। Key सिर्फ़ इस फ़ोन में encrypted रहती है।", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp)
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.RAILKIT_API_KEY,
+                            title = "RailKit API key",
+                            secretStatus = state.secrets[SecretId.RAILKIT_API_KEY] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
+                        Spacer(Modifier.height(16.dp))
                         Text("🚆 PNR status service (background PNR alerts)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
                         Text("Aapki apni PNR service ka URL — {pnr} ki jagah PNR aata hai. Official free API nahi hai.", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp)
                         VoiceEngineSecretCard(

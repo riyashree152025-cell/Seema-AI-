@@ -26,6 +26,8 @@ fun AssistantDialogs(engine: AssistantEngine) {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         engine.resolve(Decision.PermissionResult(granted))
     }
+    val passengers by engine.passengers.collectAsStateWithLifecycle()
+    if (passengers.isNotEmpty()) PassengerCardDialog(passengers, onClose = engine::dismissPassengers)
     val request = pending ?: return
 
     when (request.kind) {

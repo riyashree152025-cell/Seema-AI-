@@ -206,6 +206,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     is AiResult.Success -> AiResult.Success("Connected — search returned ${r.value.results.size} result(s).")
                     is AiResult.Failure -> r
                 }
+                id == SecretId.RAILKIT_API_KEY -> when (val r = c.railKit.stations("delhi")) {
+                    is com.raju.aiassistant.domain.rail.RailResult.Ok -> AiResult.Success("Connected — RailKit ने ${r.value.size} स्टेशन लौटाए।")
+                    is com.raju.aiassistant.domain.rail.RailResult.Failed -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, r.message)
+                    com.raju.aiassistant.domain.rail.RailResult.NotConfigured -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "No key saved.")
+                }
                 id == SecretId.ELEVENLABS_API_KEY -> testElevenLabs(key)
                 id == SecretId.CARTESIA_API_KEY -> testCartesia(key)
                 id == SecretId.PC_SYNC_ENDPOINT || id == SecretId.PC_SYNC_TOKEN -> testPcSync()

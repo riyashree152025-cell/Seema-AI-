@@ -13,3 +13,8 @@
    call Seema placed is ringing / on. A "कॉल काटें" notification button (also on the lock screen) ends it instead.
 10. Voice lock needs Seema as device admin (one tap on "Activate"). If neither that nor Accessibility is on,
     the first "फ़ोन लॉक करो" opens the Activate screen (only while Seema is on screen or Accessibility is running).
+
+11. RailKit: the answer shapes are taken from RailKit's own SDK README (npm `railkit` 6.0.3), not yet from a live
+    call with the user's key — first real PNR / train answers need a phone test. Direct API needs the Advance plan.
+    The chart watch checks a waiting PNR every 30 minutes on the journey day and the day before; each check
+    counts against the month's RailKit quota.

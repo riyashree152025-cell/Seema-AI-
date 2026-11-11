@@ -39,6 +39,11 @@ object LocalCommands {
             com.raju.aiassistant.domain.reminder.ReminderCommand.CancelLast -> AssistantAction.ReminderCancel(all = false)
             com.raju.aiassistant.domain.reminder.ReminderCommand.CancelAll -> AssistantAction.ReminderCancel(all = true)
         } }
+        com.raju.aiassistant.domain.tatkal.parsePassengers(plain, java.time.LocalDate.now())?.let { return AssistantAction.PassengerAges(it) }
+        com.raju.aiassistant.domain.rail.parseRailCommand(plain, java.time.LocalDate.now())?.let { return when (it) {
+            is com.raju.aiassistant.domain.rail.RailCommand.Between -> AssistantAction.TrainsBetween(it.from, it.to, it.date)
+            is com.raju.aiassistant.domain.rail.RailCommand.Live -> AssistantAction.TrainLive(it.train, null)
+        } }
         parseTatkalCommand(plain)?.let { return when (it) {
             is TatkalCommand.Set -> AssistantAction.SetTatkalAlarm(it.alarm.hour, it.alarm.minute, it.alarm.label)
             TatkalCommand.List -> AssistantAction.TatkalList

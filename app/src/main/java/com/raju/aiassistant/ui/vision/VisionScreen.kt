@@ -101,6 +101,27 @@ fun VisionScreen(onBack: () -> Unit) {
         }
     }
 
+    // Tatkal helper: names and birth years are read from the ID photo; the ages are the app's own sum.
+    fun readPassengers() {
+        if (busy || images.isEmpty()) return
+        busy = true; answer = null; error = null
+        scope.launch {
+            val r = container.askAboutImages(
+                images.map { it.jpeg }, com.raju.aiassistant.domain.vision.ID_PASSENGER_PROMPT,
+                "You read identity cards for a railway ticket form. Copy only what is printed; never guess a name, a date or a gender.",
+            )
+            when (r) {
+                is AiResult.Success -> {
+                    val list = com.raju.aiassistant.domain.tatkal.parsePassengerLines(r.value, java.time.LocalDate.now())
+                    if (list.isEmpty()) error = "इस photo से नाम और जन्म का साल साफ़ नहीं पढ़ा गया — साफ़ photo चुनिए, या नाम और साल बोल दीजिए।"
+                    else container.engine.showPassengers(list)
+                }
+                is AiResult.Failure -> error = r.message
+            }
+            busy = false
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -146,6 +167,7 @@ fun VisionScreen(onBack: () -> Unit) {
             OutlinedButton(onClick = { run(VisionTask.COMPARE) }, enabled = ready && images.size >= 2, modifier = Modifier.fillMaxWidth()) {
                 Text(if (images.size >= 2) "Photo की तुलना करो" else "तुलना के लिए 2 photo चुनिए")
             }
+            OutlinedButton(onClick = { readPassengers() }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("ID से यात्री कार्ड (नाम, उम्र)") }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
 

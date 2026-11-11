@@ -108,10 +108,14 @@ class PnrWatchWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val s = c.settingsRepository.settings.first()
         if (!s.businessReminders) return Result.success()
         val today = LocalDate.now(ZoneId.systemDefault())
-        val journeys = runCatching { c.businessRepository.journeysFrom(today) }.getOrDefault(emptyList())
-            .filter { !it.date.isAfter(today.plusDays(7)) }
-        if (journeys.isEmpty()) return Result.success()
+        // RailKit counts every request against the month's plan: with it, only journeys of today and
+        // tomorrow are checked (charts are prepared within a day of departure) and none after its chart.
+        val railKit = c.railKit.configured()
         val prefs = applicationContext.getSharedPreferences("pnr_watch", Context.MODE_PRIVATE)
+        val journeys = runCatching { c.businessRepository.journeysFrom(today) }.getOrDefault(emptyList())
+            .filter { !it.date.isAfter(today.plusDays(if (railKit) 1 else 7)) }
+            .filter { !railKit || prefs.getString(it.pnr, null)?.startsWith("C") != true }
+        if (journeys.isEmpty()) return Result.success()
         for (j in journeys.distinctBy { it.pnr }) {
             val fetch = c.pnrSource.status(j.pnr)
             if (fetch is com.raju.aiassistant.domain.business.PnrFetch.NotConfigured) return Result.success()

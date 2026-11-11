@@ -24,3 +24,14 @@ fun visionPrompt(task: VisionTask, question: String, imageCount: Int, hindi: Boo
     }
     return "$body $honesty $language"
 }
+
+/**
+ * For the Tatkal passenger card: one line per identity card. The ID number is not asked for and must
+ * not come back; the age is never asked for either — the app works it out from the year.
+ */
+const val ID_PASSENGER_PROMPT =
+    "These are photos of identity cards (Aadhaar, PAN, voter ID, driving licence). For each person write exactly one line: " +
+        "FULL NAME in English capital letters | date of birth as DD/MM/YYYY (or only the 4-digit year of birth when that is all that is printed) | M or F as printed. " +
+        "Example: RAJESH SINGH | 15/08/1986 | M. Leave the gender empty when it is not printed. " +
+        "Skip a card whose name or year of birth cannot be read clearly — do not guess. " +
+        "Do not write the ID number, the address, an age or any other text."

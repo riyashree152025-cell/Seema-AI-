@@ -216,6 +216,8 @@ class AssistantEngine(
     private val restoreMic: () -> Unit = {},
     /** PNR status from the user's PNR service; NotConfigured falls back to the official page. */
     private val pnrSource: com.raju.aiassistant.domain.business.PnrSource = com.raju.aiassistant.domain.business.PnrSource { com.raju.aiassistant.domain.business.PnrFetch.NotConfigured },
+    /** Trains, live status, seats and fare from the rail service (RailKit); NotConfigured without a key. */
+    private val rail: com.raju.aiassistant.domain.rail.RailSource = com.raju.aiassistant.domain.rail.NoRail,
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
@@ -260,6 +262,12 @@ class AssistantEngine(
 
     private val _pending = MutableStateFlow<PendingRequest?>(null)
     val pending: StateFlow<PendingRequest?> = _pending.asStateFlow()
+
+    /** The passenger card on screen (name, age, gender with copy buttons); empty = none. */
+    private val _passengers = MutableStateFlow<List<com.raju.aiassistant.domain.tatkal.Passenger>>(emptyList())
+    val passengers: StateFlow<List<com.raju.aiassistant.domain.tatkal.Passenger>> = _passengers.asStateFlow()
+    fun showPassengers(list: List<com.raju.aiassistant.domain.tatkal.Passenger>) { _passengers.value = list }
+    fun dismissPassengers() { _passengers.value = emptyList() }
 
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
@@ -1473,6 +1481,20 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 pnrStatus(action, speak)
             }
+            is AssistantAction.PassengerAges -> {
+                trace("offline command: passenger ages")
+                passengerAges(action, speak)
+            }
+            is AssistantAction.TrainsBetween -> {
+                trace("offline command: trains between stations")
+                _state.value = AssistantState.Executing
+                trainsBetween(action, speak)
+            }
+            is AssistantAction.TrainLive -> {
+                trace("offline command: train live status")
+                _state.value = AssistantState.Executing
+                trainLive(action, speak)
+            }
             is AssistantAction.WhatsAppFile -> {
                 trace("offline command: whatsapp file")
                 _state.value = AssistantState.Executing
@@ -2034,12 +2056,84 @@ class AssistantEngine(
                 report(action, if (ok) ActionStatus.SUCCESS else ActionStatus.FAILED, if (ok) "PNR ${action.pnr} removed from the diary." else "PNR ${action.pnr} is not in the diary.")
             }
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
+            is AssistantAction.PassengerAges -> passengerAges(action, speak)
+            is AssistantAction.TrainsBetween -> trainsBetween(action, speak)
+            is AssistantAction.TrainLive -> trainLive(action, speak)
+            is AssistantAction.TrainFare -> trainFare(action, speak)
             is AssistantAction.MandiPrice -> {
                 val place = action.place?.let { " $it" }.orEmpty()
                 searchWeb(AssistantAction.SearchWeb("${action.commodity} mandi bhav today$place price per quintal agmarknet"), provider, model, system, speak)
             }
             is AssistantAction.SaveFile -> report(action, tools.shareTextFile(action.name, action.content))
             is AssistantAction.Research -> research(action, provider, model, system, speak)
+        }
+    }
+
+    // ---- Railway answers: read from the rail service by the app itself, word for word. The AI adds
+    // nothing to them, so no train number, time, status or fare is ever a guess.
+
+    /** Tatkal helper: the ages are the app's own subtraction; the card on screen has a copy button for each. */
+    private suspend fun passengerAges(action: AssistantAction.PassengerAges, speak: Boolean) {
+        _passengers.value = action.passengers
+        report(action, ActionStatus.SUCCESS, com.raju.aiassistant.domain.tatkal.writtenPassengers(action.passengers))
+        if (speak) say(com.raju.aiassistant.domain.tatkal.spokenPassengers(action.passengers, java.time.LocalDate.now().year))
+    }
+
+    private suspend fun railFailed(action: AssistantAction, r: com.raju.aiassistant.domain.rail.RailResult<*>, speak: Boolean) {
+        val msg = when (r) {
+            is com.raju.aiassistant.domain.rail.RailResult.Failed -> r.message
+            else -> "रेल की जानकारी के लिए RailKit API key चाहिए — Settings → Brain & AI → Web search में \"RailKit API key\" डालिए।"
+        }
+        report(action, ActionStatus.FAILED, msg)
+        if (speak) say(msg)
+    }
+
+    /** The station meant by a spoken name or code; null after telling the user why not. */
+    private suspend fun stationFor(action: AssistantAction, said: String, speak: Boolean): com.raju.aiassistant.domain.rail.Station? {
+        com.raju.aiassistant.domain.rail.asStationCode(said)?.let { return com.raju.aiassistant.domain.rail.Station(it, it) }
+        return when (val r = rail.stations(com.raju.aiassistant.domain.rail.stationQuery(said))) {
+            is com.raju.aiassistant.domain.rail.RailResult.Ok -> com.raju.aiassistant.domain.rail.pickStation(said, r.value) ?: run {
+                val msg = "\"$said\" नाम का स्टेशन नहीं मिला — स्टेशन का नाम या कोड दोबारा बोलिए।"
+                report(action, ActionStatus.FAILED, msg)
+                if (speak) say(msg)
+                null
+            }
+            else -> { railFailed(action, r, speak); null }
+        }
+    }
+
+    private suspend fun trainsBetween(action: AssistantAction.TrainsBetween, speak: Boolean) {
+        val from = stationFor(action, action.from, speak) ?: return
+        val to = stationFor(action, action.to, speak) ?: return
+        when (val r = rail.trainsBetween(from.code, to.code, action.date)) {
+            is com.raju.aiassistant.domain.rail.RailResult.Ok -> {
+                report(action, ActionStatus.SUCCESS, com.raju.aiassistant.domain.rail.writtenTrainsBetween(from, to, action.date, r.value))
+                if (speak) say(com.raju.aiassistant.domain.rail.spokenTrainsBetween(from, to, action.date, r.value))
+            }
+            else -> railFailed(action, r, speak)
+        }
+    }
+
+    private suspend fun trainLive(action: AssistantAction.TrainLive, speak: Boolean) {
+        when (val r = rail.live(action.train, action.date ?: today())) {
+            is com.raju.aiassistant.domain.rail.RailResult.Ok -> informational(action, com.raju.aiassistant.domain.rail.spokenLive(r.value), speak)
+            else -> railFailed(action, r, speak)
+        }
+    }
+
+    private suspend fun trainFare(action: AssistantAction.TrainFare, speak: Boolean) {
+        val from = stationFor(action, action.from, speak) ?: return
+        val to = stationFor(action, action.to, speak) ?: return
+        if (action.seats) {
+            when (val r = rail.seats(action.train, from.code, to.code, action.date, action.travelClass, action.quota)) {
+                is com.raju.aiassistant.domain.rail.RailResult.Ok -> informational(action, com.raju.aiassistant.domain.rail.spokenSeats(r.value, action.travelClass), speak)
+                else -> railFailed(action, r, speak)
+            }
+        } else {
+            when (val r = rail.fare(action.train, from.code, to.code, action.date, action.travelClass, action.quota)) {
+                is com.raju.aiassistant.domain.rail.RailResult.Ok -> informational(action, com.raju.aiassistant.domain.rail.spokenFare(r.value, from.name, to.name), speak)
+                else -> railFailed(action, r, speak)
+            }
         }
     }
 

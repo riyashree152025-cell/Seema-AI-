@@ -175,6 +175,21 @@ sealed interface AssistantAction {
     data class PnrStatus(val pnr: String) : AssistantAction {
         override val label get() = if (pnr.isBlank()) "PNR status (upcoming journeys)" else "PNR status: $pnr"
     }
+    /** Names with birth years, already turned into ages by the app's own sum (shown as a copy card). */
+    data class PassengerAges(val passengers: List<com.raju.aiassistant.domain.tatkal.Passenger>) : AssistantAction {
+        override val label get() = "Passenger ages (${passengers.size})"
+    }
+    /** Trains between two stations (names or codes as said), from the rail service; never from memory. */
+    data class TrainsBetween(val from: String, val to: String, val date: LocalDate?) : AssistantAction {
+        override val label get() = "Trains: $from → $to" + (date?.let { " ($it)" } ?: "")
+    }
+    data class TrainLive(val train: String, val date: LocalDate?) : AssistantAction {
+        override val label get() = "Live status: train $train"
+    }
+    /** Fare ([seats] false) or seat availability with fare ([seats] true) for one train, class and date. */
+    data class TrainFare(val train: String, val from: String, val to: String, val date: LocalDate, val travelClass: String, val quota: String, val seats: Boolean) : AssistantAction {
+        override val label get() = (if (seats) "Seats" else "Fare") + ": train $train $from → $to ($travelClass)"
+    }
     data class MandiPrice(val commodity: String, val place: String?) : AssistantAction {
         override val label get() = "Mandi price: $commodity" + (place?.let { " ($it)" } ?: "")
     }
@@ -442,6 +457,23 @@ private fun parseAction(json: String): AssistantAction? {
         "pnr_list", "journey_list" -> AssistantAction.JourneyList
         "pnr_remove", "journey_remove" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.JourneyRemove(it) }
         "pnr_status" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.PnrStatus(it) }
+        "trains_between" -> {
+            val from = str("from")
+            val to = str("to")
+            if (from == null || to == null) null else AssistantAction.TrainsBetween(from, to, str("date")?.let { parseLocalDate(it) })
+        }
+        "train_live" -> str("train")?.filter(Char::isDigit)?.takeIf { it.length == 5 }
+            ?.let { AssistantAction.TrainLive(it, str("date")?.let { d -> parseLocalDate(d) }) }
+        "train_fare", "train_seats" -> {
+            val train = str("train")?.filter(Char::isDigit)?.takeIf { it.length == 5 }
+            val from = str("from")
+            val to = str("to")
+            val date = str("date")?.let { parseLocalDate(it) }
+            val cls = com.raju.aiassistant.domain.rail.railClass(str("class"))
+            // Anything missing or unknown: no action (she asks), never a guessed class or date.
+            if (train == null || from == null || to == null || date == null || cls == null) null
+            else AssistantAction.TrainFare(train, from, to, date, cls, com.raju.aiassistant.domain.rail.railQuota(str("quota")), seats = str("type")?.lowercase() == "train_seats")
+        }
         "mandi_price", "mandi" -> str("commodity")?.let { AssistantAction.MandiPrice(it, str("place") ?: str("market") ?: str("state")) }
         "save_file" -> {
             val name = str("name")?.let { safeFileName(it) }

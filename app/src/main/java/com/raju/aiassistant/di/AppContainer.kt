@@ -81,7 +81,13 @@ class AppContainer(context: Context) {
     val actionLogRepository by lazy { ActionLogRepository(database.actionLogDao()) }
     val businessRepository by lazy { BusinessRepository(database.businessDao()) }
     /** PNR status from the service set up in Settings (none by default). */
-    val pnrSource: com.raju.aiassistant.domain.business.PnrSource by lazy { com.raju.aiassistant.data.rail.HttpPnrSource(http, secureKeyStore) }
+    val railKit by lazy { com.raju.aiassistant.data.rail.RailKitClient(http, secureKeyStore) }
+    /** RailKit when its key is saved; otherwise the user's own PNR URL. A waiting ticket goes on the chart watch. */
+    val pnrSource: com.raju.aiassistant.domain.business.PnrSource by lazy {
+        com.raju.aiassistant.data.rail.RailPnrSource(railKit, com.raju.aiassistant.data.rail.HttpPnrSource(http, secureKeyStore)) { answer ->
+            com.raju.aiassistant.notifications.ChartWatch.onPnrChecked(appContext, businessRepository, answer)
+        }
+    }
     /** Imported documents (RAG), stored and searched on the phone. */
     val knowledgeRepository by lazy { com.raju.aiassistant.data.knowledge.KnowledgeRepository(appContext, database.knowledgeDao()) }
     /** Hindi or Bengali right now: set by the engine from what the user says, used by the voice. */
@@ -424,6 +430,7 @@ class AppContainer(context: Context) {
             releaseMic = { micHub.releaseAll() },
             restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
+            rail = railKit,
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
             sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },

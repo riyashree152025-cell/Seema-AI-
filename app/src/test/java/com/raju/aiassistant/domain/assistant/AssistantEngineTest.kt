@@ -609,6 +609,60 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aTrainQuestionIsAnsweredFromTheRailServiceWithoutTheAi() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val asked = mutableListOf<String>()
+        val rail = object : com.raju.aiassistant.domain.rail.RailSource {
+            override suspend fun stations(name: String): com.raju.aiassistant.domain.rail.RailResult<List<com.raju.aiassistant.domain.rail.Station>> {
+                asked += "stations:$name"
+                return com.raju.aiassistant.domain.rail.RailResult.Ok(
+                    if (name == "katihar") listOf(com.raju.aiassistant.domain.rail.Station("KIR", "KATIHAR JN"))
+                    else listOf(com.raju.aiassistant.domain.rail.Station("DEC", "DELHI CANTT"), com.raju.aiassistant.domain.rail.Station("DLI", "DELHI")),
+                )
+            }
+            override suspend fun trainsBetween(from: String, to: String, date: java.time.LocalDate?): com.raju.aiassistant.domain.rail.RailResult<List<com.raju.aiassistant.domain.rail.TrainBetween>> {
+                asked += "between:$from:$to:${date != null}"
+                return com.raju.aiassistant.domain.rail.RailResult.Ok(
+                    listOf(com.raju.aiassistant.domain.rail.TrainBetween("12273", "HWH NDLS DURONTO", "KIR", "DLI", "18:20", "13:40", "19:20 hrs", "1111111")),
+                )
+            }
+        }
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            rail = rail,
+        )
+        e.submit("कल कटिहार से दिल्ली की कौन सी ट्रेन है", fromVoice = true)
+        settle()
+        assertEquals(listOf("stations:katihar", "stations:delhi", "between:KIR:DLI:true"), asked)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("1 2 2 7 3 HWH NDLS DURONTO") && speaker.spoken.last().contains("18:20"))
+        assertTrue(provider.calls.isEmpty()) // nothing about the train came from the AI
+    }
+
+    @Test
+    fun withoutARailKeySheSaysSoAndInventsNoTrain() = runTest {
+        val e = engine()
+        e.submit("train 12345 kahan hai", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("RailKit API key"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun namesWithBirthYearsBecomeAPassengerCard() = runTest {
+        val e = engine()
+        e.submit("राजेश सिंह 1986 और राकेश 2002", fromVoice = true)
+        settle()
+        assertEquals(listOf("राजेश सिंह", "राकेश"), e.passengers.value.map { it.name })
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("राजेश सिंह"))
+        assertTrue(provider.calls.isEmpty())
+        e.dismissPassengers()
+        assertTrue(e.passengers.value.isEmpty())
+    }
+
+    @Test
     fun aCommandThatIsMoreThanAPhoneCommandStillGoesToTheAi() = runTest {
         val e = engine(AiResult.Success("Theek hai."))
         e.submit("5 minute ka timer lagao aur gaana bhi chalao")
