@@ -33,7 +33,7 @@ import java.time.LocalDate
  */
 class RailKitClient(private val http: OkHttpClient, private val keys: SecureKeyStore) : RailSource {
 
-    fun configured(): Boolean = !keys.get(SecretId.RAILKIT_API_KEY).isNullOrBlank()
+    suspend fun configured(): Boolean = !keys.get(SecretId.RAILKIT_API_KEY).isNullOrBlank()
 
     private fun url(vararg path: String, query: Pair<String, String>? = null): HttpUrl =
         HttpUrl.Builder().scheme("https").host(HOST).addPathSegment("api").apply {
