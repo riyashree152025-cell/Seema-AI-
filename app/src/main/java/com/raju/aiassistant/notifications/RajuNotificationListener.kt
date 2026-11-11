@@ -54,6 +54,7 @@ class RajuNotificationListener : NotificationListenerService() {
         val label = AnnounceApp.entries.firstOrNull { it.packageName == sbn.packageName }?.label ?: "Message"
         val item = parseNotification(fields, label) ?: return
         val now = System.currentTimeMillis()
+        c.recentNotifications.add(item, now)
         if (!c.announcementDeduper.shouldAnnounce(item.packageName, item.sender.orEmpty() + item.group.orEmpty(), (item.preview ?: "") + item.isCall, now)) return
 
         if (item.isCall) {

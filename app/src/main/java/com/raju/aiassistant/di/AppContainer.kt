@@ -319,6 +319,8 @@ class AppContainer(context: Context) {
 
     val deviceTools by lazy { AndroidDeviceTools(appContext) }
     val announcementDeduper = AnnouncementDeduper()
+    /** Messages of the last hours, in memory only, for "notification ka saar batao". */
+    val recentNotifications = com.raju.aiassistant.domain.notify.RecentNotifications()
     val callDeduper = CallDeduper()
 
     val ringDucker by lazy { com.raju.aiassistant.core.audio.RingDucker(appContext) }
@@ -421,6 +423,7 @@ class AppContainer(context: Context) {
             releaseMic = { micHub.releaseAll() },
             restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
+            recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             log = { android.util.Log.i("SeemaVoice", it) },
             conversationLanguage = conversationLanguage,
             knowledge = knowledgeRepository,

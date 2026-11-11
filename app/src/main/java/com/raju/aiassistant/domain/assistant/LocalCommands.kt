@@ -101,7 +101,19 @@ object LocalCommands {
             "^(?:kisne|किसने) $MSG (?:kiya tha|bheja tha|kiya|bheja|किया था|भेजा था|किया|भेजा)$",
     )
 
-    private fun readMessage(t: String): AssistantAction? = if (READ_MSG.matches(t)) AssistantAction.ReadNotification else null
+    private fun readMessage(t: String): AssistantAction? = when {
+        MSG_SUMMARY.matches(t) -> AssistantAction.NotificationSummary
+        READ_MSG.matches(t) -> AssistantAction.ReadNotification
+        else -> null
+    }
+
+    // "Notification ka saar batao", "kitne message aaye", "kya kya message aaye hain", "sab message batao".
+    private val MSG_SUMMARY = Regex(
+        "^$MSG (?:ka|ki|का|की) (?:saar|summary|सार|समरी)(?: (?:batao|bata do|sunao|बताओ|सुनाओ))?$|" +
+            "^(?:aaj )?(?:kitne|kitni|कितने|कितनी) $MSG (?:aaye|aaye hain|aayi|aayi hain|aaya|आए|आए हैं|आई|आई हैं)$|" +
+            "^(?:kya kya|kaun kaun se|क्या क्या|कौन कौन से) $MSG (?:aaye|aaye hain|आए|आए हैं)$|" +
+            "^(?:sab|saare|sabhi|सब|सारे|सभी) $MSG (?:batao|bata do|sunao|suna do|बताओ|सुनाओ)$",
+    )
 
     // ------------------------------------------------------------------ torch
 

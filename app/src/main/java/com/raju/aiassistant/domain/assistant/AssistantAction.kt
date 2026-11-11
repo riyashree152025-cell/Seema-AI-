@@ -194,6 +194,10 @@ sealed interface AssistantAction {
     data object LastCall : AssistantAction {
         override val label get() = "Check last call"
     }
+    /** A spoken summary of the messages of the last hours: how many, from whom, the newest two. */
+    data object NotificationSummary : AssistantAction {
+        override val label get() = "Notification summary"
+    }
     data object ReadNotification : AssistantAction {
         override val label get() = "Read notifications"
     }
@@ -272,6 +276,7 @@ private fun parseAction(json: String): AssistantAction? {
             name?.let { AssistantAction.FindContact(it) }
         }
         "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
+        "notification_summary", "notifications_summary" -> AssistantAction.NotificationSummary
         "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification
         "screenshot", "take_screenshot" -> AssistantAction.Screenshot
         "look_at_screen", "analyze_screen", "screenshot_explain" -> AssistantAction.LookAtScreen(str("question"))

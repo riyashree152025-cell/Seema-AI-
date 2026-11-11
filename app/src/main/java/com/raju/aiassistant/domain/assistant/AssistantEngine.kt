@@ -215,6 +215,8 @@ class AssistantEngine(
     /** PNR status from the user's PNR service; NotConfigured falls back to the official page. */
     private val pnrSource: com.raju.aiassistant.domain.business.PnrSource = com.raju.aiassistant.domain.business.PnrSource { com.raju.aiassistant.domain.business.PnrFetch.NotConfigured },
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+    /** Messages that came in during the last hours (in memory only), for the spoken summary. */
+    private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
     /** Privacy-safe diagnostics (stages, error codes, lengths — never what the user said). */
     private val log: (String) -> Unit = {},
     /** Hindi or Bengali, shared with speech output so the voice speaks the conversation's language. */
@@ -1484,6 +1486,10 @@ class AssistantEngine(
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
             is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
+            AssistantAction.NotificationSummary -> {
+                trace("offline command: notification summary")
+                informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
+            }
             is AssistantAction.LookAtScreen -> {
                 trace("command: look at screen")
                 lookAtScreen(action, speak)
@@ -1918,6 +1924,7 @@ class AssistantEngine(
             }
             AssistantAction.LockScreen -> report(action, tools.lockScreen())
             is AssistantAction.LookAtScreen -> lookAtScreen(action, speak)
+            AssistantAction.NotificationSummary -> informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
                 report(action, outcome)
