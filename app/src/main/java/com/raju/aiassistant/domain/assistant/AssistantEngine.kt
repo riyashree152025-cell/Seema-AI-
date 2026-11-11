@@ -1509,7 +1509,7 @@ class AssistantEngine(
                 trace("offline command: lock screen")
                 val outcome = tools.lockScreen()
                 report(action, outcome)
-                if (speak) say(phrase(lang(), if (outcome is ToolOutcome.Done) "स्क्रीन लॉक कर दी है।" else "स्क्रीन लॉक नहीं हो पाई। Settings में Seema की Accessibility चालू कीजिए।", if (outcome is ToolOutcome.Done) "স্ক্রিন লক করে দিয়েছি।" else "স্ক্রিন লক হয়নি। Settings-এ Seema-র Accessibility চালু করুন।"))
+                if (speak) say(phrase(lang(), if (outcome is ToolOutcome.Done) "स्क्रीन लॉक कर दी है।" else "स्क्रीन लॉक नहीं हो पाई। Settings → Permissions & Privacy में \"Lock by voice\" चालू कीजिए।", if (outcome is ToolOutcome.Done) "স্ক্রিন লক করে দিয়েছি।" else "স্ক্রিন লক হয়নি। Settings → Permissions & Privacy-তে \"Lock by voice\" চালু করুন।"))
             }
             else -> return false
         }

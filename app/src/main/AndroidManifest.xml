@@ -162,6 +162,18 @@
         <receiver
             android:name=".notifications.ReminderReceiver"
             android:exported="false" />
+        <!-- Device admin: only to lock the screen on request (see res/xml/device_admin.xml). -->
+        <receiver
+            android:name=".notifications.SeemaDeviceAdmin"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name=".notifications.TatkalBootReceiver"
             android:exported="true">

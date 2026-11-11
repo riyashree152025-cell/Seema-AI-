@@ -805,11 +805,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     override fun lockScreen(): ToolOutcome {
+        // Device admin first: it locks from the background and needs no accessibility service.
+        if (com.raju.aiassistant.notifications.DeviceLock.lockNow(context)) return ToolOutcome.Done("Screen locked.")
+        // Fall back to the accessibility lock (only works while that service is on and the app is in front).
         if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning() &&
             com.raju.aiassistant.accessibility.SeemaAccessibilityService.lockScreen()) {
             return ToolOutcome.Done("Screen locked.")
         }
-        return ToolOutcome.Failed("Screen lock needs Seema's Accessibility permission (Settings → Accessibility) and Android 9 or newer.")
+        return ToolOutcome.Failed("Phone lock karne ki anumati chahiye: Settings → Permissions & Privacy → \"Lock by voice\" ON kijiye (ya Seema ki Accessibility chालू kijiye).")
     }
 
     override fun goHome(): ToolOutcome {

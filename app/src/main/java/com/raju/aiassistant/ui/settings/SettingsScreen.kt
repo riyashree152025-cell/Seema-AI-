@@ -2367,6 +2367,22 @@ fun PrivacyScreen(
         }
 
         // App lock and a plain statement of what leaves the phone.
+        com.raju.aiassistant.ui.components.HudPanel(title = "आवाज़ से फ़ोन लॉक") {
+            var adminOn by remember { mutableStateOf(com.raju.aiassistant.notifications.DeviceLock.isActive(context)) }
+            androidx.compose.runtime.LaunchedEffect(Unit) { adminOn = com.raju.aiassistant.notifications.DeviceLock.isActive(context) }
+            ToggleRow("\"screen lock karo\" से फ़ोन लॉक (बैकग्राउंड में भी)", adminOn) { want ->
+                if (want) runCatching { context.startActivity(com.raju.aiassistant.notifications.DeviceLock.requestIntent(context).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                else runCatching {
+                    (context.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager)
+                        ?.removeActiveAdmin(android.content.ComponentName(context, com.raju.aiassistant.notifications.SeemaDeviceAdmin::class.java))
+                    adminOn = false
+                }
+            }
+            Text(
+                "चालू होने पर Seema आपके कहने पर फ़ोन लॉक कर देगी, भले दूसरी app खुली हो। फ़ोन खोलने के लिए आपका अपना fingerprint / PIN / pattern ही चलेगा — Seema उसे कभी सेव या दर्ज नहीं करती, और खोल नहीं सकती।",
+                style = MaterialTheme.typography.bodySmall, color = com.raju.aiassistant.ui.theme.TextSecondary,
+            )
+        }
         com.raju.aiassistant.ui.components.HudPanel(title = "App lock") {
             val secure = remember { (context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isDeviceSecure == true }
             ToggleRow("Seema खोलने पर फ़ोन का lock माँगे", s.appLock && secure) { if (secure) viewModel.setAppLock(it) }

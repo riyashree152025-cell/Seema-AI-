@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Seema asks for only one device-admin power: to lock the screen. Nothing else (no wipe, no password
+     change, no camera disable). The user turns it on in Settings and can turn it off any time. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>
