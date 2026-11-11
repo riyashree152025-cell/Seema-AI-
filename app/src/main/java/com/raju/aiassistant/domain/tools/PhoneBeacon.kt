@@ -37,9 +37,12 @@ interface BeaconHardware {
 class PhoneBeacon(
     private val scope: CoroutineScope,
     private val speakLine: suspend (String) -> Unit,
-    private val intervalMs: Long = 2_000,
+    private val intervalMs: Long = 1_200,
+    /** Silent window after each chime so the microphone can hear "mil gaya / band karo". */
+    private val listenGapMs: Long = 2_600,
     private val maxMs: Long = 3 * 60_000,
-    private val spokenEvery: Int = 3,
+    /** The spoken line is Seema's own loud voice over the mic: said only at the start and then rarely. */
+    private val spokenEvery: Int = 8,
     private val onStopped: (BeaconStop) -> Unit = {},
 ) {
     private val _active = MutableStateFlow(false)
@@ -63,9 +66,12 @@ class PhoneBeacon(
                             var n = 0
                             while (true) {
                                 runCatching { hardware.chime() }
-                                if (n % spokenEvery == 0) runCatching { speakLine(line) }
+                                // Say the line only the first time (then every spokenEvery-th), so most
+                                // cycles are chime + silence — a clear window to say "band karo".
+                                if (n == 0 || n % spokenEvery == 0) runCatching { speakLine(line) }
                                 n++
                                 delay(intervalMs)
+                                delay(listenGapMs) // quiet: the mic listens here
                             }
                         }
                     }
@@ -97,5 +103,6 @@ class PhoneBeacon(
 fun saysPhoneFound(text: String): Boolean = FOUND.containsMatchIn(text.lowercase())
 
 private val FOUND = Regex(
-    "\\b(mil gaya|mil gya|mil gayi|milgaya|mil gaya hai|found it|got it|bas|ruk jao|ruko|band karo|band kar do|stop|chup)\\b|मिल गया|मिल गई|मिल गयी|बस|रुको|रुक जाओ|बंद करो|चुप|পেয়েছি|পেয়ে গেছি|থামো",
+    "\\b(mil gaya|mil gya|mil gayi|milgaya|mil gay[ae] hai|mil gai|found|found it|got it|bas|ruk|ruk jao|ruk ja|ruko|ruko|band|band karo|band kar do|band kardo|chup|stop|off karo|chup ho ja|thik hai bas|theek hai|ho gaya)\\b|" +
+        "मिल\\s*गया|मिल\\s*गई|मिल\\s*गयी|मिल\\s*गे|बस\\s*करो|बस|रुको|रुक\\s*जाओ|बंद\\s*करो|बंद\\s*कर|चुप|हो\\s*गया|ठीक\\s*है|পেয়েছি|পেয়ে\\s*গেছি|থামো|বন্ধ\\s*কর",
 )

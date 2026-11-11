@@ -233,11 +233,16 @@ object LocalCommands {
         "^(?:(?:kitni|kitna|कितनी|कितना) )?(?:battery|बैटरी)(?: (?:kitni|kitna|कितनी|कितना|status|level|percent))?" +
             "(?: (?:hai|he|है|bachi hai|bachi he|बची है|baki hai|बाकी है|kitni hai|कितनी है))?$",
     )
-    private val HOME = Regex("^(?:home|होम)(?: (?:screen|स्क्रीन))?(?: (?:par|pe|पर|पे))? (?:jao|chalo|aao|aa jao|जाओ|चलो|आओ|आ जाओ)$")
+    // "home pe aao", "home screen pe chalo", "ghar aao", "wapas home", "home" — leading fillers like
+    // "chalo theek hai apne …" are stripped first (NAV_FILLER).
+    private val HOME = Regex("^(?:(?:home ?screen|home|होम ?स्क्रीन|होम|ghar|घर)(?: (?:screen|स्क्रीन))?(?: (?:par|pe|पर|पे|me|में))?(?: (?:jao|chalo|aao|aa jao|le chalo|wapas aao|wapas chalo|जाओ|चलो|आओ|आ जाओ|ले चलो|वापस आओ|वापस चलो))?|(?:wapas|वापस)(?: (?:home ?screen|home|होम))?(?: (?:jao|chalo|aao|जाओ|चलो|आओ))?)$")
 
     private fun battery(t: String): AssistantAction? = if (BATTERY.matches(t)) AssistantAction.Battery else null
 
-    private fun home(t: String): AssistantAction? = if (HOME.matches(t)) AssistantAction.GoHome else null
+    // "chalo", "accha", "theek hai", "ab", "apne", "seema" said before a navigation command.
+    private val NAV_FILLER = Regex("^(?:(?:chalo|chal|accha|acha|theek hai|thik hai|ab|abhi|apne|apni|seema|सीमा|चलो|अच्छा|ठीक है|अब|अभी|अपने|अपनी)[\\s,]+)+", RegexOption.IGNORE_CASE)
+    private fun stripNav(t: String): String { var s = t; repeat(3) { s = NAV_FILLER.replace(s, "").trim() }; return s }
+    private fun home(t: String): AssistantAction? = if (HOME.matches(stripNav(t))) AssistantAction.GoHome else null
 
     private val LOCK = Regex("^(?:(?:screen|phone|फ़ोन|फोन|स्क्रीन) )?(?:lock|लॉक) (?:karo|kar do|karna|करो|कर दो)$|^(?:screen|phone|फ़ोन|फोन|स्क्रीन) (?:lock|लॉक)$")
     private fun lock(t: String): AssistantAction? = if (LOCK.matches(t)) AssistantAction.LockScreen else null
@@ -413,12 +418,12 @@ object LocalCommands {
     }
 
     /** "peeche jao": the screen's back button (Seema still asks before pressing it). */
-    private val BACK = Regex("^(?:(?:ek )?(?:peeche|piche|pichhe|पीछे|back|बैक) (?:jao|chalo|jaao|karo|जाओ|चलो|करो)|go back|back)$")
+    private val BACK = Regex("^(?:(?:ek )?(?:peeche|piche|pichhe|peechhe|पीछे|back|बैक) (?:jao|chalo|jaao|chale jao|karo|aao|जाओ|चलो|करो|आओ)|go back|back|previous)$")
     private val SEEMA = Regex(
         "^(?:(?:apni|apne|अपनी|अपने) (?:screen|app|स्क्रीन|ऐप) (?:par|pe|पर|पे) (?:aao|aa jao|wapas aao|आओ|आ जाओ|वापस आओ)|(?:apna|apni|अपना|अपनी) (?:app|ऐप) (?:kholo|khol do|open karo|खोलो|खोल दो))$",
     )
 
-    private fun back(t: String): AssistantAction? = if (BACK.matches(t)) AssistantAction.ScreenBack else null
+    private fun back(t: String): AssistantAction? = if (BACK.matches(stripNav(t))) AssistantAction.ScreenBack else null
 
     private fun openSeema(t: String): AssistantAction? = if (SEEMA.matches(t)) AssistantAction.OpenSeema else null
 

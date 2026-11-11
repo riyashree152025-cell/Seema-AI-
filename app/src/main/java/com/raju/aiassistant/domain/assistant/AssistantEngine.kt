@@ -1741,12 +1741,18 @@ class AssistantEngine(
         when (callCommand(text)) {
             CallCommand.ANSWER -> {
                 callCommandUntil = 0
-                trace("call: answer")
+                val speaker = com.raju.aiassistant.domain.notify.wantsSpeaker(text)
+                trace("call: answer" + if (speaker) " + speaker" else "")
                 val outcome = tools.answerCall()
                 scope.launch {
                     report(AssistantAction.AnswerCall, outcome)
-                    // Never silent when it did not work: say why (most often the Phone permission).
-                    if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = true))
+                    if (outcome is ToolOutcome.Done) {
+                        // "… aur speaker mein daalo": loudspeaker on once the call connects.
+                        if (speaker) { delay(700); runCatching { tools.setSpeakerphone(true) } }
+                    } else {
+                        // Never silent when it did not work: say why (most often the Phone permission).
+                        say(callFailureText(outcome, answer = true))
+                    }
                 }
             }
             CallCommand.REJECT -> {

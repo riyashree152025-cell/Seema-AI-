@@ -276,6 +276,22 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     override fun answerCall(): ToolOutcome = telecomCall(answer = true)
 
+    override fun setSpeakerphone(on: Boolean): ToolOutcome {
+        val am = context.getSystemService(AudioManager::class.java) ?: return ToolOutcome.Failed("Audio service nahi mila.")
+        return runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (on) {
+                    val speaker = am.availableCommunicationDevices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    if (speaker != null) am.setCommunicationDevice(speaker) else am.clearCommunicationDevice()
+                } else am.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = on
+            }
+            ToolOutcome.Done(if (on) "Speaker on." else "Speaker off.")
+        }.getOrElse { ToolOutcome.Failed("Speaker set nahi kar payi.") }
+    }
+
     /** Ends or answers the ringing/active call (Android 9+, needs ANSWER_PHONE_CALLS). */
     @Suppress("DEPRECATION") // endCall/acceptRingingCall are deprecated but still the only API for non-dialer apps
     private fun telecomCall(answer: Boolean): ToolOutcome {

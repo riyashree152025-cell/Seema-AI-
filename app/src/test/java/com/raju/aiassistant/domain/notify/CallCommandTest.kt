@@ -1,6 +1,8 @@
 package com.raju.aiassistant.domain.notify
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -30,5 +32,13 @@ class CallCommandTest {
             assertEquals(it, CallCommand.REJECT, callCommand(it))
         }
         listOf("टिकट", "पिकनिक चलें").forEach { assertNull(it, callCommand(it)) }
+    }
+
+    @Test
+    fun speakerIsDetectedAlongsideAnswer() {
+        assertEquals(CallCommand.ANSWER, callCommand("theek hai receive karo aur speaker mein daalo"))
+        assertTrue(wantsSpeaker("receive karo aur speaker mein daalo"))
+        assertTrue(wantsSpeaker("uthao aur स्पीकर on karo"))
+        assertFalse(wantsSpeaker("bas receive karo"))
     }
 }

@@ -50,6 +50,11 @@ private val ANSWER_WORDS = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+private val SPEAKER = Regex("\\b(speaker|spiker|speakerphone|loudspeaker|loud)\\b|स्पीकर|स्पिकर|लाउडस्पीकर|স্পিকার", RegexOption.IGNORE_CASE)
+
+/** True when the user wants the call on the loudspeaker ("receive karo aur speaker mein daalo"). */
+fun wantsSpeaker(heard: String): Boolean = SPEAKER.containsMatchIn(heard)
+
 /** "Haan, utha lo" → ANSWER; "nahi, kaat do" / "mat uthao" → REJECT; anything else → null. */
 fun callCommand(heard: String): CallCommand? {
     val t = heard.trim()

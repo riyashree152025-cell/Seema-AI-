@@ -62,6 +62,11 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.NotificationReply("Rahul", "kal milte hain"), p("Rahul ko reply karo ki kal milte hain"))
         assertEquals(AssistantAction.CalendarRead(0), p("aaj ki meetings batao"))
         assertEquals(AssistantAction.CalendarRead(1), p("kal ka calendar batao"))
+        assertEquals(AssistantAction.GoHome, p("home screen pe aao"))
+        assertEquals(AssistantAction.GoHome, p("chalo theek hai apne home screen pe aao"))
+        assertEquals(AssistantAction.GoHome, p("ghar chalo"))
+        assertEquals(AssistantAction.GoHome, p("wapas home jao"))
+        assertEquals(AssistantAction.ScreenBack, p("accha ek peeche chalo"))
         assertEquals(AssistantAction.NotificationSummary, p("aaj kitne message aaye"))
         assertEquals(AssistantAction.ReadNotification, p("message padho")) // one message stays one message
         assertEquals(AssistantAction.ReminderCancel(all = true), p("sab reminder hata do"))
