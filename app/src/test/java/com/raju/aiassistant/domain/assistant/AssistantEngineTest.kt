@@ -527,9 +527,10 @@ class AssistantEngineTest {
         val hw = tools.Beacon().also { tools.beacon = it }
         val e = engine(AiResult.Success("unused"))
         e.submit("mera phone dhundo", fromVoice = true)
-        advanceTimeBy(7_000); runCurrent()
+        advanceTimeBy(9_000); runCurrent()
         assertTrue(hw.chimes >= 3)
-        assertTrue(speaker.spoken.count { it == "राजू जी, फोन यहाँ है!" } >= 2)
+        // The line is spoken once at the start (then rarely), so the mic has a clear window.
+        assertTrue(speaker.spoken.count { it == "राजू जी, फोन यहाँ है!" } >= 1)
         e.submit("phone yahan hai raju ji", fromVoice = true) // the mic hearing the beacon itself
         advanceTimeBy(1_000); runCurrent()
         assertTrue(provider.calls.isEmpty())

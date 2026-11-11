@@ -25,14 +25,15 @@ class PhoneBeaconTest {
     }
 
     @Test
-    fun itRingsEveryTwoSecondsAndSpeaksEveryThirdTime() = runTest {
+    fun itChimesWithASilentGapAndSpeaksOnlyAtTheStart() = runTest {
         val hw = FakeHardware()
         val said = mutableListOf<String>()
         val beacon = PhoneBeacon(backgroundScope, { said += it })
         assertTrue(beacon.start(hw, "Raju ji, phone yahan hai!"))
-        advanceTimeBy(9_000); runCurrent() // chimes at 0, 2, 4, 6, 8 s
+        // Each cycle is a chime then a silent window (~3.8 s): chimes at 0, 3.8, 7.6, 11.4, 15.2 s.
+        advanceTimeBy(16_000); runCurrent()
         assertEquals(5, hw.chimes)
-        assertEquals(2, said.size) // at 0 s and 6 s
+        assertEquals(1, said.size) // the line is said once, at the start, so the mic can hear "band karo"
         assertTrue(beacon.active.value)
         beacon.stop()
         runCurrent()
