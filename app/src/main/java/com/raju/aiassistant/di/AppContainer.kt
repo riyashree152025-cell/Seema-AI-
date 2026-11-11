@@ -289,7 +289,8 @@ class AppContainer(context: Context) {
                     // Hands-free restarts the recogniser often; Deepgram does that silently, so it is
                     // preferred whenever its key is saved.
                     (currentSettings.value.sttEngine == SttEngine.DEEPGRAM ||
-                        (engine.handsFreeActive.value && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value))
+                        // … and for "uthao / kaat do" on a ringing call: no beep, and a quick cut of the turn.
+                        ((engine.handsFreeActive.value || engine.callCommandOpen()) && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value))
             },
             scope = appScope,
         )
@@ -310,7 +311,7 @@ class AppContainer(context: Context) {
      */
     private fun announceRingingIfNobodyDid() {
         appScope.launch {
-            kotlinx.coroutines.delay(1_500) // the screening service, when it runs, announces first
+            kotlinx.coroutines.delay(800) // the screening service, when it runs, announces first
             val s = currentSettings.value
             if (System.currentTimeMillis() - lastCallAnnouncedAt < 15_000) return@launch
             if (!s.announceCalls || s.assistantPaused || s.safetyMode || !audioInterruptions.ringing()) return@launch

@@ -91,3 +91,19 @@ class EndpointDetector(
         return state
     }
 }
+
+/**
+ * How the next spoken turn is cut. A ringing call lasts only seconds and its answer is one or two words
+ * ("uthao", "kaat do"), so while [quick] is on a turn ends after 0.6 s of quiet instead of 1.4 s and is
+ * never longer than 6 s. Set by the engine just before it listens.
+ */
+object TurnPacing {
+    @Volatile var quick: Boolean = false
+
+    fun detector(frameMs: Int): EndpointDetector =
+        if (quick) EndpointDetector(frameMs = frameMs, silenceMs = QUICK_SILENCE_MS, maxMs = QUICK_MAX_MS, minSpeechMs = 120)
+        else EndpointDetector(frameMs = frameMs)
+
+    const val QUICK_SILENCE_MS = 600
+    const val QUICK_MAX_MS = 6_000
+}

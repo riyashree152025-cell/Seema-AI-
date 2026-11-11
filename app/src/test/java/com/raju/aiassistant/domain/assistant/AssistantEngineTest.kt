@@ -2044,16 +2044,21 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun somethingElseWhileACallRingsStopsListeningInsteadOfLooping() = runTest {
+    fun aWrongHearingWhileACallRingsKeepsListeningAndTheAnswerStillWorks() = runTest {
+        // The ringtone or the room heard as some word used to end the listening: the call rang on
+        // and "uthao" was never heard.
         val e = engine()
         e.listenForCallCommand()
         runCurrent()
         val starts = voice.starts
         voice.onResult!!("kal milte hain")
         settle()
-        assertEquals(starts, voice.starts) // no new listening
+        assertEquals(starts + 1, voice.starts) // listening again
         assertEquals(0, tools.answered + tools.ended)
-        assertEquals(0, provider.calls.size)
+        assertEquals(0, provider.calls.size) // never sent to the AI
+        voice.onResult!!("रिसीव करो")
+        settle()
+        assertEquals(1, tools.answered)
     }
 
     @Test

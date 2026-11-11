@@ -144,7 +144,7 @@ class DeepgramVoiceInput(
             recorder.release()
             throw MicrophoneException("recorder not initialised")
         }
-        val detector = EndpointDetector(frameMs = FRAME_MS)
+        val detector = com.raju.aiassistant.domain.voice.TurnPacing.detector(FRAME_MS)
         val out = ByteArrayOutputStream()
         val frame = ByteArray(FRAME_BYTES)
         try {

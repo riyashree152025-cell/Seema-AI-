@@ -558,6 +558,8 @@ class AssistantEngine(
             return
         }
         val gen = ++listenGen
+        // A ringing call or a "haan / nahi" question: a short answer, cut quickly.
+        com.raju.aiassistant.domain.voice.TurnPacing.quick = clock() < callCommandUntil || voiceConfirmOpen()
         _state.value = AssistantState.Listening
         _heard.value = null
         _hint.value = null
@@ -1672,6 +1674,9 @@ class AssistantEngine(
         listen()
     }
 
+    /** True while she listens for "uthao / kaat do" on a ringing call. */
+    fun callCommandOpen(): Boolean = clock() < callCommandUntil
+
     /** "Utha lo" / "kaat do" while a call rings is handled here at once, without the AI. True when it was a call command. */
     private fun handleCallCommand(text: String): Boolean {
         if (clock() >= callCommandUntil) return false
@@ -1734,10 +1739,19 @@ class AssistantEngine(
                     if (!pausedForCall) returnToStandby()
                 }
             }
-            null -> { // not a yes / no: she asked once, so she stops instead of listening in a loop
-                callCommandUntil = 0
-                trace("call: not an answer, stop listening")
-                returnToStandby()
+            null -> {
+                // Not a yes / no (often the ringtone or the room, heard as some word): one wrong hearing
+                // used to end the listening, and the call rang on with nobody listening. She keeps
+                // listening for as long as the call rings (the window ends by itself).
+                if (clock() < callCommandUntil - 1_500) {
+                    trace("call: not an answer, listening again")
+                    val g = listenGen
+                    scope.launch { delay(150); if (g == listenGen && clock() < callCommandUntil) listen() }
+                } else {
+                    callCommandUntil = 0
+                    trace("call: not an answer, window over")
+                    returnToStandby()
+                }
             }
         }
         return true

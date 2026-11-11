@@ -42,11 +42,11 @@ enum class CallCommand { ANSWER, REJECT }
 
 // "No" words first: "mat uthao" / "nahi uthana" must never answer the call.
 private val REJECT_WORDS = Regex(
-    "\\b(mat|nahi|nahin|no|nope|kaat|kaato|kaat do|kat do|cut|reject|decline|band karo|baad me|baad mein)\\b|मत|नहीं|नही|काट|रिजेक्ट|बाद में|কেটে|কাটো|পরে",
+    "\\b(mat|nahi|nahin|no|nope|kaat|kaato|kaat do|kat do|kat|kato|cut|reject|decline|disconnect|hata do|band karo|baad me|baad mein)\\b|मत|नहीं|नही|काट|(?<![\\u0900-\\u097F])कट(?![\\u0900-\\u097F])|रिजेक्ट|डिस्कनेक्ट|बंद कर|बाद में|কেটে|কাটো|পরে",
     RegexOption.IGNORE_CASE,
 )
 private val ANSWER_WORDS = Regex(
-    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|utha|uthao|utha lo|uthalo|uthaa|pick|pick up|receive|answer|accept|baat karao)\\b|हाँ|हां|उठा|रिसीव|ठीक है|হ্যাঁ|ধরো|রিসিভ",
+    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|utha|uthao|utha lo|uthalo|uthaa|pick|pick up|receive|recieve|risiv|answer|accept|baat karao)\\b|हाँ|हां|उठा|रिसीव|रिसिव|रीसीव|(?<![\\u0900-\\u097F])पिक(?![\\u0900-\\u097F])|एक्सेप्ट|आंसर|ठीक है|হ্যাঁ|ধরো|রিসিভ",
     RegexOption.IGNORE_CASE,
 )
 
@@ -62,7 +62,7 @@ fun callCommand(heard: String): CallCommand? {
 }
 
 /** What Seema asks after naming the caller, so "haan" / "nahi" can be answered by voice. */
-const val ASK_TO_ANSWER = "Uthau ya cut karu?"
+const val ASK_TO_ANSWER = "Uthau ya kaatu?"
 
 // "Bolo" counts only with words after it ("usko bolo main busy hoon"); "haan bolo" alone stays an answer.
 private const val TELL = "(?:bol do|bol de|bolo|bolna|keh do|kah do|keh de|kaho|likh do|bata do|bata dena|message kar do|msg kar do|sms kar do|message bhej do|reply kar do|बोल दो|बोलो|बोलना|कह दो|कहो|लिख दो|बता दो|बता देना|मैसेज कर दो|मैसेज भेज दो|বলে দাও|লিখে দাও)"

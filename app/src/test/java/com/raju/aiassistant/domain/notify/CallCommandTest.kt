@@ -20,4 +20,15 @@ class CallCommandTest {
     @Test fun otherTalkIsNotACallCommand() {
         listOf("", "kaun hai", "वो कह रहा था", "ticket book karo", "टिकट").forEach { assertNull(it, callCommand(it)) }
     }
+
+    @Test
+    fun everydayWordsForACallAreUnderstood() {
+        listOf("रिसीव करो", "रिसिव कर लो", "receive karo", "call uthao", "फोन उठाओ", "pick karo").forEach {
+            assertEquals(it, CallCommand.ANSWER, callCommand(it))
+        }
+        listOf("कट करो", "कट कर दो", "cut karo", "kat do", "call kaat do", "disconnect karo").forEach {
+            assertEquals(it, CallCommand.REJECT, callCommand(it))
+        }
+        listOf("टिकट", "पिकनिक चलें").forEach { assertNull(it, callCommand(it)) }
+    }
 }

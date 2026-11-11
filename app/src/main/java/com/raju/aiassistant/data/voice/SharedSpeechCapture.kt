@@ -15,7 +15,7 @@ class SpeechCapture(private val clock: () -> Long = System::currentTimeMillis) {
         data object NoSpeech : Outcome
     }
 
-    private var detector = EndpointDetector(frameMs = MIC_FRAME_MS)
+    private var detector = com.raju.aiassistant.domain.voice.TurnPacing.detector(MIC_FRAME_MS)
     private val out = ByteArrayOutputStream()
     private var decided = false
     private val startedAt = clock()
@@ -45,7 +45,7 @@ class SpeechCapture(private val clock: () -> Long = System::currentTimeMillis) {
                     Outcome.NoSpeech
                 } else {
                     earlyNoSpeech++
-                    detector = EndpointDetector(frameMs = MIC_FRAME_MS)
+                    detector = com.raju.aiassistant.domain.voice.TurnPacing.detector(MIC_FRAME_MS)
                     out.reset()
                     null
                 }
