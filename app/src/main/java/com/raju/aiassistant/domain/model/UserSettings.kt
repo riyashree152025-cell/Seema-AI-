@@ -119,6 +119,8 @@ data class UserSettings(
     val wakeToStart: Boolean = true,
     /** Offline "Hey Seema" sensitivity: LOW, NORMAL or HIGH (domain/voice/WakeSensitivity). */
     val wakeSensitivity: String = "NORMAL",
+    /** Home's look: "EYE" (the Living Eye) or "GLASS" (Liquid Glass sphere). */
+    val homeStyle: String = "EYE",
     /** Barge-in also on the loudspeaker (stricter detection, her own echo ignored); test on the phone. */
     val bargeInSpeaker: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */

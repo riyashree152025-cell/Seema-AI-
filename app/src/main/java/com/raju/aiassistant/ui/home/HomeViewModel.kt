@@ -58,6 +58,8 @@ data class HomeUiState(
     val userName: String = "Dinesh Kumar",
     /** Tapori / savage friend personality: red reactor with a face. */
     val tapori: Boolean = false,
+    /** "EYE" or "GLASS": which of Home's two looks is shown. */
+    val homeStyle: String = "EYE",
 )
 
 private data class EngineView(val state: AssistantState, val listening: Boolean, val partial: String, val lastReply: String?, val handsFree: Boolean)
@@ -68,6 +70,11 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     private val preview = c.debugPreview
 
     val speechLevel: StateFlow<Float> = engine.speechLevel
+
+    /** Switch Home between the Living Eye and Liquid Glass (remembered). */
+    fun setHomeStyle(style: String) {
+        viewModelScope.launch { c.settingsRepository.setHomeStyle(style) }
+    }
     /** What the shared microphone hears, 0..1 (stays 0 when the Shared Mic Engine is off). */
     val micLevel: StateFlow<Float> = c.micHub.level
 
@@ -112,6 +119,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 thermalProtection = settings.thermalProtection,
                 userName = settings.userName,
                 tapori = settings.personality == com.raju.aiassistant.domain.model.Personality.TAPORI,
+                homeStyle = settings.homeStyle,
             )
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }
             .combine(c.powerMonitor.state) { ui, p -> ui.copy(thermal = p.thermal, systemPowerSave = p.systemPowerSave) }

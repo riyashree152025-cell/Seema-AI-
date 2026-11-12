@@ -237,6 +237,9 @@ fun HomeScreen(
 
     val isSpeaking = assistantState == AssistantState.Speaking
 
+    // Home's two looks: the Living Eye (default) or Liquid Glass; the pill under the ON/OFF bar switches.
+    val glass = state.homeStyle == "GLASS"
+
 
 
     Box(
@@ -245,10 +248,26 @@ fun HomeScreen(
 
             .fillMaxSize()
 
-            .background(Brush.verticalGradient(listOf(SciFiBackgroundTop, Color(0xFF040A18), SciFiBackgroundBottom)))
+            .background(
+                Brush.verticalGradient(
+                    if (glass) com.raju.aiassistant.ui.home.visuals.GLASS_BACKGROUND
+                    else listOf(SciFiBackgroundTop, Color(0xFF040A18), SciFiBackgroundBottom),
+                ),
+            )
 
     ) {
 
+        if (glass) com.raju.aiassistant.ui.home.visuals.LiquidGlassVisualizer(
+            time = { timeProvider.floatValue },
+            speechLevel = { speechLevel },
+            micLevel = { micLevel },
+            state = assistantState,
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
+            richEffects = profile.richEffects,
+            sphereArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
+        ) else
         // One canvas, one draw pass, edge to edge behind everything: the ambient waves first, then the
         // Living Eye over them, placed where the eye area (above the buttons) is laid out.
         com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
@@ -376,6 +395,7 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
+                if (glass) GlassInfoLine() else
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "How can I help you today?",
@@ -439,6 +459,8 @@ fun HomeScreen(
             }
 
 
+
+            HomeStyleSwitch(glass = glass, onSelect = viewModel::setHomeStyle)
 
             // 2. Central Section (weight 1f): Takes ALL available upper vertical space!
 
@@ -806,3 +828,53 @@ fun HomeScreen(
 
 }
 
+
+
+/** The small pill under the ON/OFF bar: "👁 आँख" or "◉ Liquid Glass" — Home's two looks. */
+@Composable
+private fun HomeStyleSwitch(glass: Boolean, onSelect: (String) -> Unit) {
+    Row(
+        Modifier.padding(top = 4.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        listOf("EYE" to "👁  आँख", "GLASS" to "◉  Liquid Glass").forEach { (key, label) ->
+            val on = (key == "GLASS") == glass
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(if (on) Color(0xFFE0B061).copy(alpha = 0.22f) else Color.Transparent)
+                    .clickable { if (!on) onSelect(key) }
+                    .padding(horizontal = 14.dp, vertical = 5.dp),
+            ) {
+                Text(label, fontSize = 13.5.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Color(0xFFF5C26B) else Color.White.copy(alpha = 0.6f))
+            }
+        }
+    }
+}
+
+/** Liquid Glass's card: today's date in gold, and the next Tatkal opening when it is within three hours. */
+@Composable
+private fun GlassInfoLine() {
+    var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            now = java.time.LocalDateTime.now()
+        }
+    }
+    val days = listOf("सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार")
+    val months = listOf("जनवरी", "फरवरी", "मार्च", "अप्रैल", "मई", "जून", "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर")
+    val next = com.raju.aiassistant.domain.tatkal.tatkalWindows(now)
+        .firstOrNull { java.time.Duration.between(now, it.opensAt).seconds in 0..3 * 3600 }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "${days[now.dayOfWeek.value - 1]}, ${now.dayOfMonth} ${months[now.monthValue - 1]}",
+            style = MaterialTheme.typography.titleSmall.copy(color = Color(0xFFF5C26B), fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
+        )
+        Text(
+            next?.let { "${if (it.label == com.raju.aiassistant.domain.tatkal.TatkalAlarm.AC) "AC" else "Sleeper"} Tatkal: ${com.raju.aiassistant.domain.tatkal.tatkalCountdown(it, now)}" }
+                ?: "Bolkar ya likhkar poochhiye",
+            style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.75f)),
+        )
+    }
+}
