@@ -612,7 +612,15 @@ class AssistantEngineTest {
 
     @Test
     fun aBookingNoteIsAskedForStepByStepAndSavedAsAFile() = runTest {
-        val e = engine()
+        // A real clock: the note's "today" (and so the birth-year check) comes from it.
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { System.currentTimeMillis() }, nowDescription = { "now" },
+        )
+        val age = java.time.LocalDate.now().year - 1986
         e.submit("booking note banao", fromVoice = true)
         settle()
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कहाँ से"))
@@ -631,7 +639,7 @@ class AssistantEngineTest {
         assertEquals(1, tools.shared.size)
         val (file, note) = tools.shared.single()
         assertTrue(file, file.startsWith("booking-note-") && file.endsWith(".txt"))
-        assertTrue(note, note.contains("Rajesh Singh — उम्र 40 साल (जन्म 1986)") && note.contains("3A"))
+        assertTrue(note, note.contains("Rajesh Singh — उम्र $age साल (जन्म 1986)") && note.contains("3A"))
         assertTrue(provider.calls.isEmpty()) // the note is made on the phone, never by the AI
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("बुकिंग नोट बन गया"))
     }
