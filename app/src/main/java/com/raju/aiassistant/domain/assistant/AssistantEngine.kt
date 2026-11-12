@@ -224,6 +224,8 @@ class AssistantEngine(
     private val pnrSource: com.raju.aiassistant.domain.business.PnrSource = com.raju.aiassistant.domain.business.PnrSource { com.raju.aiassistant.domain.business.PnrFetch.NotConfigured },
     /** Trains, live status, seats and fare from the rail service (RailKit); NotConfigured without a key. */
     private val rail: com.raju.aiassistant.domain.rail.RailSource = com.raju.aiassistant.domain.rail.NoRail,
+    /** The user's saved routines (Automation screen). */
+    private val routines: suspend () -> List<com.raju.aiassistant.domain.routine.Routine> = { emptyList() },
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
@@ -975,6 +977,12 @@ class AssistantEngine(
         if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
         }
+        // A saved routine by its name ("good night chalao"): the user's own name wins over other commands.
+        runCatching { com.raju.aiassistant.domain.routine.routineFor(text, routines()) }.getOrNull()?.let { r ->
+            trace("routine by voice (${r.steps.size} steps)")
+            runRoutine(r, speak = fromVoice || s.autoSpeakReplies)
+            return
+        }
         var screenQuestion: AssistantAction.ReadScreen? = null
         LocalCommands.parse(text)?.let { action ->
             if (action is AssistantAction.ReadScreen && isOnline()) {
@@ -987,6 +995,14 @@ class AssistantEngine(
             trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, no AI)")
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
             trace("fast route declined: ${action.label}; asking the AI")
+        }
+        // "Torch on karo aur volume 50 karo": several phone commands in one sentence, done one by one on
+        // the phone. Only when every part is such a command; anything else is one question for the AI.
+        if (screenQuestion == null) com.raju.aiassistant.domain.routine.splitChain(text)?.let { parts ->
+            val actions = parts.map { LocalCommands.parse(it) }
+            if (actions.all { it != null && it !is AssistantAction.ReadScreen && it !is AssistantAction.BookingNoteStart }) {
+                if (runSteps(actions.filterNotNull(), speak = fromVoice || s.autoSpeakReplies)) return
+            }
         }
 
         if (!isOnline() && s.defaultProvider != ProviderId.OLLAMA) {
@@ -1351,7 +1367,7 @@ class AssistantEngine(
      * the AI after all: an app name the phone does not know, a contact name not found as written
      * ("मम्मी" saved as "Mummy"), or Safety Mode (the AI path explains what is blocked).
      */
-    private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean): Boolean {
+    private suspend fun runLocalCommand(action: AssistantAction, speak: Boolean, endTurn: Boolean = true): Boolean {
         val s = settings.value
         if (s.safetyMode && (action is AssistantAction.Call || action is AssistantAction.OpenApp || action is AssistantAction.WhatsApp ||
                 action is AssistantAction.WhatsAppFile || action is AssistantAction.Sms || action is AssistantAction.ScreenTap || action is AssistantAction.ScreenType)
@@ -1611,12 +1627,62 @@ class AssistantEngine(
             }
             else -> return false
         }
+        if (!endTurn) return true
         if (_state.value != AssistantState.Error) {
             _state.value = AssistantState.Success
             delay(1_200)
         }
         finishTurn()
         return true
+    }
+
+    /**
+     * Phone commands one after another (a chain in one sentence, or a routine). The first one declining
+     * hands the sentence to the AI; a later one failing stops the rest and says which.
+     */
+    private suspend fun runSteps(actions: List<AssistantAction>, speak: Boolean, intro: String? = null): Boolean {
+        trace("steps: ${actions.size}")
+        intro?.let { if (speak) say(it) }
+        for ((i, a) in actions.withIndex()) {
+            val done = runLocalCommand(a, speak, endTurn = false)
+            if (!done) {
+                if (i == 0 && intro == null) return false
+                val msg = phrase(lang(), "${i + 1} नंबर का काम (${a.label}) नहीं हो पाया, बाकी रोक दिए।", "${i + 1} নম্বর কাজটা (${a.label}) হল না, বাকিগুলো থামিয়ে দিলাম।")
+                report(a, ActionStatus.FAILED, msg)
+                if (speak) say(msg)
+                break
+            }
+        }
+        if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
+        finishTurn()
+        return true
+    }
+
+    /** A saved routine: steps Seema understands on the phone run in order; others are named, not guessed. */
+    private suspend fun runRoutine(r: com.raju.aiassistant.domain.routine.Routine, speak: Boolean) {
+        val parsed = r.steps.map { it to LocalCommands.parse(it) }
+        val unknown = parsed.filter { it.second == null }.map { it.first }
+        if (unknown.isNotEmpty()) note("Routine \"${r.name}\": ye steps samajh nahi aaye, chhod diye: ${unknown.joinToString(" · ")}")
+        val actions = parsed.mapNotNull { it.second }
+        if (actions.isEmpty()) {
+            val msg = phrase(lang(), "\"${r.name}\" routine में ऐसा कोई काम नहीं है जो मैं कर सकूँ।", "\"${r.name}\" রুটিনে করার মতো কোনো কাজ নেই।")
+            note(msg)
+            if (speak) say(msg)
+            finishTurn()
+            return
+        }
+        runSteps(actions, speak, intro = phrase(lang(), "${r.name} routine चला रही हूँ।", "${r.name} রুটিন চালাচ্ছি।"))
+    }
+
+    /** A routine's set time came (RoutineAlarms): run it now, unless Seema is switched off. */
+    fun runRoutineNow(id: Long) {
+        if (paused()) return
+        cancelWork()
+        job = scope.launch {
+            val r = runCatching { routines() }.getOrDefault(emptyList()).firstOrNull { it.id == id && it.enabled } ?: return@launch
+            trace("routine at its time (${r.steps.size} steps)")
+            runRoutine(r, speak = true)
+        }
     }
 
     private fun finishTurn() {

@@ -443,6 +443,7 @@ class AppContainer(context: Context) {
             restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
             rail = railKit,
+            routines = { com.raju.aiassistant.notifications.RoutineStore.all(appContext) },
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
             sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },

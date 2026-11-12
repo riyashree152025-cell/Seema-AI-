@@ -81,6 +81,10 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        val torch = mutableListOf<Boolean>()
+        override fun setFlashlight(on: Boolean): ToolOutcome { torch += on; return ToolOutcome.Done(if (on) "Torch on" else "Torch off") }
+        val volumes = mutableListOf<Int>()
+        override fun setVolume(percent: Int): ToolOutcome { volumes += percent; return ToolOutcome.Done("Volume $percent%") }
         var inboxSms: List<com.raju.aiassistant.domain.sms.SmsMessage> = emptyList()
         var smsSince = -1L
         override fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox { smsSince = sinceMillis; return com.raju.aiassistant.domain.sms.SmsInbox.Messages(inboxSms) }
@@ -616,6 +620,36 @@ class AssistantEngineTest {
         settle()
         assertEquals(listOf("4512345678"), asked)
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32, confirm") && speaker.spoken.last().contains("Rajdhani")) // brackets are spoken as a pause
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun twoPhoneCommandsInOneSentenceAreBothDone() = runTest {
+        val e = engine()
+        e.submit("torch on karo aur volume 50 karo", fromVoice = true)
+        settle()
+        assertEquals(listOf(true), tools.torch)
+        assertEquals(listOf(50), tools.volumes)
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aSavedRoutineRunsByItsName() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val night = com.raju.aiassistant.domain.routine.Routine(1, "Good Night", listOf("torch band karo", "volume 20 karo", "kuch samajh na aane wala kaam"))
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            routines = { listOf(night) },
+        )
+        e.submit("good night chalao", fromVoice = true)
+        settle()
+        assertEquals(listOf(false), tools.torch)
+        assertEquals(listOf(20), tools.volumes)
+        assertTrue(speaker.spoken.any { it.contains("Good Night routine") })
+        assertTrue(e.transcript.value.any { it.text.contains("kuch samajh na aane wala kaam") }) // named, not guessed
         assertTrue(provider.calls.isEmpty())
     }
 
