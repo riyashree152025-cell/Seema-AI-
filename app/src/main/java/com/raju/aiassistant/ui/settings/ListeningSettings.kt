@@ -65,6 +65,13 @@ fun ListeningPanel(s: UserSettings, viewModel: SettingsViewModel) {
                     if (s.wakeWord) "Installed · \"Hey Seema\" se jaagegi" else "Installed · upar \"Sirf naam se jaage\" ON karein",
                     color = if (s.wakeWord) SuccessGreen else WarningAmber,
                 )
+                Text("\"Hey Seema\" sensitivity (offline pehchaan; agli baar sunna shuru hote hi lagegi):", color = TextSecondary)
+                ChipRow(
+                    com.raju.aiassistant.domain.voice.WakeSensitivity.entries.map { it.name },
+                    com.raju.aiassistant.domain.voice.WakeSensitivity.from(s.wakeSensitivity).name,
+                    { com.raju.aiassistant.domain.voice.WakeSensitivity.from(it).label },
+                    viewModel::setWakeSensitivity,
+                )
                 OutlinedButton(onClick = viewModel::deleteWakeModel) { Text("Delete", color = ErrorRed) }
             }
             is ModelState.Failed -> {

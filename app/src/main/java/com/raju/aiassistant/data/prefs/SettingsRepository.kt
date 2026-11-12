@@ -72,6 +72,7 @@ class SettingsRepository(private val context: Context) {
                 ?: d.voiceMode,
             bargeIn = this[Keys.BARGE_IN] ?: d.bargeIn,
             wakeToStart = this[Keys.WAKE_TO_START] ?: d.wakeToStart,
+            wakeSensitivity = this[Keys.WAKE_SENSITIVITY] ?: d.wakeSensitivity,
             bargeInSpeaker = this[Keys.BARGE_IN_SPEAKER] ?: d.bargeInSpeaker,
             sleepAfterSeconds = this[Keys.SLEEP_AFTER] ?: d.sleepAfterSeconds,
             wakeWord = this[Keys.WAKE_WORD] ?: d.wakeWord,
@@ -140,6 +141,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCoreAppearance(v: CoreAppearance) = edit { it[Keys.CORE_APPEARANCE] = v.name }
     suspend fun setBargeIn(v: Boolean) = edit { it[Keys.BARGE_IN] = v }
     suspend fun setWakeToStart(v: Boolean) = edit { it[Keys.WAKE_TO_START] = v }
+    suspend fun setWakeSensitivity(v: String) = edit { it[Keys.WAKE_SENSITIVITY] = com.raju.aiassistant.domain.voice.WakeSensitivity.from(v).name }
     suspend fun setBargeInSpeaker(v: Boolean) = edit { it[Keys.BARGE_IN_SPEAKER] = v }
     suspend fun setSleepAfterSeconds(v: Int) = edit { it[Keys.SLEEP_AFTER] = v.coerceIn(0, 3600) }
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
@@ -207,6 +209,7 @@ class SettingsRepository(private val context: Context) {
         val CORE_APPEARANCE = stringPreferencesKey("core_appearance")
         val BARGE_IN = booleanPreferencesKey("barge_in")
         val WAKE_TO_START = booleanPreferencesKey("wake_to_start")
+        val WAKE_SENSITIVITY = stringPreferencesKey("wake_sensitivity")
         val BARGE_IN_SPEAKER = booleanPreferencesKey("barge_in_speaker")
         val SLEEP_AFTER = intPreferencesKey("sleep_after_seconds")
         val WAKE_WORD = booleanPreferencesKey("wake_word")

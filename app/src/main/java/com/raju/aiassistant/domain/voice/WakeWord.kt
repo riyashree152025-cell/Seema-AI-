@@ -149,14 +149,19 @@ val WAKE_WORD_MODEL = WakeWordModel(
  * ":2.0" boosts the phrase. Tested on synthetic speech only; real-voice accuracy must be checked on
  * the phone.
  */
-val WAKE_WORD_KEYWORDS: String = listOf(
+private val WAKE_WORD_PHRASES = listOf(
     "▁HE Y ▁SEE MA", // HEY SEEMA
     "▁HE Y ▁S IM A", // HEY SIMA
     "▁HE Y ▁SE MA", // HEY SEMA
     "▁HI ▁SEE MA", // HI SEEMA
     "▁HA Y ▁SEE MA", // HAY SEEMA
     "▁O K ▁SEE MA", // OK SEEMA
-).joinToString("/") { "$it :2.0 @HEY_SEEMA" }
+)
+
+val WAKE_WORD_KEYWORDS: String = wakeWordKeywords(WakeSensitivity.NORMAL)
+
+/** The phrases with the boost of [level] (sherpa-onnx keyword format, one per "/"). */
+fun wakeWordKeywords(level: WakeSensitivity): String = WAKE_WORD_PHRASES.joinToString("/") { "$it :${level.boost} @HEY_SEEMA" }
 
 /**
  * How sure the spotter must be (0..1); lower wakes more easily. 0.1 caught 4 of 6 synthetic
@@ -164,3 +169,19 @@ val WAKE_WORD_KEYWORDS: String = listOf(
  * so it is a little lower now; the phone log ("kws hears sound" / "kws: wake word") shows the effect.
  */
 const val WAKE_WORD_THRESHOLD = 0.07f
+
+/**
+ * How easily the offline detector wakes ("Hey Seema" sensitivity in Listening settings). HIGH catches a
+ * softer or accented "Hey Seema" but may wake on similar words; LOW wakes only on a clear one.
+ * NORMAL is the value above. Used by the offline detector only (the Deepgram name check is unchanged).
+ */
+enum class WakeSensitivity(val threshold: Float, val boost: String, val label: String) {
+    LOW(0.12f, "1.5", "कम — साफ़ \"Hey Seema\" पर ही"),
+    NORMAL(WAKE_WORD_THRESHOLD, "2.0", "सामान्य"),
+    HIGH(0.04f, "3.0", "ज़्यादा — धीमी आवाज़ पर भी (गलती से जाग सकती है)"),
+    ;
+
+    companion object {
+        fun from(name: String?): WakeSensitivity = entries.firstOrNull { it.name == name } ?: NORMAL
+    }
+}

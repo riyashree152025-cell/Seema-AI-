@@ -169,6 +169,7 @@ class AppContainer(context: Context) {
             appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { sherpaHost.nativeAvailable },
             hub = micHub,
             useHub = { currentSettings.value.micHub },
+            sensitivity = { com.raju.aiassistant.domain.voice.WakeSensitivity.from(currentSettings.value.wakeSensitivity) },
         ) {
             android.util.Log.i("SeemaVoice", it)
         }

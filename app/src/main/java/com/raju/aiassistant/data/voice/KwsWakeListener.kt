@@ -15,8 +15,6 @@ import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import com.raju.aiassistant.data.tts.local.VoiceModelManager
 import com.raju.aiassistant.domain.assistant.WakeListener
-import com.raju.aiassistant.domain.voice.WAKE_WORD_KEYWORDS
-import com.raju.aiassistant.domain.voice.WAKE_WORD_THRESHOLD
 import com.raju.aiassistant.domain.voice.WakeWordModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +41,8 @@ class KwsWakeListener(
     /** The shared microphone (MicHub). Used only while [useHub] is true; otherwise the recorder below runs as before. */
     hub: MicHub? = null,
     private val useHub: () -> Boolean = { false },
+    /** "Hey Seema" sensitivity from the settings; a change takes effect the next time listening starts. */
+    private val sensitivity: () -> com.raju.aiassistant.domain.voice.WakeSensitivity = { com.raju.aiassistant.domain.voice.WakeSensitivity.NORMAL },
     private val log: (String) -> Unit = {},
 ) : WakeListener {
     override val spotsWakeWord = true
@@ -55,12 +55,14 @@ class KwsWakeListener(
     private var job: Job? = null
     @Volatile private var activeRecorder: AudioRecord? = null
     private var spotter: KeywordSpotter? = null
+    private var spotterLevel: com.raju.aiassistant.domain.voice.WakeSensitivity? = null
 
     /** Usable when the model is downloaded and the runtime loads. */
     fun isReady(): Boolean = models.isInstalled(model) && nativeAvailable()
 
     override fun start(onUtterance: (ByteArray) -> Unit, onError: () -> Unit) {
         stop()
+        useLevel(sensitivity())
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || !isReady()) {
             onError()
             return
@@ -83,6 +85,17 @@ class KwsWakeListener(
         job?.cancel()
         job = null
         activeRecorder?.let { runCatching { it.stop() } }
+    }
+
+    /**
+     * A new sensitivity: the next [spotter] call builds the detector again. The old one is not released
+     * here (a stopped listener may still be closing its stream on it); the runtime frees it when unused.
+     */
+    @Synchronized private fun useLevel(level: com.raju.aiassistant.domain.voice.WakeSensitivity) {
+        if (spotter != null && spotterLevel != level) {
+            log("kws sensitivity ${level.name}")
+            spotter = null
+        }
     }
 
     /** Frees the model's memory (app in the background without a voice session). */
@@ -125,7 +138,8 @@ class KwsWakeListener(
         val dir = models.modelDir(model)
         fun path(name: String) = File(dir, name).absolutePath
         // Only our phrases: the archive's own keywords.txt ("HEY SIRI", "HELLO WORLD", …) is not used.
-        val keywords = File(dir, "seema_keywords.txt").apply { writeText(WAKE_WORD_KEYWORDS.replace("/", "\n") + "\n") }
+        val level = sensitivity()
+        val keywords = File(dir, "seema_keywords.txt").apply { writeText(com.raju.aiassistant.domain.voice.wakeWordKeywords(level).replace("/", "\n") + "\n") }
         val config = KeywordSpotterConfig(
             featConfig = FeatureConfig(sampleRate = RATE, featureDim = 80),
             modelConfig = OnlineModelConfig(
@@ -134,9 +148,9 @@ class KwsWakeListener(
                 numThreads = 1, // light on CPU and battery
             ),
             keywordsFile = keywords.absolutePath,
-            keywordsThreshold = WAKE_WORD_THRESHOLD,
+            keywordsThreshold = level.threshold,
         )
-        return KeywordSpotter(config = config).also { spotter = it }
+        return KeywordSpotter(config = config).also { spotter = it; spotterLevel = level }
     }
 
     @SuppressLint("MissingPermission") // checked in start()

@@ -415,6 +415,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
     fun setWakeToStart(v: Boolean) = launch { repo.setWakeToStart(v) }
+    fun setWakeSensitivity(v: String) = launch { repo.setWakeSensitivity(v) }
     fun setBargeInSpeaker(v: Boolean) = launch { repo.setBargeInSpeaker(v) }
 
     // ---------------------------------------------------------------- offline wake word "Hey Seema"
