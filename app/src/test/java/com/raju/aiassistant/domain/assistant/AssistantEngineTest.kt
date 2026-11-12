@@ -2609,6 +2609,44 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun liveCameraAnswersEachQuestionFromAFreshPhotoUntilSwitchedOff() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val questions = mutableListOf<String>()
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            describeImage = { _, q -> questions += q; AiResult.Success("Ye ek laal kitaab hai.") },
+        )
+        e.submit("live camera chalu karo", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("Live camera चालू है"))
+        e.submit("ye kya hai", fromVoice = true)
+        settle()
+        e.submit("iska rang kya hai", fromVoice = true)
+        settle()
+        assertEquals(listOf(false to false, false to false), tools.photos) // back camera, not saved
+        assertTrue(questions[0].startsWith("ye kya hai") && questions[1].startsWith("iska rang kya hai"))
+        assertEquals("Ye ek laal kitaab hai.", speaker.spoken.last())
+        e.submit("camera band karo", fromVoice = true)
+        settle()
+        assertEquals("Live camera बंद कर दिया।", speaker.spoken.last())
+        assertTrue(provider.calls.isEmpty()) // no chat request: only the photo questions went to the vision model
+    }
+
+    @Test
+    fun theUsersMoodFromTheirWordsReachesTheInstructionsForThatAnswer() = runTest {
+        val e = engine(AiResult.Success("Aaram kijiye."), AiResult.Success("Kal dhoop rahegi."))
+        e.submit("aaj bahut thak gaya hoon yaar", fromVoice = false)
+        settle()
+        e.submit("kal ka plan kya hai", fromVoice = false)
+        settle()
+        assertTrue(provider.systems.first().contains("MOOD NOW: The user says they are tired"))
+        assertTrue(!provider.systems.last().contains("MOOD NOW")) // only for that answer
+    }
+
+    @Test
     fun takePhotoSavesItToTheGallery() = runTest {
         val e = engine(AiResult.Success("""<action>{"type":"take_photo","camera":"back"}</action>"""))
         e.submit("photo lo", fromVoice = true)

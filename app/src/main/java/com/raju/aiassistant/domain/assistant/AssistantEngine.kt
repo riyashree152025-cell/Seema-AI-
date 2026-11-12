@@ -806,6 +806,7 @@ class AssistantEngine(
 
     /** Quiet for a while: release the recogniser (no beeps, no data) and wait on the phone for her name. */
     private fun goToSleep() {
+        liveCameraFront = null
         voice.stop()
         _voiceSession.value = false
         conversationMode.exit()
@@ -977,6 +978,16 @@ class AssistantEngine(
         if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
         }
+        // Live camera on: a question that is not a phone command is answered from a fresh photo.
+        liveCameraFront?.let { front ->
+            if (clock() >= liveCameraUntil) {
+                liveCameraFront = null
+            } else if (LocalCommands.parse(text) == null) {
+                liveCameraUntil = clock() + com.raju.aiassistant.domain.vision.LIVE_CAMERA_MS
+                trace("live camera question")
+                if (runLocalCommand(AssistantAction.LookCamera(front, text), speak = fromVoice || s.autoSpeakReplies)) return
+            }
+        }
         // A saved routine by its name ("good night chalao"): the user's own name wins over other commands.
         runCatching { com.raju.aiassistant.domain.routine.routineFor(text, routines()) }.getOrNull()?.let { r ->
             trace("routine by voice (${r.steps.size} steps)")
@@ -1067,7 +1078,11 @@ class AssistantEngine(
             voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot(),
             language = lang(), languageUnclear = languageUnclear, documents = documents,
         )
-        val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context)
+        // The mood the user's own words show, for this answer only (nothing is stored).
+        val mood = moodOf(text)
+        if (mood != null) trace("mood: ${mood.name.lowercase()}")
+        val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context) +
+            (mood?.let { "\nMOOD NOW: ${it.instruction}" } ?: "")
         screenQuestion?.let { action ->
             readScreenAction(action, provider, model, system, speak = fromVoice || s.autoSpeakReplies)
             if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
@@ -1557,6 +1572,21 @@ class AssistantEngine(
                 trace("offline command: payment check")
                 _state.value = AssistantState.Executing
                 paymentCheck(action, speak)
+            }
+            is AssistantAction.LookCamera -> {
+                _state.value = AssistantState.Executing
+                camera(action, action.front, question = action.question, speak = speak)
+            }
+            is AssistantAction.LiveCamera -> {
+                trace("offline command: live camera ${if (action.on) "on" else "off"}")
+                liveCameraFront = if (action.on) action.front else null
+                liveCameraUntil = if (action.on) clock() + com.raju.aiassistant.domain.vision.LIVE_CAMERA_MS else 0L
+                informational(
+                    action,
+                    if (action.on) phrase(lang(), "Live camera चालू है। अगले 2 मिनट जो भी पूछेंगे, ${if (action.front) "आगे वाले" else "पीछे वाले"} कैमरे से फ़ोटो लेकर बताऊँगी। बंद करने के लिए \"camera band karo\" बोलिए।", "Live camera চালু। পরের ২ মিনিট যা জিজ্ঞেস করবেন, ছবি তুলে বলব। বন্ধ করতে \"camera band karo\" বলুন।")
+                    else phrase(lang(), "Live camera बंद कर दिया।", "Live camera বন্ধ করেছি।"),
+                    speak,
+                )
             }
             AssistantAction.TatkalWhen -> {
                 trace("offline command: tatkal opening")
@@ -2208,6 +2238,11 @@ class AssistantEngine(
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            is AssistantAction.LiveCamera -> {
+                liveCameraFront = if (action.on) action.front else null
+                liveCameraUntil = if (action.on) clock() + com.raju.aiassistant.domain.vision.LIVE_CAMERA_MS else 0L
+                report(action, ActionStatus.SUCCESS, if (action.on) "Live camera on for 2 minutes." else "Live camera off.")
+            }
             AssistantAction.TatkalWhen -> informational(action, com.raju.aiassistant.domain.tatkal.spokenTatkalWindows(Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()), speak)
             is AssistantAction.PersonBrief -> { personBrief(action, speak) }
             AssistantAction.HeadsUp -> headsUpNow(action, speak)
@@ -2303,6 +2338,10 @@ class AssistantEngine(
     // ---- Booking note: a short conversation that ends in a note (see domain/booking/BookingNote.kt).
 
     private var bookingDraft: com.raju.aiassistant.domain.booking.BookingDraft? = null
+
+    /** Live camera: the camera in use (front or not) while on, and when it switches itself off. */
+    private var liveCameraFront: Boolean? = null
+    private var liveCameraUntil = 0L
     private var bookingUntil = 0L
 
     private suspend fun startBooking(action: AssistantAction, speak: Boolean) {

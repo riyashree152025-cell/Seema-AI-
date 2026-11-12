@@ -24,6 +24,12 @@ object LocalCommands {
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
         if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
+        com.raju.aiassistant.domain.vision.parseLiveCamera(withoutLeadingFillers(text))?.let {
+            return when (it) {
+                is com.raju.aiassistant.domain.vision.LiveCameraCommand.Start -> AssistantAction.LiveCamera(on = true, front = it.front)
+                com.raju.aiassistant.domain.vision.LiveCameraCommand.Stop -> AssistantAction.LiveCamera(on = false)
+            }
+        }
         com.raju.aiassistant.domain.sms.parsePaymentQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.PaymentCheck(it.amountPaise) }
         com.raju.aiassistant.domain.sms.parseInboxQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.InboxCheck(it.period, it.kind) }
         if (com.raju.aiassistant.domain.memory.isHeadsUpQuestion(withoutLeadingFillers(text))) return AssistantAction.HeadsUp

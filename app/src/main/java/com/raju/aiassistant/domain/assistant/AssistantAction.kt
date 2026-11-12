@@ -191,6 +191,10 @@ sealed interface AssistantAction {
     data class InboxCheck(val period: com.raju.aiassistant.domain.sms.InboxPeriod, val kind: com.raju.aiassistant.domain.sms.InboxKind) : AssistantAction {
         override val label get() = "SMS inbox"
     }
+    /** "Live camera chalu karo" / "camera band karo": questions answered from a fresh photo for a while. */
+    data class LiveCamera(val on: Boolean, val front: Boolean = false) : AssistantAction {
+        override val label get() = if (on) "Live camera on" else "Live camera off"
+    }
     /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
     data object TatkalWhen : AssistantAction {
         override val label get() = "Tatkal opening"
