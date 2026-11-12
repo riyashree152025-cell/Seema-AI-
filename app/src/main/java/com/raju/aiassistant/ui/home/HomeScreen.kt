@@ -257,38 +257,41 @@ fun HomeScreen(
 
     ) {
 
-        if (glass) com.raju.aiassistant.ui.home.visuals.LiquidGlassVisualizer(
-            time = { timeProvider.floatValue },
-            speechLevel = { speechLevel },
-            micLevel = { micLevel },
-            state = assistantState,
-            modifier = Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
-            richEffects = profile.richEffects,
-            sphereArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
-        ) else
-        // One canvas, one draw pass, edge to edge behind everything: the ambient waves first, then the
-        // Living Eye over them, placed where the eye area (above the buttons) is laid out.
-        com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
-            time = { timeProvider.floatValue },
-            speechLevel = { speechLevel },
-            micLevel = { micLevel },
-            state = assistantState,
-            modifier = Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
-            richEffects = profile.richEffects,
-            waveCenterY = 0.42f,
-            // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
-            accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
-                com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
-            } else {
-                com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
-            },
-            eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
-            lastTouch = { eyeTouch.value },
-        )
+        if (glass) {
+            com.raju.aiassistant.ui.home.visuals.LiquidGlassVisualizer(
+                time = { timeProvider.floatValue },
+                speechLevel = { speechLevel },
+                micLevel = { micLevel },
+                state = assistantState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
+                richEffects = profile.richEffects,
+                sphereArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
+            )
+        } else {
+            // One canvas, one draw pass, edge to edge behind everything: the ambient waves first, then the
+            // Living Eye over them, placed where the eye area (above the buttons) is laid out.
+            com.raju.aiassistant.ui.home.visuals.LivingEyeVisualizer(
+                time = { timeProvider.floatValue },
+                speechLevel = { speechLevel },
+                micLevel = { micLevel },
+                state = assistantState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
+                richEffects = profile.richEffects,
+                waveCenterY = 0.42f,
+                // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
+                accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
+                    com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
+                } else {
+                    com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
+                },
+                eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
+                lastTouch = { eyeTouch.value },
+            )
+        }
 
         Column(
 
@@ -395,16 +398,19 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (glass) GlassInfoLine() else
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "How can I help you today?",
-                        style = MaterialTheme.typography.titleSmall.copy(color = Color.White, fontWeight = FontWeight.SemiBold),
-                    )
-                    Text(
-                        "Bolkar ya likhkar poochhiye",
-                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f)),
-                    )
+                if (glass) {
+                    GlassInfoLine()
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "How can I help you today?",
+                            style = MaterialTheme.typography.titleSmall.copy(color = Color.White, fontWeight = FontWeight.SemiBold),
+                        )
+                        Text(
+                            "Bolkar ya likhkar poochhiye",
+                            style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f)),
+                        )
+                    }
                 }
             }
             // Emergency Silent / Mute Quick Switch Bar
