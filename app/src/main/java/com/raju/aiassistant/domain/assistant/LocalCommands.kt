@@ -49,6 +49,7 @@ object LocalCommands {
             is com.raju.aiassistant.domain.rail.RailCommand.Between -> AssistantAction.TrainsBetween(it.from, it.to, it.date)
             is com.raju.aiassistant.domain.rail.RailCommand.Live -> AssistantAction.TrainLive(it.train, null)
         } }
+        if (com.raju.aiassistant.domain.tatkal.isTatkalWhenQuestion(plain)) return AssistantAction.TatkalWhen
         parseTatkalCommand(plain)?.let { return when (it) {
             is TatkalCommand.Set -> AssistantAction.SetTatkalAlarm(it.alarm.hour, it.alarm.minute, it.alarm.label)
             TatkalCommand.List -> AssistantAction.TatkalList

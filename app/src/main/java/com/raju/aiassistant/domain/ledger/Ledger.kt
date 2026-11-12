@@ -79,3 +79,32 @@ private fun isName(name: String): Boolean {
     if (!name.any { it.isLetter() }) return false
     return name.lowercase() !in setOf("mujhe", "usko", "use", "isko", "mere", "meri", "hum", "main", "mai", "aap", "tum", "ye", "yeh", "woh", "wo", "ek", "itna", "itne")
 }
+
+private val SHORT_MONTHS = listOf("जन", "फर", "मार्च", "अप्रै", "मई", "जून", "जुला", "अग", "सित", "अक्टू", "नव", "दिस")
+
+/** "12 नव 2026" for an entry's day. */
+fun ledgerDay(atMillis: Long, zone: java.time.ZoneId): String {
+    val d = java.time.Instant.ofEpochMilli(atMillis).atZone(zone).toLocalDate()
+    return "${d.dayOfMonth} ${SHORT_MONTHS[d.monthValue - 1]} ${d.year}"
+}
+
+/**
+ * A client's account as text to copy or send (oldest first): each entry with its day, then what is
+ * left. Built only from the saved entries.
+ */
+fun ledgerStatement(name: String, entries: List<LedgerEntryInfo>, zone: java.time.ZoneId): String = buildString {
+    val list = entries.filter { it.name == name }.sortedWith(compareBy({ it.at }, { it.id }))
+    appendLine("$name का हिसाब")
+    list.forEach { e ->
+        val what = if (e.kind == LedgerKind.GAVE) "दिए" else "मिले"
+        appendLine("${ledgerDay(e.at, zone)} · $what ${com.raju.aiassistant.domain.business.formatRupees(e.amountPaise)}")
+    }
+    val bal = balanceOf(list.map { LedgerLine(it.kind, it.amountPaise) })
+    append(
+        when {
+            bal > 0 -> "बाकी: ${com.raju.aiassistant.domain.business.formatRupees(bal)} (आपको लेने हैं)"
+            bal < 0 -> "बाकी: ${com.raju.aiassistant.domain.business.formatRupees(-bal)} (आपको देने हैं)"
+            else -> "हिसाब बराबर है।"
+        },
+    )
+}

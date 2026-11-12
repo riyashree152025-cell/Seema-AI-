@@ -40,6 +40,12 @@ class ToolsViewModel(private val c: AppContainer) : ViewModel() {
         c.businessRepository.ledgerView
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList<com.raju.aiassistant.domain.ledger.ClientBalance>() to null)
 
+    val ledgerEntries: StateFlow<List<com.raju.aiassistant.domain.ledger.LedgerEntryInfo>> =
+        c.businessRepository.ledgerEntries
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun copyText(text: String) { c.deviceTools.copyToClipboard(text) }
+
     fun removeLedgerEntry(id: Long) {
         viewModelScope.launch { runCatching { c.businessRepository.deleteLedgerEntry(id) } }
     }

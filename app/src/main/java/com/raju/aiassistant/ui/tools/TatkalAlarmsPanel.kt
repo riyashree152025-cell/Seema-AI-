@@ -44,7 +44,29 @@ fun TatkalAlarmsPanel() {
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    HudPanel(title = "Tatkal alarms") {
+    // The opening countdown, read again every 20 s while the panel is on screen.
+    var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(20_000)
+            now = java.time.LocalDateTime.now()
+        }
+    }
+    HudPanel(title = "Tatkal cockpit") {
+        com.raju.aiassistant.domain.tatkal.tatkalWindows(now).forEach { w ->
+            val d = w.journeyDate
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${if (w.label == com.raju.aiassistant.domain.tatkal.TatkalAlarm.AC) "AC" else "Sleeper / non-AC"} · ${d.dayOfMonth}/${d.monthValue} की यात्रा",
+                    Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                )
+                Text(com.raju.aiassistant.domain.tatkal.tatkalCountdown(w, now), color = com.raju.aiassistant.ui.theme.NeonCyan)
+            }
+        }
+        Text(
+            "समय रेलवे के नियम से (AC 10:00, non-AC 11:00, यात्रा से एक दिन पहले)। बोलकर: \"tatkal kab khulega\"। यात्रियों का कार्ड: Vision में \"ID से यात्री कार्ड\"।",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
         Text("रोज़ बजने वाले alarm। बोलकर लगाइए: \"tatkal alarm 9:58 AC\"", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         if (!exact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Text("Exact alarm की अनुमति बंद है — alarm देर से बज सकता है।", color = WarningAmber)

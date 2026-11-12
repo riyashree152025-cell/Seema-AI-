@@ -107,6 +107,17 @@ class BusinessRepository(private val dao: BusinessDao, private val clock: () -> 
             balances to newest
         }
 
+    /** Every udhaar entry with its client's name, newest first (the account screen). */
+    val ledgerEntries: Flow<List<com.raju.aiassistant.domain.ledger.LedgerEntryInfo>> =
+        kotlinx.coroutines.flow.combine(dao.observeClients(), dao.observeLedgerEntries()) { clients, entries ->
+            val names = clients.associate { it.id to it.name }
+            entries.mapNotNull { e ->
+                val name = names[e.clientId] ?: return@mapNotNull null
+                val kind = runCatching { LedgerKind.valueOf(e.type) }.getOrNull() ?: return@mapNotNull null
+                com.raju.aiassistant.domain.ledger.LedgerEntryInfo(e.id, name, e.amountPaise, kind, e.createdAt)
+            }
+        }
+
     /**
      * The same person, however the name was said: case, spaces and punctuation ignored, and "Bhai", "ji",
      * "Sahab" … left out, so "Jalal Bhai" and "Jalal" share one account.

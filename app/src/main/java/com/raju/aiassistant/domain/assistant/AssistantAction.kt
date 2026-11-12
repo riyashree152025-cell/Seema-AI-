@@ -191,6 +191,10 @@ sealed interface AssistantAction {
     data class InboxCheck(val period: com.raju.aiassistant.domain.sms.InboxPeriod, val kind: com.raju.aiassistant.domain.sms.InboxKind) : AssistantAction {
         override val label get() = "SMS inbox"
     }
+    /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
+    data object TatkalWhen : AssistantAction {
+        override val label get() = "Tatkal opening"
+    }
     /** "Booking note": Seema asks step by step and writes the note (a file to save or share). */
     data object BookingNoteStart : AssistantAction {
         override val label get() = "Booking note"

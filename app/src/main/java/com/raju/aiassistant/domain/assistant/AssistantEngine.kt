@@ -1558,6 +1558,10 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 paymentCheck(action, speak)
             }
+            AssistantAction.TatkalWhen -> {
+                trace("offline command: tatkal opening")
+                informational(action, com.raju.aiassistant.domain.tatkal.spokenTatkalWindows(Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()), speak)
+            }
             is AssistantAction.InboxCheck -> {
                 trace("offline command: inbox check")
                 _state.value = AssistantState.Executing
@@ -2204,6 +2208,7 @@ class AssistantEngine(
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            AssistantAction.TatkalWhen -> informational(action, com.raju.aiassistant.domain.tatkal.spokenTatkalWindows(Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()), speak)
             is AssistantAction.PersonBrief -> { personBrief(action, speak) }
             AssistantAction.HeadsUp -> headsUpNow(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
