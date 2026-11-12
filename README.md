@@ -51,12 +51,13 @@ Latest reports: [`SEEMA_AI_COMPLETE_PROJECT_AUDIT.md`](SEEMA_AI_COMPLETE_PROJECT
 
 Command line: `./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk` · `./gradlew testDebugUnitTest`
 
-### Ready-made APK from GitHub (no Android Studio needed)
-**Phone par seedha download (free, bina login):** https://github.com/riyashree152025-cell/Seema-AI-/releases/latest → `Seema-AI.apk`. Har baar `main` update hone par yahan naya APK apne-aap aa jata hai.
+### APK from GitHub Actions (no Android Studio needed)
+CI does **not** publish APKs or GitHub Releases; the owner publishes releases by hand. Releases that already
+exist were left as they are and are no longer updated automatically.
 
-Every push and pull request runs **GitHub Actions → Android CI** (`.github/workflows/android.yml`) on GitHub's servers: `assembleDebug`, `testDebugUnitTest` (with a test-count summary in the log) and `lintDebug` (fails the run on lint errors). No secrets are used or printed by CI.
-1. Open https://github.com/rajm730/Raju-Ai/actions → the latest green **Android CI** run.
-2. Under **Artifacts**, download **raju-ai-debug-apk** (zip) → extract `app-debug.apk`.
+Every push and pull request runs **GitHub Actions → Android CI** (`.github/workflows/android.yml`) on GitHub's servers: `assembleDebug`, `testDebugUnitTest` (with a test-count summary in the log), `lintDebug`, `assembleRelease` (unsigned, checks R8 rules), a scan for API keys inside the APKs, and a check that no workflow publishes releases. No secrets are used or printed by CI.
+1. Open https://github.com/riyashree152025-cell/Seema-AI-/actions → the latest green **Android CI** run.
+2. Under **Artifacts**, download **raju-ai-debug-apk** (zip; needs a GitHub login) → extract the debug APK.
 3. Copy it to the phone and open it (allow "Install unknown apps" for your file manager once).
 
 Release APK: **Build → Generate Signed App Bundle / APK** with your own keystore. Never commit the `.jks` file or its passwords; `.gitignore` excludes them.
