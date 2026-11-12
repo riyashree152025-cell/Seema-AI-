@@ -126,4 +126,14 @@ class ScreenControlTest {
         assertTrue(s.describeForAi().contains("PNR 4512345678")) // a 10-digit PNR is not a card number
         assertEquals("স্ক্রিনে Camera খোলা। পড়ার মতো লেখা নেই।", ScreenSnapshot("x", "Camera", emptyList()).localSummary(bengali = true))
     }
+
+    @Test
+    fun sendIsPressedOnlyWhereTheConfirmedMessageIsWaiting() {
+        assertTrue(whatsAppDraftMatches("Kal milte hain", "Kal milte hain"))
+        assertTrue(whatsAppDraftMatches("  Kal  milte\nhain ", "Kal milte hain")) // spacing as WhatsApp shows it
+        assertFalse(whatsAppDraftMatches("", "Kal milte hain")) // another chat, empty box
+        assertFalse(whatsAppDraftMatches("Kal milte hain bhai", "Kal milte hain")) // a different message
+        assertFalse(whatsAppDraftMatches(null, "Kal milte hain")) // no message box (chat list)
+        assertFalse(whatsAppDraftMatches("Kal milte hain", null)) // nothing confirmed
+    }
 }

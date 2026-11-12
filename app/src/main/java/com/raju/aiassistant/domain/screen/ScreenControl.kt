@@ -261,3 +261,15 @@ object WhatsAppButtons {
         return aboutCall && !dangerous
     }
 }
+
+/**
+ * Whether WhatsApp's message box holds the message the user confirmed, so Send is pressed only in the
+ * chat Seema opened with it. Unknown box or no armed text: false (nothing is pressed).
+ */
+fun whatsAppDraftMatches(boxText: String?, armedText: String?): Boolean {
+    val box = boxText?.trim()?.replace(Regex("\\s+"), " ").orEmpty()
+    val armed = armedText?.trim()?.replace(Regex("\\s+"), " ").orEmpty()
+    if (box.isEmpty() || armed.isEmpty()) return false
+    return box == armed
+}
+

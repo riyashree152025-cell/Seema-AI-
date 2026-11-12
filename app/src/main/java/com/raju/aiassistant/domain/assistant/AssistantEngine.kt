@@ -2738,6 +2738,9 @@ class AssistantEngine(
             if (speak) say(phrase(lang(), "ठीक है, नहीं भेजी।", "ঠিক আছে, পাঠাইনি।"))
             return
         }
+        // Right before the picture: never a bank / UPI / payment app or a password / PIN / OTP screen, and
+        // nothing when the screen cannot be checked (the picture would leave the phone).
+        screenOrSay(action, speak) ?: return
         when (val shot = tools.captureScreen()) {
             is PhotoResult.Taken -> {
                 _state.value = AssistantState.Thinking
@@ -3127,21 +3130,21 @@ class AssistantEngine(
                 }
                 // In the phone log: why a confirmation shows instead of sending directly.
                 trace("whatsapp: ${usable.size} contact(s) found, auto-send ${if (autoSend) "on" else "off (Seema Accessibility not running)"}")
-                target = if (usable.size == 1 && autoSend) {
-                    usable[0]
-                } else {
-                    val found = usable
-                    val why = when {
-                        found.size > 1 -> "\"${action.contact}\" naam se ${found.size} number mile — kis par bhejna hai?"
-                        else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle)."
-                    }
-                    chooseContact(
-                        "Send on WhatsApp?",
-                        "$why\n\nYe message WhatsApp mein khulega, Send aap dabayenge:\n\n\"${action.text}\"",
-                        usable, action.contact, speak,
-                        verbHi = "इन्हें WhatsApp भेजूँ", verbBn = "একে হোয়াটসঅ্যাপ পাঠাব",
-                    ) ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+                // Always a yes right before anything is sent, also with one match: with Seema's Accessibility
+                // on, the next step presses Send by itself, so this question is the last chance to stop it.
+                val why = when {
+                    usable.size > 1 -> "\"${action.contact}\" naam se ${usable.size} number mile — kis par bhejna hai?"
+                    autoSend -> "Seema ye message WhatsApp par bhej degi:"
+                    else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle).\n\nYe message WhatsApp mein khulega, Send aap dabayenge:"
                 }
+                val said = action.text.trim().let { if (it.length > 120) it.take(120) + "…" else it }
+                target = chooseContact(
+                    "Send on WhatsApp?",
+                    "$why\n\n\"${action.text}\"",
+                    usable, action.contact, speak,
+                    // The message is said back, so a misheard text is caught before it goes.
+                    verbHi = "\"$said\" — इन्हें WhatsApp पर भेजूँ", verbBn = "\"$said\" — একে হোয়াটসঅ্যাপে পাঠাব",
+                ) ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
             }
         }
         if (target == null && !com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {

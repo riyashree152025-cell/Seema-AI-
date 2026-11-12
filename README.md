@@ -111,9 +111,17 @@ Manage these anytime: Settings → **Manage app permissions**. On Samsung phones
 9. Turn on airplane mode: the app must say offline/failed, never "searched" or "connected".
 
 ## Known Android restrictions
-- No hidden or always-on background listening. The microphone works only while you're using voice in the app, with the system mic indicator visible.
-- Seema AI can't read WhatsApp's chats or send messages invisibly. It only sees what a notification shows, and you send replies yourself.
-- No screen reading or control of other apps (no AccessibilityService). Payment and banking apps are never touched.
+- **Microphone.** Seema listens while you use voice in the app. If you turn on **"Hey Seema"** (wake word), it also
+  listens in the background through a foreground service with a permanent notification, and Android shows its
+  microphone indicator while the microphone is open. **SEEMA OFF** on Home stops listening, speaking and the wake
+  word, closes the microphone and stops the service until you turn it on again. Swiping Seema away from Recents
+  stops it too. (Checked in the code; the indicator itself is Android's and has not been phone-tested here.)
+- **Accessibility (optional).** If you turn on Seema's Accessibility service, it can read the app on screen and tap
+  or type on your request, and press **Send** in WhatsApp. It always asks first — for WhatsApp it says the message
+  back and waits for your yes — and presses Send only in the chat it opened holding that exact message. It never
+  reads, pictures, taps or types on banking / UPI / payment apps or password / PIN / OTP screens.
+- **Notifications.** With notification access, Seema can read a notification aloud after asking, and reply from a
+  notification's own reply box after you confirm.
 - Android requires you to grant or revoke special access (notification access, permissions) on its own system screens. No in-app button can do it for you.
 - Music playback depends on the music app and your subscription.
 

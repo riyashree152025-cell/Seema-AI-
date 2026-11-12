@@ -62,6 +62,14 @@ class SeemaWakeService : Service() {
         if (settings != null) {
             lockJob = serviceScope.launch {
                 settings.map { it.wakeWord && !it.assistantPaused }.distinctUntilChanged().collectLatest { on ->
+                    // Keep the notification honest when the wake word is switched on or off.
+                    val mayNotify = Build.VERSION.SDK_INT < 33 ||
+                        androidx.core.content.ContextCompat.checkSelfPermission(this@SeemaWakeService, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (mayNotify) runCatching {
+                        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                            .notify(NOTIFICATION_ID, buildForegroundNotification(on))
+                    }
                     if (on) {
                         while (true) {
                             runCatching { wakeLock?.acquire(12 * 60 * 60 * 1000L) }
@@ -117,7 +125,8 @@ class SeemaWakeService : Service() {
         }
     }
 
-    private fun buildForegroundNotification(): Notification {
+    /** The notification says what is really on: the wake word listening in the background, or only the app. */
+    private fun buildForegroundNotification(wakeWordOn: Boolean = currentWakeWordOn()): Notification {
         val tapIntent = PendingIntent.getActivity(
             this,
             0,
@@ -129,14 +138,21 @@ class SeemaWakeService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("सीमा AI तैयार है")
-            .setContentText("बोलिए 'हे सीमा' — 100% हैंड्स-फ्री एक्टिव")
+            .setContentTitle(if (wakeWordOn) "सीमा 'हे सीमा' सुन रही है (माइक चालू)" else "सीमा AI चालू है")
+            .setContentText(
+                if (wakeWordOn) "बैकग्राउंड में माइक खुला है। बंद करने के लिए ऐप में SEEMA OFF दबाइए।"
+                else "'हे सीमा' बंद है — माइक सिर्फ़ तब खुलता है जब आप ऐप में बोलते हैं।",
+            )
             .setContentIntent(tapIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
+
+    private fun currentWakeWordOn(): Boolean = runCatching {
+        (application as com.raju.aiassistant.RajuApp).container.currentSettings.value.let { it.wakeWord && !it.assistantPaused }
+    }.getOrDefault(false)
 
     companion object {
         const val CHANNEL_ID = "seema_wake_standby_channel"

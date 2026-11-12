@@ -144,6 +144,11 @@ class AssistantEngineTest {
         val screenOps = mutableListOf<ScreenOp>()
         override suspend fun readScreen(): ScreenRead { screens.removeFirstOrNull()?.let { lastScreen = it }; return lastScreen }
         override suspend fun screenAction(op: ScreenOp): ToolOutcome { screenOps += op; return ToolOutcome.Done("done") }
+        var screenPictures = 0
+        override suspend fun captureScreen(): com.raju.aiassistant.domain.tools.PhotoResult {
+            screenPictures++
+            return com.raju.aiassistant.domain.tools.PhotoResult.Taken(byteArrayOf(1, 2, 3), null)
+        }
     }
 
     private class Store : ChatHistory, MemoryStore, ActionLog {
@@ -1146,6 +1151,41 @@ class AssistantEngineTest {
         ),
     )
     private val sentScreen = chatScreen.copy(elements = chatScreen.elements.map { if (it.editable) it.copy(text = "") else it })
+
+    @Test
+    fun noPictureOfABankingOrPasswordScreenEvenAfterAYes() = runTest {
+        val bank = ScreenSnapshot("com.phonepe.app", "PhonePe", listOf(ScreenElement("Enter UPI PIN", ElementKind.TEXT)))
+        tools.screens += ScreenRead.Ok(bank)
+        val e = engine()
+        e.submit("screen dekho", fromVoice = false)
+        runCurrent()
+        e.resolve(Decision.Approve()) // the user said yes to sending a picture
+        settle()
+        assertEquals(0, tools.screenPictures) // the payment screen was never captured
+        assertTrue(e.transcript.value.any { it.text.contains("UPI") })
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun noPictureWhenTheScreenCannotBeChecked() = runTest {
+        val e = engine() // the fake's screen is "Accessibility off"
+        e.submit("screen dekho", fromVoice = false)
+        runCurrent()
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(0, tools.screenPictures)
+    }
+
+    @Test
+    fun anOrdinaryScreenIsStillPicturedAfterAYes() = runTest {
+        tools.screens += ScreenRead.Ok(chatScreen)
+        val e = engine()
+        e.submit("screen dekho", fromVoice = false)
+        runCurrent()
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(1, tools.screenPictures)
+    }
 
     @Test
     fun aTapIsAskedFirstThenDoneAndChecked() = runTest {

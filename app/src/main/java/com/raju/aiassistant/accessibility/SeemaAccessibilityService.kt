@@ -56,6 +56,10 @@ class SeemaAccessibilityService : AccessibilityService() {
     private fun attemptWhatsAppSend(pkg: String) {
         val root = rootInActiveWindow ?: return
         try {
+            // 0. Only in the chat Seema opened: the message box must hold the text the user confirmed. In any
+            //    other WhatsApp screen (another chat, the chat list) nothing is pressed.
+            val box = root.findAccessibilityNodeInfosByViewId("$pkg:id/entry").firstOrNull()?.text?.toString()
+            if (!com.raju.aiassistant.domain.screen.whatsAppDraftMatches(box, pendingSendText)) return
             // 1. WhatsApp's own Send button (the id carries the package, also for WhatsApp Business).
             var clicked = root.findAccessibilityNodeInfosByViewId("$pkg:id/send").any { clickNode(it) }
             // 2. A button described exactly as "Send" / "भेजें" — not anything merely containing "send".
