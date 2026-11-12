@@ -68,28 +68,47 @@ class DeepgramVoiceInput(
         stop()
         job = scope.launch {
             _partial.value = ""
-            _listening.value = true
-            val pcm = try {
-                withContext(Dispatchers.IO) { recordTurn() }
-            } catch (e: MicrophoneException) {
-                onError(VoiceError("The microphone could not be started (${e.message}). Another app may be using it."))
-                return@launch
-            } finally {
-                _listening.value = false
-            }
-            if (pcm == null) {
-                onError(VoiceError("No speech was heard.", noSpeech = true))
-                return@launch
-            }
-            _partial.value = "…"
             val key = apiKey()
             if (key.isNullOrBlank()) {
                 onError(VoiceError("Deepgram API key is not set (Settings → Deepgram key)."))
                 return@launch
             }
             val option = model()
+            val terms = keyterms()
+            // Live transcription while the user talks: the words are ready when the turn ends.
+            val live = DeepgramLiveSession(http) { shown -> _partial.value = shown }
+            runCatching { live.open(key, option.model, option.language, terms) }
+            liveSession = live
+            _listening.value = true
+            val pcm = try {
+                withContext(Dispatchers.IO) { recordTurn { frame -> live.send(frame) } }
+            } catch (e: MicrophoneException) {
+                live.cancel()
+                onError(VoiceError("The microphone could not be started (${e.message}). Another app may be using it."))
+                return@launch
+            } finally {
+                _listening.value = false
+            }
+            if (pcm == null) {
+                live.cancel()
+                onError(VoiceError("No speech was heard.", noSpeech = true))
+                return@launch
+            }
+            if (_partial.value.isBlank()) _partial.value = "…"
+            val fast = live.finish()
+            liveSession = null
+            if (fast != null) {
+                android.util.Log.i("SeemaVoice", "stt: live transcript ready (${fast.text.length} chars)")
+                _partial.value = fast.text
+                when {
+                    fast.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true, heard = fast.text))
+                    else -> onResult(fast.text)
+                }
+                return@launch
+            }
+            android.util.Log.i("SeemaVoice", "stt: live link unavailable, uploading the recording")
             // A quiet turn is raised before recognition ("Speech was heard but no words were recognised").
-            when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(com.raju.aiassistant.domain.voice.louderForStt(pcm), SAMPLE_RATE), option.model, option.language, keyterms())) {
+            when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(com.raju.aiassistant.domain.voice.louderForStt(pcm), SAMPLE_RATE), option.model, option.language, terms)) {
                 is AiResult.Success -> {
                     val heard = r.value
                     _partial.value = heard.text
@@ -106,20 +125,25 @@ class DeepgramVoiceInput(
         }
     }
 
+    /** The live transcription of the current turn, closed when the turn is stopped. */
+    @Volatile private var liveSession: DeepgramLiveSession? = null
+
     override fun stop() {
         job?.cancel()
         job = null
+        liveSession?.cancel()
+        liveSession = null
         // Free the microphone right now, so the next recogniser (or barge-in) gets real audio.
         activeRecorder?.let { runCatching { it.stop() } }
         _listening.value = false
     }
 
     /** One turn: from the shared microphone when the flag is on, otherwise from this input's own recorder. */
-    private suspend fun recordTurn(): ByteArray? {
+    private suspend fun recordTurn(onFrame: (ByteArray) -> Unit = {}): ByteArray? {
         val shared = hub
-        if (shared == null || !useHub()) return record()
+        if (shared == null || !useHub()) return record(onFrame)
         return try {
-            shared.recordSpeech(log = { android.util.Log.i("SeemaVoice", it) })
+            shared.recordSpeech(log = { android.util.Log.i("SeemaVoice", it) }, onFrame = onFrame)
         } catch (e: SharedMicException) {
             throw MicrophoneException(e.message ?: "microphone unavailable")
         }
@@ -127,7 +151,7 @@ class DeepgramVoiceInput(
 
     /** Records until the user stops talking. Returns null when no speech was heard. */
     @SuppressLint("MissingPermission") // checked in start()
-    private suspend fun record(): ByteArray? {
+    private suspend fun record(onFrame: (ByteArray) -> Unit = {}): ByteArray? {
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (minBuffer <= 0) throw MicrophoneException("audio format not supported")
         val recorder = try {
@@ -164,6 +188,7 @@ class DeepgramVoiceInput(
                     read += n
                 }
                 out.write(frame)
+                onFrame(frame)
                 when (detector.onFrame(rms(frame))) {
                     EndpointDetector.State.DONE -> return out.toByteArray()
                     EndpointDetector.State.NO_SPEECH -> return null

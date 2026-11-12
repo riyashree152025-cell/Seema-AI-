@@ -85,6 +85,8 @@ class SharedMicException(message: String) : Exception(message)
 suspend fun MicHub.recordSpeech(
     clock: () -> Long = System::currentTimeMillis,
     log: (String) -> Unit = {},
+    /** Every frame as it arrives (live transcription); called on the microphone thread. */
+    onFrame: (ByteArray) -> Unit = {},
 ): ByteArray? {
     val capture = SpeechCapture(clock)
     val result = CompletableDeferred<ByteArray?>()
@@ -92,6 +94,7 @@ suspend fun MicHub.recordSpeech(
         MicPurpose.STT,
         onFrame = { frame ->
             if (!result.isCompleted) {
+                onFrame(frame)
                 when (val outcome = capture.feed(frame)) {
                     is SpeechCapture.Outcome.Done -> result.complete(outcome.pcm)
                     SpeechCapture.Outcome.NoSpeech -> result.complete(null)

@@ -36,6 +36,13 @@ class EndpointDetector(
      */
     private val floorRiseRate: Double = 0.005,
     private val floorFallRate: Double = 0.3,
+    /**
+     * A short command ("light on karo", "haan") is answered sooner: when less than [shortSpeechMs] of
+     * voice was heard, a pause of [shortSilenceMs] ends the turn. Longer speech keeps [silenceMs], so a
+     * thinking pause in a long sentence is not cut. (Off by default: both equal [silenceMs].)
+     */
+    private val shortSilenceMs: Int = silenceMs,
+    private val shortSpeechMs: Int = 0,
 ) {
     enum class State { LISTENING, SPEAKING, DONE, NO_SPEECH }
 
@@ -75,7 +82,8 @@ class EndpointDetector(
             State.SPEAKING -> {
                 if (loud) loudMs += frameMs
                 quietMs = if (loud) 0 else quietMs + frameMs
-                if (quietMs >= silenceMs) {
+                val pauseNeeded = if (loudMs < shortSpeechMs) shortSilenceMs else silenceMs
+                if (quietMs >= pauseNeeded) {
                     if (loudMs >= minSpeechMs) state = State.DONE
                     else { // only a short noise: wait for real speech
                         state = State.LISTENING
@@ -102,8 +110,15 @@ object TurnPacing {
 
     fun detector(frameMs: Int): EndpointDetector =
         if (quick) EndpointDetector(frameMs = frameMs, silenceMs = QUICK_SILENCE_MS, maxMs = QUICK_MAX_MS, minSpeechMs = 120)
-        else EndpointDetector(frameMs = frameMs)
+        else EndpointDetector(
+            frameMs = frameMs, silenceMs = NORMAL_SILENCE_MS,
+            shortSilenceMs = SHORT_SILENCE_MS, shortSpeechMs = SHORT_SPEECH_MS,
+        )
 
     const val QUICK_SILENCE_MS = 600
+    /** A normal turn ends after 1.1 s of quiet (was 1.4 s); a short command after 0.8 s. */
+    const val NORMAL_SILENCE_MS = 1_100
+    const val SHORT_SILENCE_MS = 800
+    const val SHORT_SPEECH_MS = 1_500
     const val QUICK_MAX_MS = 6_000
 }

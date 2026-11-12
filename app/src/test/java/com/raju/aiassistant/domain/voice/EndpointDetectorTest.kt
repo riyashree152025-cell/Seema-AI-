@@ -1,6 +1,7 @@
 package com.raju.aiassistant.domain.voice
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EndpointDetectorTest {
@@ -97,4 +98,36 @@ class EndpointDetectorTest {
         assertEquals(EndpointDetector.State.LISTENING, d.feed(60.0, 200)) // 4.3 s
         assertEquals(EndpointDetector.State.NO_SPEECH, d.feed(60.0, 15))
     }
+
+    /** Frames: 0.4 s room, [voiceMs] of voice (with tiny gaps), then quiet; returns ms of quiet until DONE. */
+    private fun quietUntilDone(d: EndpointDetector, voiceMs: Int): Int? {
+        repeat(20) { d.onFrame(100.0) }
+        repeat(voiceMs / 20) { i -> d.onFrame(if (i % 10 == 9) 120.0 else 2_000.0) }
+        var quiet = 0
+        while (quiet < 3_000) {
+            if (d.onFrame(100.0) == EndpointDetector.State.DONE) return quiet + 20
+            quiet += 20
+        }
+        return null
+    }
+
+    @Test
+    fun aShortCommandIsAnsweredSoonerThanALongSentence() {
+        TurnPacing.quick = false
+        val short = quietUntilDone(TurnPacing.detector(20), voiceMs = 900)!!
+        val long = quietUntilDone(TurnPacing.detector(20), voiceMs = 4_000)!!
+        assertTrue("short command waited $short ms", short in 780..860)
+        assertTrue("long sentence waited $long ms", long in 1_080..1_160)
+    }
+
+    @Test
+    fun aThinkingPauseInsideALongSentenceIsNotCut() {
+        val d = TurnPacing.detector(20)
+        repeat(20) { d.onFrame(100.0) }
+        repeat(150) { i -> d.onFrame(if (i % 10 == 9) 120.0 else 2_000.0) } // 3 s of talking (speech has gaps)
+        repeat(45) { assertTrue(d.onFrame(100.0) != EndpointDetector.State.DONE) } // a 0.9 s pause
+        repeat(50) { i -> d.onFrame(if (i % 10 == 9) 120.0 else 2_000.0) } // goes on talking
+        assertEquals(EndpointDetector.State.SPEAKING, d.state)
+    }
 }
+
