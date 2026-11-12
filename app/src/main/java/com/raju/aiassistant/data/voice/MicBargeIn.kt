@@ -40,6 +40,8 @@ class MicBargeIn(
     /** The shared microphone (MicHub): while [useHub] is true it is closed before this recorder opens. */
     private val hub: MicHub? = null,
     private val useHub: () -> Boolean = { false },
+    /** True when the voice plays from the loudspeaker (no headphones): the stricter detector is used. */
+    private val speakerMode: () -> Boolean = { false },
 ) : BargeIn {
     private var job: Job? = null
 
@@ -91,7 +93,7 @@ class MicBargeIn(
         val aec = if (callStyle() && AcousticEchoCanceler.isAvailable()) {
             runCatching { AcousticEchoCanceler.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
         } else null
-        val vad = EchoAwareVad()
+        val vad = if (speakerMode()) com.raju.aiassistant.domain.voice.speakerEchoAwareVad() else EchoAwareVad()
         val preRoll = ArrayDeque<ByteArray>()
         try {
             recorder.startRecording()

@@ -182,6 +182,19 @@ class AppContainer(context: Context) {
             preferCloud = { online.value && deepgramTranscriber.isAvailable() },
         ) { currentSettings.value.wakeWord }
     }
+    /** Headphones or a headset (wired, Bluetooth, USB) are connected: Seema's voice is not on the loudspeaker. */
+    fun headphonesConnected(): Boolean {
+        val outputs = appContext.getSystemService(android.media.AudioManager::class.java)
+            ?.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
+        return outputs.any {
+            it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
+        }
+    }
+
     /** Phone calls and headphone disconnects (started in RajuApp). */
     val audioInterruptions: com.raju.aiassistant.core.audio.AudioInterruptions by lazy {
         com.raju.aiassistant.core.audio.AudioInterruptions(
@@ -403,23 +416,14 @@ class AppContainer(context: Context) {
             bargeIn = MicBargeIn(
                 appContext, appScope, playbackLevel = { audioPlayer.levelNow() }, callStyle = { conversationAudio.active },
                 hub = micHub, useHub = { currentSettings.value.micHub },
+                speakerMode = { !headphonesConnected() && currentSettings.value.bargeInSpeaker },
             ),
             conversationMode = conversationAudio,
             transcriber = deepgramTranscriber,
             wakeListener = wakeListener,
             onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
             onModelReplaced = { id, model -> appScope.launch { settingsRepository.setModel(id, model) } },
-            headphones = {
-                val outputs = appContext.getSystemService(android.media.AudioManager::class.java)
-                    ?.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
-                outputs.any {
-                    it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                        it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                        it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                        it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                        it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
-                }
-            },
+            headphones = ::headphonesConnected,
             describeImage = { jpeg, question ->
                 askAboutImages(
                     listOf(jpeg), question,

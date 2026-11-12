@@ -112,6 +112,8 @@ data class UserSettings(
     val voiceMode: VoiceMode = VoiceMode.PUSH_TO_TALK,
     /** Talking while Seema speaks stops her (voice conversations only). */
     val bargeIn: Boolean = true,
+    /** Barge-in also on the loudspeaker (stricter detection, her own echo ignored); test on the phone. */
+    val bargeInSpeaker: Boolean = true,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
     val sleepAfterSeconds: Int = 60,
     /** While asleep, wake only when called by name ("Seema …"); off = any speech wakes her. */

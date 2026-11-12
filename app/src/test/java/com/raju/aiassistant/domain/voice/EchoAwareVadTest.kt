@@ -16,8 +16,13 @@ class EchoAwareVadTest {
      * Microphone = room noise + echo ([echoGain], 6 frames late) + optional user voice.
      * 5000 ≈ loud echo without echo cancellation; 800 ≈ what is left with the phone's echo canceller.
      */
-    private fun run(frames: Int, userVoice: (Int) -> Double = { 0.0 }, silentFrom: Int = Int.MAX_VALUE, echoGain: Double = 5000.0): Int? {
-        val vad = EchoAwareVad()
+    private fun run(
+        frames: Int,
+        userVoice: (Int) -> Double = { 0.0 },
+        silentFrom: Int = Int.MAX_VALUE,
+        echoGain: Double = 5000.0,
+        vad: EchoAwareVad = EchoAwareVad(),
+    ): Int? {
         val levels = FloatArray(frames) { if (it < 10 || it >= silentFrom) 0f else ttsLevel(it) }
         for (f in 0 until frames) {
             val echo = if (f >= 6) echoGain * levels[f - 6] else 0.0
@@ -67,4 +72,42 @@ class EchoAwareVadTest {
         assertEquals("Mumbai ka batao", stripEcho("Mumbai ka batao", spoken))
         assertEquals("Delhi ka mausam batao", stripEcho("Delhi ka mausam batao", spoken)) // one shared word is the user's
     }
+
+    @Test
+    fun onTheLoudspeakerHerOwnLoudVoiceNeverStopsHer() {
+        // No echo canceller, loud echo: the strict loudspeaker detector must stay quiet for 20 s.
+        assertEquals(null, run(1000, vad = speakerEchoAwareVad()))
+        assertEquals(null, run(1000, echoGain = 7000.0, vad = speakerEchoAwareVad()))
+    }
+
+    @Test
+    fun onTheLoudspeakerAClearVoiceStillStopsHer() {
+        val start = 300
+        val hit = run(700, userVoice = { f -> if (f >= start) 14000.0 * (0.7 + 0.3 * abs(sin(f * 0.5))) else 0.0 }, vad = speakerEchoAwareVad())
+        assertTrue("not detected", hit != null)
+        assertTrue("too slow: ${hit!! - start} frames", hit - start <= 25) // within 0.5 s
+    }
+
+    @Test
+    fun onTheLoudspeakerTalkingInHerPauseIsNoticed() {
+        val hit = run(400, userVoice = { f -> if (f >= 300) 2500.0 else 0.0 }, silentFrom = 280, vad = speakerEchoAwareVad())
+        assertTrue(hit != null && hit >= 300)
+    }
+
+    @Test
+    fun bengaliStopWordsAreRecognised() {
+        listOf("থামো", "থামুন", "চুপ করো", "এক মিনিট", "দাঁড়াও", "chup koro", "thamo").forEach { assertTrue(it, isStopCommand(it)) }
+        assertFalse(isStopCommand("আজ কলকাতার আবহাওয়া কেমন থাকবে বলো")) // a real question, not "stop"
+    }
+
+    @Test
+    fun onlyHerOwnWordsCountAsEcho() {
+        val spoken = "Aaj Delhi mein dhoop rahegi aur shaam ko halki hawa chalegi."
+        assertTrue(isLikelyOwnEcho("Delhi", spoken)) // one of her words alone: her echo on the loudspeaker
+        assertTrue(isLikelyOwnEcho("halki hawa", spoken))
+        assertTrue(isLikelyOwnEcho("", spoken))
+        assertFalse(isLikelyOwnEcho("ruko", spoken))
+        assertFalse(isLikelyOwnEcho("Delhi ka mausam batao", spoken)) // the user's own question
+    }
 }
+

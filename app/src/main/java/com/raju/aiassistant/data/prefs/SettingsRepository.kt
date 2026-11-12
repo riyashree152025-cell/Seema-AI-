@@ -71,6 +71,7 @@ class SettingsRepository(private val context: Context) {
                 ?: this[Keys.AUTO_LISTEN]?.let { if (it) VoiceMode.ALWAYS else VoiceMode.PUSH_TO_TALK }
                 ?: d.voiceMode,
             bargeIn = this[Keys.BARGE_IN] ?: d.bargeIn,
+            bargeInSpeaker = this[Keys.BARGE_IN_SPEAKER] ?: d.bargeInSpeaker,
             sleepAfterSeconds = this[Keys.SLEEP_AFTER] ?: d.sleepAfterSeconds,
             wakeWord = this[Keys.WAKE_WORD] ?: d.wakeWord,
             micHub = this[Keys.MIC_HUB] ?: d.micHub,
@@ -137,6 +138,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setThermalProtection(v: Boolean) = edit { it[Keys.THERMAL_PROTECTION] = v }
     suspend fun setCoreAppearance(v: CoreAppearance) = edit { it[Keys.CORE_APPEARANCE] = v.name }
     suspend fun setBargeIn(v: Boolean) = edit { it[Keys.BARGE_IN] = v }
+    suspend fun setBargeInSpeaker(v: Boolean) = edit { it[Keys.BARGE_IN_SPEAKER] = v }
     suspend fun setSleepAfterSeconds(v: Int) = edit { it[Keys.SLEEP_AFTER] = v.coerceIn(0, 3600) }
     suspend fun setWakeWord(v: Boolean) = edit { it[Keys.WAKE_WORD] = v }
     suspend fun setMicHub(v: Boolean) = edit { it[Keys.MIC_HUB] = v }
@@ -202,6 +204,7 @@ class SettingsRepository(private val context: Context) {
         val THERMAL_PROTECTION = booleanPreferencesKey("thermal_protection")
         val CORE_APPEARANCE = stringPreferencesKey("core_appearance")
         val BARGE_IN = booleanPreferencesKey("barge_in")
+        val BARGE_IN_SPEAKER = booleanPreferencesKey("barge_in_speaker")
         val SLEEP_AFTER = intPreferencesKey("sleep_after_seconds")
         val WAKE_WORD = booleanPreferencesKey("wake_word")
         val MIC_HUB = booleanPreferencesKey("mic_hub")

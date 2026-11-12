@@ -52,6 +52,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import com.raju.aiassistant.domain.voice.afterWakeWord
+import com.raju.aiassistant.domain.voice.isLikelyOwnEcho
 import com.raju.aiassistant.domain.voice.isStopCommand
 import com.raju.aiassistant.domain.voice.stripEcho
 import java.time.Instant
@@ -1608,12 +1609,17 @@ class AssistantEngine(
             if (turnActive && turnFirstAudioAt == null) turnFirstAudioAt = clock()
             if (_state.value == AssistantState.Thinking || _state.value == AssistantState.Executing) _state.value = AssistantState.Speaking
         }
-        // In a voice conversation the user can talk over Seema, like interrupting a person — but only
-        // when the phone's echo canceller is on (call-style audio) and what was heard can be checked
-        // by speech-to-text. Without both, her own voice coming back from the speaker into the mic
-        // would stop her after a few words (tested on a phone). Tapping the core always stops her.
+        // In a voice conversation the user can talk over Seema, like interrupting a person. What was heard
+        // is always checked by speech-to-text first.
+        // - Headphones: the phone's echo canceller is on (call-style audio), as before.
+        // - Loudspeaker ("Loudspeaker par bhi"): her own voice comes back into the mic loudly (it once
+        //   stopped her after a few words on the phone), so a stricter detector is used, a recording that
+        //   is only her own words lets her carry on, and after one such false stop the rest of that reply
+        //   is spoken without barge-in. Tapping the core always stops her.
+        val onHeadphones = headphones()
+        val onSpeaker = !onHeadphones && settings.value.bargeInSpeaker && depth == 0
         val canBargeIn = allowBargeIn && settings.value.bargeIn && (handsFree || _voiceSession.value) &&
-            conversationMode.active && transcriber?.isAvailable() == true && headphones()
+            transcriber?.isAvailable() == true && ((onHeadphones && conversationMode.active) || onSpeaker)
         val capture = canBargeIn
         val utterance = CompletableDeferred<ByteArray?>()
         // Set from the microphone thread: atomic, so the speaking coroutine always sees it.
@@ -1625,7 +1631,7 @@ class AssistantEngine(
                 onUtterance = { utterance.complete(it) },
             )
         }
-        trace("speak (${spoken.length} chars)${if (canBargeIn) " barge-in on" else ""}")
+        trace("speak (${spoken.length} chars)${if (canBargeIn) " barge-in on${if (onSpeaker) " (loudspeaker)" else ""}" else ""}")
         val result = try {
             speaker.speak(spoken)
         } finally {
@@ -1636,7 +1642,7 @@ class AssistantEngine(
         lastSpokeAt = clock()
         if (interrupted.get()) {
             trace("interrupted by the user after ${speaker.playedChunks} part(s)")
-            onInterrupted(spoken, capture, utterance, depth)
+            onInterrupted(spoken, capture, utterance, depth, onSpeaker)
             return
         }
         trace("spoke: ${result.engineLabel}, ${if (result.completed) "complete" else "NOT complete"}${result.error?.let { " — $it" } ?: ""}")
@@ -1657,7 +1663,7 @@ class AssistantEngine(
      * - nothing understandable (a cough, a noise) → she continues where she stopped.
      * Without a speech-to-text key the normal recogniser takes over right away.
      */
-    private suspend fun onInterrupted(spoken: String, capture: Boolean, utterance: CompletableDeferred<ByteArray?>, depth: Int) {
+    private suspend fun onInterrupted(spoken: String, capture: Boolean, utterance: CompletableDeferred<ByteArray?>, depth: Int, onSpeaker: Boolean = false) {
         val played = speaker.playedChunks
         _state.value = AssistantState.Listening
         if (!capture) {
@@ -1671,15 +1677,18 @@ class AssistantEngine(
         _state.value = AssistantState.Thinking
         val raw = audio?.let { runCatching { transcriber?.transcribe(it) }.getOrNull() }?.trim().orEmpty()
         val heard = stripEcho(raw, spoken)
+        // On the loudspeaker the "interruption" may be only her own words coming back: that is no reason to stop.
+        val ownEcho = onSpeaker && !isStopCommand(heard) && isLikelyOwnEcho(heard, spoken)
+        if (ownEcho) trace("interruption was her own voice (loudspeaker), continuing")
         when {
-            heard.length < 2 -> {
+            heard.length < 2 || ownEcho -> {
                 // False alarm: carry on from the sentence she was saying.
                 val rest = chunkForSpeech(spoken).drop(played).joinToString(" ")
                 if (rest.isNotBlank() && depth < 2) say(resumePrefix(rest) + rest, depth = depth + 1)
             }
             isStopCommand(heard) -> {
                 record(ChatRole.USER, heard)
-                say(if (lang() == SeemaLanguage.BENGALI) "হ্যাঁ, বলুন?" else if (DEVANAGARI.containsMatchIn(heard)) "हाँ, बोलिए?" else "Haan, boliye?", allowBargeIn = false)
+                say(if (lang() == SeemaLanguage.BENGALI || BENGALI_SCRIPT.containsMatchIn(heard)) "হ্যাঁ, বলুন?" else if (DEVANAGARI.containsMatchIn(heard)) "हाँ, बोलिए?" else "Haan, boliye?", allowBargeIn = false)
                 _voiceSession.value = true
                 listen()
                 throw CancellationException("Stopped by the user")

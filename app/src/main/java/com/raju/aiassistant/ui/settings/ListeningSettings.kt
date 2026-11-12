@@ -74,7 +74,8 @@ fun ListeningPanel(s: UserSettings, viewModel: SettingsViewModel) {
             ModelState.NotInstalled -> Button(onClick = viewModel::downloadWakeModel) { Text("Download ${m.sizeBytes / 1_000_000} MB") }
         }
 
-        ToggleRow("Beech mein bolkar rokna (barge-in) — headphone aur Deepgram key ke saath hi chalta hai", s.bargeIn, viewModel::setBargeIn)
+        ToggleRow("Beech mein bolkar rokna (barge-in) — \"ruko\" ya naya sawaal bolte hi chup hokar sunegi (Deepgram key chahiye)", s.bargeIn, viewModel::setBargeIn)
+        if (s.bargeIn) ToggleRow("Loudspeaker par bhi (test) — headphone ke bina; zor se boliye. Apni hi awaaz se ruke to ise band kar dijiye", s.bargeInSpeaker, viewModel::setBargeInSpeaker)
         Text(
             "Screen lock par sunne ke liye: phone Settings → Apps → Seema AI → Battery → \"Unrestricted\" karein. Mic chalu rehne par notification aur green dot dikhega.",
             style = MaterialTheme.typography.bodySmall, color = TextSecondary,

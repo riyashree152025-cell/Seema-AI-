@@ -809,6 +809,7 @@ class AssistantEngineTest {
     private fun TestScope.engineWith(
         bargeIn: BargeIn, transcriber: Transcriber?, vararg replies: AiResult<String>,
         mode: ConversationMode = EchoCancelled,
+        headphones: Boolean = true,
     ): AssistantEngine {
         provider = FakeProvider(ArrayDeque(replies.toList()))
         return AssistantEngine(
@@ -816,8 +817,66 @@ class AssistantEngineTest {
             providerFor = { _, _ -> provider }, searchFor = { search },
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
-            bargeIn = bargeIn, transcriber = transcriber, conversationMode = mode,
+            bargeIn = bargeIn, transcriber = transcriber, conversationMode = mode, headphones = { headphones },
         )
+    }
+
+    /** The loudspeaker: no headphones and no call-style audio (her voice stays on the speaker). */
+    private object OnLoudspeaker : ConversationMode {
+        override val active = false
+        override fun enter() {}
+        override fun exit() {}
+    }
+
+    @Test
+    fun onTheLoudspeakerANewQuestionStopsHerToo() = runTest {
+        val e = engineWith(
+            InstantBargeIn(), FakeTranscriber("Delhi ka mausam batao"),
+            AiResult.Success("Bahut lamba jawab hai."), AiResult.Success("Delhi mein dhoop hai."),
+            mode = OnLoudspeaker, headphones = false,
+        )
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals("Delhi mein dhoop hai.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals(2, provider.calls.size)
+    }
+
+    @Test
+    fun onTheLoudspeakerHerOwnWordsComingBackDoNotStopHer() = runTest {
+        // The "interruption" was only her own voice ("lamba jawab") in the microphone: she carries on.
+        val e = engineWith(
+            InstantBargeIn(), FakeTranscriber("lamba jawab"), AiResult.Success("Bahut lamba jawab hai. Aur bhi baatein hain."),
+            mode = OnLoudspeaker, headphones = false,
+        )
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals(1, provider.calls.size) // no new question was asked
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Aur bhi baatein hain."))
+        assertTrue(e.transcript.value.none { it.role == ChatRole.USER && it.text == "lamba jawab" })
+    }
+
+    @Test
+    fun onTheLoudspeakerABengaliStopGetsABengaliAnswer() = runTest {
+        val e = engineWith(InstantBargeIn(), FakeTranscriber("থামো"), AiResult.Success("Bahut lamba jawab hai."), mode = OnLoudspeaker, headphones = false)
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals("হ্যাঁ, বলুন?", speaker.spoken.last())
+        assertEquals(AssistantState.Listening, e.state.value)
+    }
+
+    @Test
+    fun withLoudspeakerBargeInOffSheIsNotInterruptedWithoutHeadphones() = runTest {
+        settings.value = settings.value.copy(bargeInSpeaker = false)
+        val bargeIn = InstantBargeIn()
+        val e = engineWith(bargeIn, FakeTranscriber("ruko"), AiResult.Success("Bahut lamba jawab hai."), mode = OnLoudspeaker, headphones = false)
+        e.startHandsFree()
+        voice.onResult!!("kuch batao")
+        settle()
+        assertEquals(0, bargeIn.starts) // the microphone was not watched while she spoke
+        assertEquals("Bahut lamba jawab hai.", speaker.spoken.last())
     }
 
     @Test

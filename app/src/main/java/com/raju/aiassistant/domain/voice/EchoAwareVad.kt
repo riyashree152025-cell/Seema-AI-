@@ -114,11 +114,16 @@ class EchoAwareVad(
     }
 }
 
-/** Short phrases that mean "stop talking" (Hindi, Hinglish, English). */
+/** Short phrases that mean "stop talking" (Hindi, Hinglish, English, Bengali). */
 private val STOP_PHRASES = listOf(
     "ruko", "ruk", "rukiye", "ruk jao", "rukja", "bas", "bas karo", "stop", "chup", "chup raho", "shant",
     "wait", "ek minute", "ek second", "hold on", "enough", "thamo", "theek hai bas",
     "रुको", "रुक", "रुकिए", "रुक जाओ", "बस", "बस करो", "चुप", "चुप रहो", "ठहरो", "एक मिनट", "स्टॉप",
+    "ruko ruko", "ruk ja", "stop it", "hold on", "one second", "one minute", "be quiet", "shut up", "quiet",
+    "रुको रुको", "रुक जा", "ठहरिए", "एक सेकंड", "शांत",
+    // Bengali (Bengali script and Latin).
+    "থামো", "থামুন", "থাম", "থামো থামো", "চুপ", "চুপ করো", "চুপ করুন", "দাঁড়াও", "দাঁড়ান", "এক মিনিট",
+    "এক সেকেন্ড", "ব্যস", "আর না", "স্টপ", "thamun", "chup koro", "darao", "ek minit",
 )
 
 /** True when a short utterance is just a request to stop talking, not a new question. */
@@ -148,3 +153,23 @@ fun stripEcho(heard: String, spoken: String): String {
     if (best == words.size) return ""
     return heard.substring(words[best].range.first).trim()
 }
+
+/**
+ * On the loudspeaker the recording of an "interruption" can be only Seema's own voice coming back. True
+ * when every word heard is one she was just saying (up to 4 words): then it was her echo, not the user,
+ * and she carries on. With headphones there is no echo, so this is not used there.
+ */
+fun isLikelyOwnEcho(heard: String, spoken: String): Boolean {
+    val own = WORD.findAll(spoken.lowercase()).map { it.value }.toSet()
+    val words = WORD.findAll(heard.lowercase()).map { it.value }.toList()
+    if (words.isEmpty()) return true
+    return words.size <= 4 && words.all { it in own }
+}
+
+/**
+ * The detector for the loudspeaker: Seema's voice is loud in the microphone there, so the user has to be
+ * clearly louder than her predicted echo for longer before it counts. Fewer false stops; the user may
+ * need to speak up. (Headphones use the default, more sensitive [EchoAwareVad].)
+ */
+fun speakerEchoAwareVad(): EchoAwareVad = EchoAwareVad(ratio = 2.2, needFrames = 10, minLevel = 700.0)
+

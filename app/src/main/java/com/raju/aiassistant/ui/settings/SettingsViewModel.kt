@@ -397,6 +397,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
     fun setPersonality(v: Personality) = launch { repo.setPersonality(v) }
     fun setBargeIn(v: Boolean) = launch { repo.setBargeIn(v) }
+    fun setBargeInSpeaker(v: Boolean) = launch { repo.setBargeInSpeaker(v) }
 
     // ---------------------------------------------------------------- offline wake word "Hey Seema"
     val wakeModel = com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL
