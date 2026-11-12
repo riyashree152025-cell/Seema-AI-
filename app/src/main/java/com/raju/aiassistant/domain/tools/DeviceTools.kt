@@ -46,6 +46,9 @@ interface DeviceTools {
     fun addReminder(atMillis: Long, text: String): ToolOutcome = ToolOutcome.Failed("Reminders are not supported here.")
     fun listReminders(): List<com.raju.aiassistant.domain.reminder.Reminder> = emptyList()
     /** The calendar entries of today (+[dayOffset] days). */
+    /** The phone's SMS inbox since [sinceMillis] (read on the phone only). */
+    fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox =
+        com.raju.aiassistant.domain.sms.SmsInbox.Failed("Reading SMS is not supported here.")
     fun calendarEvents(dayOffset: Int): com.raju.aiassistant.domain.calendar.CalendarLookup =
         com.raju.aiassistant.domain.calendar.CalendarLookup.Failed("Calendar is not supported here.")
     /** Removes the newest reminder ([all] false) or every reminder. Done message carries the count. */

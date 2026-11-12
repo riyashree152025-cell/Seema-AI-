@@ -394,6 +394,29 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return ToolOutcome.Done("Reminder set." + if (exact) "" else " " + com.raju.aiassistant.domain.tools.TATKAL_INEXACT)
     }
 
+    override fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox {
+        if (!granted(Manifest.permission.READ_SMS)) {
+            return com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission(
+                Manifest.permission.READ_SMS,
+                "पैसा आया या नहीं, यह बैंक के SMS में देखने के लिए SMS पढ़ने की अनुमति चाहिए। SMS फ़ोन पर ही पढ़े जाते हैं, कहीं भेजे नहीं जाते।",
+            )
+        }
+        return runCatching {
+            val out = mutableListOf<com.raju.aiassistant.domain.sms.SmsMessage>()
+            context.contentResolver.query(
+                android.provider.Telephony.Sms.Inbox.CONTENT_URI,
+                arrayOf(android.provider.Telephony.Sms.ADDRESS, android.provider.Telephony.Sms.BODY, android.provider.Telephony.Sms.DATE),
+                "${android.provider.Telephony.Sms.DATE} >= ?", arrayOf(sinceMillis.toString()),
+                "${android.provider.Telephony.Sms.DATE} DESC",
+            )?.use { c ->
+                while (c.moveToNext() && out.size < MAX_SMS_SCANNED) {
+                    out += com.raju.aiassistant.domain.sms.SmsMessage(c.getString(0).orEmpty(), c.getString(1).orEmpty(), c.getLong(2))
+                }
+            }
+            com.raju.aiassistant.domain.sms.SmsInbox.Messages(out)
+        }.getOrElse { com.raju.aiassistant.domain.sms.SmsInbox.Failed("SMS पढ़े नहीं जा सके।") }
+    }
+
     override fun calendarEvents(dayOffset: Int): com.raju.aiassistant.domain.calendar.CalendarLookup {
         if (!granted(Manifest.permission.READ_CALENDAR)) {
             return com.raju.aiassistant.domain.calendar.CalendarLookup.NeedsPermission(Manifest.permission.READ_CALENDAR, "Calendar padhne ki anumati chahiye.")
@@ -877,6 +900,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     private companion object {
+        const val MAX_SMS_SCANNED = 3_000
         const val MAPS_PKG = "com.google.android.apps.maps"
         const val BACKGROUND_BLOCKED = "सीमा पीछे से (दूसरे ऐप के ऊपर) स्क्रीन नहीं खोल सकती। Settings → Accessibility में Seema AI चालू कीजिए, या सीमा की स्क्रीन खोलकर फिर बोलिए।"
     }

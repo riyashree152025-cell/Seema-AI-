@@ -81,6 +81,9 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        var sms: List<com.raju.aiassistant.domain.sms.SmsMessage> = emptyList()
+        var smsSince = -1L
+        override fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox { smsSince = sinceMillis; return com.raju.aiassistant.domain.sms.SmsInbox.Messages(sms) }
         val shared = mutableListOf<Pair<String, String>>()
         override fun shareTextFile(name: String, content: String): ToolOutcome { shared += name to content; return ToolOutcome.Done("ready") }
         val speakerCalls = mutableListOf<Boolean>()
@@ -165,7 +168,8 @@ class AssistantEngineTest {
 
     // The engine tests were written for tap-to-talk; tests for the other modes set them explicitly.
     // The hybrid brain has its own tests below; the rest test the chosen provider and its fallback.
-    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK, hybridBrain = false))
+    // "Hey Seema se hi shuru" (on in the app) has its own tests below; the older tests check the other modes.
+    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK, hybridBrain = false, wakeToStart = false))
     private val store = Store()
     private val speaker = FakeSpeaker()
     private val voice = FakeVoice()
@@ -616,6 +620,20 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aRefundIsCheckedInTheBankSmsOnThePhone() = runTest {
+        tools.sms = listOf(
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.3,750.75 debited from a/c XX1234 to IRCTC", 1_000L),
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Refund of Rs.3,750.75 credited to your a/c XX1234", 2_000L),
+        )
+        val e = engine()
+        e.submit("सीमा 3750.75 का रिफंड आया कि नहीं चेक करो", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("हाँ, ₹3,750.75 आपके खाते में आ गए हैं"))
+        assertTrue(provider.calls.isEmpty()) // no SMS text ever goes to the AI
+        assertTrue(e.transcript.value.none { it.text.contains("XX1234") }) // the bank message itself is not repeated
+    }
+
+    @Test
     fun aBookingNoteIsAskedForStepByStepAndSavedAsAFile() = runTest {
         // A real clock: the note's "today" (and so the birth-year check) comes from it.
         provider = FakeProvider(ArrayDeque())
@@ -1002,6 +1020,70 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
             transcriber = transcriber, wakeListener = wake,
         )
+    }
+
+    // ---------------------------------------------------------------- "Hey Seema" se hi shuru
+
+    private fun wakeToStartOn() {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS, wakeWord = true, wakeToStart = true)
+    }
+
+    @Test
+    fun openingTheAppAnswersNothingUntilHeySeema() = runTest {
+        wakeToStartOn()
+        val wake = FakeWake()
+        val heard = FakeTranscriber("aaj ka mausam batao") // someone talking, no name
+        val e = sleepyEngine(wake, heard, AiResult.Success("Dhoop hai."))
+        e.startHandsFree() // the app opens
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertEquals(0, voice.starts) // the recogniser is not listening for questions
+        now = 10_000
+        wake.onUtterance!!(speech(amplitude = 5_000))
+        settle()
+        assertTrue(provider.calls.isEmpty()) // not answered without her name
+        assertTrue(e.transcript.value.none { it.role == ChatRole.USER })
+        assertEquals(AssistantState.Sleeping, e.state.value)
+    }
+
+    @Test
+    fun afterHeySeemaTheConversationGoesOnWithoutTheName() = runTest {
+        wakeToStartOn()
+        val wake = FakeWake()
+        val heard = FakeTranscriber("Seema, time batao")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Das baj rahe hain."), AiResult.Success("Kal dhoop rahegi."))
+        e.startHandsFree()
+        now = 5_000
+        wake.onUtterance!!(speech(amplitude = 5_000))
+        settle()
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time batao" })
+        // She listens again after her answer: the next question needs no name.
+        assertEquals(AssistantState.Listening, e.state.value)
+        voice.onResult!!("aur kal ka mausam?")
+        settle()
+        assertEquals(2, provider.calls.size)
+        assertEquals("Kal dhoop rahegi.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+    }
+
+    @Test
+    fun quietForTheSleepTimeNeedsTheNameAgain() = runTest {
+        wakeToStartOn()
+        val wake = FakeWake()
+        val heard = FakeTranscriber("Seema, time batao")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Das baj rahe hain."), AiResult.Success("Nahi."))
+        e.startHandsFree()
+        now = 5_000
+        wake.onUtterance!!(speech(amplitude = 5_000))
+        settle()
+        now = 5_000 + 61_000 // a minute of silence
+        voice.onError!!(VoiceError("silence", noSpeech = true))
+        runCurrent()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        heard.text = "aur kuch batao" // no name now
+        now += 10_000
+        wake.onUtterance!!(speech(amplitude = 5_000))
+        settle()
+        assertEquals(1, provider.calls.size) // not answered
     }
 
     @Test

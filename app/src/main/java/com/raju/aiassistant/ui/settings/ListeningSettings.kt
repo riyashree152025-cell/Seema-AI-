@@ -74,6 +74,7 @@ fun ListeningPanel(s: UserSettings, viewModel: SettingsViewModel) {
             ModelState.NotInstalled -> Button(onClick = viewModel::downloadWakeModel) { Text("Download ${m.sizeBytes / 1_000_000} MB") }
         }
 
+        ToggleRow("\"Hey Seema\" se hi shuru — naam bole bina kuch nahi sunegi; phir baatcheet bina naam ke, chup rehne par so jayegi", s.wakeToStart, viewModel::setWakeToStart)
         ToggleRow("Beech mein bolkar rokna (barge-in) — \"ruko\" ya naya sawaal bolte hi chup hokar sunegi (Deepgram key chahiye)", s.bargeIn, viewModel::setBargeIn)
         if (s.bargeIn) ToggleRow("Loudspeaker par bhi (test) — headphone ke bina; zor se boliye. Apni hi awaaz se ruke to ise band kar dijiye", s.bargeInSpeaker, viewModel::setBargeInSpeaker)
         Text(

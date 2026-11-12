@@ -126,6 +126,8 @@ private const val SCREEN_VERIFY_DELAY_MS = 900L
 private const val CALL_START_WAIT_MS = 8_000L
 /** A booking note left unfinished for this long is dropped (the next answer then is a normal question). */
 private const val BOOKING_TIMEOUT_MS = 5 * 60_000L
+/** How far back the bank SMS are searched for a refund. */
+private const val PAYMENT_DAYS = 60
 /** After the phone reports the call, the loudspeaker is switched on (once the dialer has set up its audio). */
 private const val SPEAKER_AFTER_DIAL_MS = 1_200L
 /** Failures where another provider may still answer (not a blocked or empty request). */
@@ -469,6 +471,17 @@ class AssistantEngine(
     fun startHandsFree() {
         handsFree = true
         _handsFreeActive.value = true
+        if (wakeToStart()) {
+            // "Hey Seema" se hi shuru: opening the app (or hands-free) never answers what it hears; she
+            // waits asleep for her name. After it, the conversation goes on without the name until
+            // [sleepDue] (quiet for the "sleep after" time) puts her back to sleep.
+            listenFailures = 0
+            if (settings.value.assistantPaused) return
+            trace("hands-free: waiting for \"Hey Seema\" first")
+            val busy = _state.value == AssistantState.Thinking || _state.value == AssistantState.Speaking || _state.value == AssistantState.Executing
+            if (!asleep && !busy && _pending.value == null && !_voiceSession.value) goToSleep()
+            return
+        }
         listenFailures = 0
         // Opening the app always finds her awake; the sleep timer starts again.
         lastActivityAt = clock()
@@ -535,6 +548,9 @@ class AssistantEngine(
         backgroundGuard?.cancel()
         backgroundGuard = null
     }
+
+    /** Voice is answered only after "Hey Seema" wakes her (and needs a working wake word). */
+    private fun wakeToStart(): Boolean = settings.value.wakeToStart && canSleep()
 
     /** "Hey Seema" standby is possible: wake word on, not switched off, a listener exists. */
     private fun canSleep(): Boolean =
@@ -774,6 +790,17 @@ class AssistantEngine(
         return handsFree && after > 0 && _pending.value == null && clock() - lastActivityAt >= after * 1_000L
     }
 
+    /**
+     * Her name woke her: with "Hey Seema se hi shuru" the conversation now goes on without the name —
+     * she listens again after every reply — until she is quiet for the "sleep after" time.
+     */
+    private fun startWakeSession() {
+        if (!settings.value.wakeToStart) return
+        handsFree = true
+        _handsFreeActive.value = true
+        lastActivityAt = clock()
+    }
+
     /** Quiet for a while: release the recogniser (no beeps, no data) and wait on the phone for her name. */
     private fun goToSleep() {
         voice.stop()
@@ -804,6 +831,7 @@ class AssistantEngine(
             // The offline detector heard "Hey Seema" on the phone itself: wake and listen.
             trace("wake word (offline)")
             onWake()
+            startWakeSession()
             wakeUp(greet = true)
             return
         }
@@ -853,9 +881,10 @@ class AssistantEngine(
             trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")
             when {
                 request == null -> Unit // someone else talking, TV, noise: keep sleeping (still listening)
-                request.isBlank() -> { onWake(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
+                request.isBlank() -> { onWake(); startWakeSession(); wakeUp(greet = true) } // "Seema?" → "Haan ji, boliye?"
                 else -> {
                     onWake()
+                    startWakeSession()
                     // "Seema, kal ka mausam batao": wake and answer straight away.
                     leaveSleep()
                     _voiceSession.value = true
@@ -1498,6 +1527,11 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 pnrStatus(action, speak)
             }
+            is AssistantAction.PaymentCheck -> {
+                trace("offline command: payment check")
+                _state.value = AssistantState.Executing
+                paymentCheck(action, speak)
+            }
             is AssistantAction.BookingNoteStart -> {
                 trace("offline command: booking note")
                 _state.value = AssistantState.Executing
@@ -2087,6 +2121,7 @@ class AssistantEngine(
             }
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
+            is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
             is AssistantAction.TrainsBetween -> trainsBetween(action, speak)
             is AssistantAction.TrainLive -> trainLive(action, speak)
@@ -2102,6 +2137,27 @@ class AssistantEngine(
 
     // ---- Railway answers: read from the rail service by the app itself, word for word. The AI adds
     // nothing to them, so no train number, time, status or fare is ever a guess.
+
+    /** Looks for the amount in the bank SMS of the last [PAYMENT_DAYS] days, on the phone; no SMS text leaves it. */
+    private suspend fun paymentCheck(action: AssistantAction.PaymentCheck, speak: Boolean) {
+        val since = clock() - PAYMENT_DAYS * 24L * 3_600_000L
+        var inbox = tools.smsInbox(since)
+        if (inbox is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "SMS permission", inbox.reason, permission = inbox.permission))
+            inbox = if (d is Decision.PermissionResult && d.granted) tools.smsInbox(since)
+            else return report(action, ActionStatus.CANCELLED, "SMS permission was denied.")
+        }
+        val text = when (inbox) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
+                val query = com.raju.aiassistant.domain.sms.PaymentQuery(action.amountPaise)
+                trace("payment check: ${inbox.list.size} SMS scanned")
+                com.raju.aiassistant.domain.sms.spokenPaymentAnswer(query, com.raju.aiassistant.domain.sms.findPayments(inbox.list, query), zone(), PAYMENT_DAYS)
+            }
+            is com.raju.aiassistant.domain.sms.SmsInbox.Failed -> return report(action, ActionStatus.FAILED, inbox.message).also { if (speak) say(inbox.message) }
+            is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)
+        }
+        informational(action, text, speak)
+    }
 
     // ---- Booking note: a short conversation that ends in a note (see domain/booking/BookingNote.kt).
 

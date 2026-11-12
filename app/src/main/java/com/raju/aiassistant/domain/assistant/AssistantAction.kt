@@ -175,6 +175,10 @@ sealed interface AssistantAction {
     data class PnrStatus(val pnr: String) : AssistantAction {
         override val label get() = if (pnr.isBlank()) "PNR status (upcoming journeys)" else "PNR status: $pnr"
     }
+    /** "3750.75 ka refund aaya?": the amount looked up in the bank SMS on the phone. */
+    data class PaymentCheck(val amountPaise: Long) : AssistantAction {
+        override val label get() = "Payment check: ₹${com.raju.aiassistant.domain.sms.rupees(amountPaise)}"
+    }
     /** "Booking note": Seema asks step by step and writes the note (a file to save or share). */
     data object BookingNoteStart : AssistantAction {
         override val label get() = "Booking note"
