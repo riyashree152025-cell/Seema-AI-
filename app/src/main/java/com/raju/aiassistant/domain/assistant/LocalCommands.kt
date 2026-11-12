@@ -25,6 +25,7 @@ object LocalCommands {
         typeOnScreen(text)?.let { return it }
         if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
         com.raju.aiassistant.domain.sms.parsePaymentQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.PaymentCheck(it.amountPaise) }
+        com.raju.aiassistant.domain.sms.parseInboxQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.InboxCheck(it.period, it.kind) }
         if (com.raju.aiassistant.domain.memory.isHeadsUpQuestion(withoutLeadingFillers(text))) return AssistantAction.HeadsUp
         com.raju.aiassistant.domain.memory.parsePersonQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.PersonBrief(it) }
         // "Hey Seema, Rahul se 500 mile": the name and polite words in front are not part of the client's name.

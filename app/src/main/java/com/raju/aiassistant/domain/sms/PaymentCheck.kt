@@ -69,17 +69,37 @@ fun findPayments(messages: List<SmsMessage>, query: PaymentQuery): List<PaymentH
         val body = asciiDigits(m.body)
         val has = AMOUNT_IN_SMS.findAll(body).any { toPaise(it.groupValues[1]) == query.amountPaise }
         if (!has) return@mapNotNull null
-        val credit = CREDIT.containsMatchIn(body)
-        val debit = DEBIT.containsMatchIn(body)
-        when {
-            credit && !debit -> PaymentHit(m, MoneyDirection.CREDIT)
-            // "Refund of Rs X debited earlier is credited": a refund word wins over "debited".
-            credit && Regex("refund|reversed|reversal|रिफंड", RegexOption.IGNORE_CASE).containsMatchIn(body) -> PaymentHit(m, MoneyDirection.CREDIT)
-            debit -> PaymentHit(m, MoneyDirection.DEBIT)
-            else -> null
-        }
+        directionOf(body)?.let { PaymentHit(m, it) }
     }
     .sortedByDescending { it.message.atMillis }
+
+private val REFUND_WORD = Regex("refund|reversed|reversal|रिफंड", RegexOption.IGNORE_CASE)
+
+/** Money in or out by the bank's words; null for a message that is neither. */
+internal fun directionOf(body: String): MoneyDirection? {
+    val credit = CREDIT.containsMatchIn(body)
+    val debit = DEBIT.containsMatchIn(body)
+    return when {
+        credit && !debit -> MoneyDirection.CREDIT
+        // "Refund of Rs X debited earlier is credited": a refund word wins over "debited".
+        credit && REFUND_WORD.containsMatchIn(body) -> MoneyDirection.CREDIT
+        // "Rs 500 debited from a/c ..., credited to VPA shop@upi" is money going out.
+        debit -> MoneyDirection.DEBIT
+        else -> null
+    }
+}
+
+internal fun isOtp(body: String): Boolean = OTP.containsMatchIn(body)
+
+/** The transaction amount of a bank SMS in paise: the first amount that is not the balance or a limit. */
+internal fun transactionPaise(body: String): Long? = AMOUNT_IN_SMS.findAll(body).firstOrNull { m ->
+    val before = body.substring((m.range.first - 14).coerceAtLeast(0), m.range.first).lowercase()
+    !Regex("bal|limit|बैलेंस|शेष").containsMatchIn(before)
+}?.let { toPaise(it.groupValues[1]) }
+
+internal fun asciiDigitsOf(s: String): String = asciiDigits(s)
+
+internal val HINDI_MONTHS get() = MONTHS
 
 /** "3,750.75" for speaking and showing (Indian grouping). */
 fun rupees(paise: Long): String {

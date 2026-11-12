@@ -187,6 +187,10 @@ sealed interface AssistantAction {
     data class PaymentCheck(val amountPaise: Long) : AssistantAction {
         override val label get() = "Payment check: ₹${com.raju.aiassistant.domain.sms.rupees(amountPaise)}"
     }
+    /** "Inbox check karo, credit wale kitne message aaye": the phone's SMS counted, with bank totals. */
+    data class InboxCheck(val period: com.raju.aiassistant.domain.sms.InboxPeriod, val kind: com.raju.aiassistant.domain.sms.InboxKind) : AssistantAction {
+        override val label get() = "SMS inbox"
+    }
     /** "Booking note": Seema asks step by step and writes the note (a file to save or share). */
     data object BookingNoteStart : AssistantAction {
         override val label get() = "Booking note"

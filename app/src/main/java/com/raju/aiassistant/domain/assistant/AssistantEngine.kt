@@ -1558,6 +1558,11 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 paymentCheck(action, speak)
             }
+            is AssistantAction.InboxCheck -> {
+                trace("offline command: inbox check")
+                _state.value = AssistantState.Executing
+                inboxCheck(action, speak)
+            }
             is AssistantAction.BookingNoteStart -> {
                 trace("offline command: booking note")
                 _state.value = AssistantState.Executing
@@ -2198,6 +2203,7 @@ class AssistantEngine(
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
+            is AssistantAction.InboxCheck -> inboxCheck(action, speak)
             is AssistantAction.PersonBrief -> { personBrief(action, speak) }
             AssistantAction.HeadsUp -> headsUpNow(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
@@ -2247,17 +2253,41 @@ class AssistantEngine(
     /** Looks for the amount in the bank SMS of the last [PAYMENT_DAYS] days, on the phone; no SMS text leaves it. */
     private suspend fun paymentCheck(action: AssistantAction.PaymentCheck, speak: Boolean) {
         val since = clock() - PAYMENT_DAYS * 24L * 3_600_000L
-        var inbox = tools.smsInbox(since)
-        if (inbox is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission) {
-            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "SMS permission", inbox.reason, permission = inbox.permission))
-            inbox = if (d is Decision.PermissionResult && d.granted) tools.smsInbox(since)
-            else return report(action, ActionStatus.CANCELLED, "SMS permission was denied.")
-        }
+        val inbox = readSmsInbox(action, since) ?: return
         val text = when (inbox) {
             is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
                 val query = com.raju.aiassistant.domain.sms.PaymentQuery(action.amountPaise)
                 trace("payment check: ${inbox.list.size} SMS scanned")
                 com.raju.aiassistant.domain.sms.spokenPaymentAnswer(query, com.raju.aiassistant.domain.sms.findPayments(inbox.list, query), zone(), PAYMENT_DAYS)
+            }
+            is com.raju.aiassistant.domain.sms.SmsInbox.Failed -> return report(action, ActionStatus.FAILED, inbox.message).also { if (speak) say(inbox.message) }
+            is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)
+        }
+        informational(action, text, speak)
+    }
+
+    /** The SMS since [since], asking for the permission first when needed; null after a refusal (already reported). */
+    private suspend fun readSmsInbox(action: AssistantAction, since: Long): com.raju.aiassistant.domain.sms.SmsInbox? {
+        var inbox = tools.smsInbox(since)
+        if (inbox is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "SMS permission", inbox.reason, permission = inbox.permission))
+            inbox = if (d is Decision.PermissionResult && d.granted) tools.smsInbox(since)
+            else { report(action, ActionStatus.CANCELLED, "SMS permission was denied."); return null }
+        }
+        return inbox
+    }
+
+    /** Counts the phone's SMS and the bank's credits / debits for the asked period; nothing leaves the phone. */
+    private suspend fun inboxCheck(action: AssistantAction.InboxCheck, speak: Boolean) {
+        val z = zone()
+        val today = today()
+        val since = com.raju.aiassistant.domain.sms.inboxSince(action.period, today, z)
+        val inbox = readSmsInbox(action, since) ?: return
+        val text = when (inbox) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
+                val q = com.raju.aiassistant.domain.sms.InboxQuery(action.period, action.kind)
+                trace("inbox check: ${inbox.list.size} SMS scanned")
+                com.raju.aiassistant.domain.sms.spokenInboxAnswer(q, com.raju.aiassistant.domain.sms.summarizeInbox(inbox.list, q, today, z), z)
             }
             is com.raju.aiassistant.domain.sms.SmsInbox.Failed -> return report(action, ActionStatus.FAILED, inbox.message).also { if (speak) say(inbox.message) }
             is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)

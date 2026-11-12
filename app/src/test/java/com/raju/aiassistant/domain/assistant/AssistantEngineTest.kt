@@ -691,6 +691,21 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun anInboxQuestionWithoutAnAmountIsAnsweredOnThePhoneNotByTheAi() = runTest {
+        tools.inboxSms = listOf(
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.3,750.75 credited to your a/c XX1234", 2_000L),
+            com.raju.aiassistant.domain.sms.SmsMessage("VM-HDFCBK", "Rs 1,200 received in your a/c XX99", 1_000L),
+        )
+        val e = engine()
+        e.submit("Mobile का message का inbox check करो. Credit वाला कितना message आया है वह बताओ.", fromVoice = true)
+        settle()
+        val answer = e.transcript.value.last { it.role == ChatRole.SYSTEM || it.role == ChatRole.ASSISTANT }.text
+        assertTrue(answer, answer.contains("पैसे जमा होने के 2 संदेश आए, कुल ₹4,950.75"))
+        assertTrue(provider.calls.isEmpty()) // no SMS text ever goes to the AI
+        assertTrue(e.transcript.value.none { it.text.contains("XX1234") })
+    }
+
+    @Test
     fun aBookingNoteIsAskedForStepByStepAndSavedAsAFile() = runTest {
         // A real clock: the note's "today" (and so the birth-year check) comes from it.
         provider = FakeProvider(ArrayDeque())
