@@ -75,6 +75,8 @@ fun VisionScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var ticket by remember { mutableStateOf<com.raju.aiassistant.domain.vision.TicketScan?>(null) }
+    var bill by remember { mutableStateOf<com.raju.aiassistant.domain.vision.BillScan?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_IMAGES)) { uris ->
         if (uris.isNotEmpty()) scope.launch {
@@ -116,6 +118,23 @@ fun VisionScreen(onBack: () -> Unit) {
                     if (list.isEmpty()) error = "इस photo से नाम और जन्म का साल साफ़ नहीं पढ़ा गया — साफ़ photo चुनिए, या नाम और साल बोल दीजिए।"
                     else container.engine.showPassengers(list)
                 }
+                is AiResult.Failure -> error = r.message
+            }
+            busy = false
+        }
+    }
+
+    // Ticket → PNR diary, bill → expense: the model copies fixed lines, the app checks them, the user confirms.
+    fun scan(prompt: String, onText: (String) -> Unit) {
+        if (busy || images.isEmpty()) return
+        busy = true; answer = null; error = null
+        scope.launch {
+            val r = container.askAboutImages(
+                images.map { it.jpeg }, prompt,
+                "You copy printed details from a document photo into fixed lines. Copy only what is printed; never guess a number, a date or a name.",
+            )
+            when (r) {
+                is AiResult.Success -> onText(r.value)
                 is AiResult.Failure -> error = r.message
             }
             busy = false
@@ -168,6 +187,18 @@ fun VisionScreen(onBack: () -> Unit) {
                 Text(if (images.size >= 2) "Photo की तुलना करो" else "तुलना के लिए 2 photo चुनिए")
             }
             OutlinedButton(onClick = { readPassengers() }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("ID से यात्री कार्ड (नाम, उम्र)") }
+            OutlinedButton(onClick = {
+                scan(com.raju.aiassistant.domain.vision.TICKET_PROMPT) { text ->
+                    ticket = com.raju.aiassistant.domain.vision.parseTicketScan(text)
+                    if (ticket == null) error = "टिकट में PNR (10 अंक) या यात्रा की तारीख साफ़ नहीं पढ़ी गई — साफ़ photo चुनिए। कुछ सेव नहीं किया।"
+                }
+            }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("टिकट → PNR diary में जोड़ो") }
+            OutlinedButton(onClick = {
+                scan(com.raju.aiassistant.domain.vision.BILL_PROMPT) { text ->
+                    bill = com.raju.aiassistant.domain.vision.parseBillScan(text)
+                    if (bill == null) error = "बिल का कुल (Total) साफ़ नहीं पढ़ा गया — साफ़ photo चुनिए। कुछ सेव नहीं किया।"
+                }
+            }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("बिल → खर्च में जोड़ो") }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
 
@@ -181,6 +212,57 @@ fun VisionScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    ticket?.let { t ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ticket = null },
+            title = { Text("PNR diary में जोड़ें?") },
+            text = {
+                Text(
+                    listOfNotNull(
+                        "PNR: ${t.pnr}", "तारीख: ${t.date.dayOfMonth}/${t.date.monthValue}/${t.date.year}",
+                        t.train?.let { "Train: $it" }, t.toJourney().route?.let { "Route: $it" }, t.passenger?.let { "यात्री: $it" },
+                    ).joinToString("\n") + "\n\nphoto से पढ़ा है — एक बार मिला लीजिए।",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ticket = null
+                    scope.launch {
+                        runCatching { container.businessRepository.saveJourney(t.toJourney()) }
+                            .onSuccess { answer = "PNR ${t.pnr} diary में जुड़ गया (${t.date.dayOfMonth}/${t.date.monthValue})।" }
+                            .onFailure { error = "PNR diary में सेव नहीं हो पाया।" }
+                    }
+                }) { Text("जोड़ें") }
+            },
+            dismissButton = { TextButton(onClick = { ticket = null }) { Text("रहने दें") } },
+        )
+    }
+    bill?.let { b ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { bill = null },
+            title = { Text("खर्च में जोड़ें?") },
+            text = {
+                Text(
+                    listOfNotNull(
+                        "रकम: ${com.raju.aiassistant.domain.business.formatRupees(b.amountPaise)}",
+                        b.shop?.let { "दुकान: $it" }, b.date?.let { "बिल की तारीख: ${it.dayOfMonth}/${it.monthValue}/${it.year}" },
+                    ).joinToString("\n") + "\n\nखर्च आज की तारीख में जुड़ेगा। photo से पढ़ा है — रकम मिला लीजिए।",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    bill = null
+                    scope.launch {
+                        runCatching { container.businessRepository.addExpense(b.amountPaise, b.shop ?: "Bill (photo)", com.raju.aiassistant.domain.business.normalizeCategory("bill")) }
+                            .onSuccess { answer = "${com.raju.aiassistant.domain.business.formatRupees(b.amountPaise)} खर्च में जुड़ गया।" }
+                            .onFailure { error = "खर्च सेव नहीं हो पाया।" }
+                    }
+                }) { Text("जोड़ें") }
+            },
+            dismissButton = { TextButton(onClick = { bill = null }) { Text("रहने दें") } },
+        )
     }
 }
 
