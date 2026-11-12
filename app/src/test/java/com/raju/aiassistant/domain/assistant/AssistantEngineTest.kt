@@ -81,9 +81,9 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
-        var sms: List<com.raju.aiassistant.domain.sms.SmsMessage> = emptyList()
+        var inboxSms: List<com.raju.aiassistant.domain.sms.SmsMessage> = emptyList()
         var smsSince = -1L
-        override fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox { smsSince = sinceMillis; return com.raju.aiassistant.domain.sms.SmsInbox.Messages(sms) }
+        override fun smsInbox(sinceMillis: Long): com.raju.aiassistant.domain.sms.SmsInbox { smsSince = sinceMillis; return com.raju.aiassistant.domain.sms.SmsInbox.Messages(inboxSms) }
         val shared = mutableListOf<Pair<String, String>>()
         override fun shareTextFile(name: String, content: String): ToolOutcome { shared += name to content; return ToolOutcome.Done("ready") }
         val speakerCalls = mutableListOf<Boolean>()
@@ -621,7 +621,7 @@ class AssistantEngineTest {
 
     @Test
     fun aRefundIsCheckedInTheBankSmsOnThePhone() = runTest {
-        tools.sms = listOf(
+        tools.inboxSms = listOf(
             com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.3,750.75 debited from a/c XX1234 to IRCTC", 1_000L),
             com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Refund of Rs.3,750.75 credited to your a/c XX1234", 2_000L),
         )
