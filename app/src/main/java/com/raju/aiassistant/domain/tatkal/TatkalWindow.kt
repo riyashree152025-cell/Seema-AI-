@@ -33,10 +33,10 @@ private val MONTHS = listOf("जनवरी", "फरवरी", "मार्�
 fun tatkalCountdown(w: TatkalWindow, now: LocalDateTime): String {
     val clock = "%02d:%02d".format(w.opensAt.hour, w.opensAt.minute)
     if (!now.isBefore(w.opensAt)) return "खुल चुका है ($clock से)"
-    val left = Duration.between(now, w.opensAt)
-    val h = left.toHours()
-    val m = left.toMinutesPart() + if (left.toSecondsPart() > 0) 1 else 0
-    val (hh, mm) = if (m == 60) (h + 1) to 0L else h to m.toLong()
+    // Whole minutes left, rounded up (plain arithmetic: Duration's *Part() calls need Android 12).
+    val minutes = (Duration.between(now, w.opensAt).seconds + 59) / 60
+    val hh = minutes / 60
+    val mm = minutes % 60
     val parts = listOfNotNull(
         if (hh > 0) "$hh घंटे" else null,
         if (mm > 0 || hh == 0L) "$mm मिनट" else null,
