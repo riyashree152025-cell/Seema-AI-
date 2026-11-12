@@ -1,6 +1,7 @@
 package com.raju.aiassistant.data.repository
 
 import com.raju.aiassistant.data.db.BusinessDao
+import kotlinx.coroutines.flow.first
 import com.raju.aiassistant.data.db.ClientEntity
 import com.raju.aiassistant.data.db.ExpenseEntity
 import com.raju.aiassistant.data.db.JourneyEntity
@@ -85,6 +86,9 @@ class BusinessRepository(private val dao: BusinessDao, private val clock: () -> 
     }
 
     override suspend fun deleteLedgerEntry(id: Long): Boolean = dao.deleteLedgerEntry(id) > 0
+
+    override suspend fun allBalances(): List<com.raju.aiassistant.domain.ledger.ClientBalance> =
+        ledgerView.first().first
 
     /** Every client with what they owe now, and the newest entry (for the screen and its undo button). */
     val ledgerView: Flow<Pair<List<com.raju.aiassistant.domain.ledger.ClientBalance>, com.raju.aiassistant.domain.ledger.LedgerEntryInfo?>> =

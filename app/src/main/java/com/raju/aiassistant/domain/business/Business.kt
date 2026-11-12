@@ -44,6 +44,8 @@ interface BusinessStore {
     /** The newest udhaar entry, for "aakhri entry hatao". */
     suspend fun lastLedgerEntry(): com.raju.aiassistant.domain.ledger.LedgerEntryInfo? = null
     suspend fun deleteLedgerEntry(id: Long): Boolean = false
+    /** Every client with a khata and what they owe now (for the heads-up and "X ke baare mein batao"). */
+    suspend fun allBalances(): List<com.raju.aiassistant.domain.ledger.ClientBalance> = emptyList()
 }
 
 object NoBusinessStore : BusinessStore {

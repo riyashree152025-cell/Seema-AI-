@@ -44,6 +44,7 @@ object BusinessScheduler {
     private const val MORNING = "morning_briefing"
     private const val WEEKLY = "weekly_expense_report"
     private const val PNR_WATCH = "pnr_watch"
+    private const val EVENING = "evening_heads_up"
 
     fun schedule(context: Context) {
         val wm = WorkManager.getInstance(context)
@@ -52,6 +53,12 @@ object BusinessScheduler {
             MORNING, ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<MorningBriefingWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(delayUntil(now, nextMorning(now)), TimeUnit.MILLISECONDS)
+                .build(),
+        )
+        wm.enqueueUniquePeriodicWork(
+            EVENING, ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<EveningHeadsUpWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(delayUntil(now, nextEvening(now)), TimeUnit.MILLISECONDS)
                 .build(),
         )
         // Upcoming journeys' PNRs every 30 minutes (only when a PNR service is set up; needs internet).
@@ -67,6 +74,12 @@ object BusinessScheduler {
                 .setInitialDelay(delayUntil(now, nextSundayEvening(now)), TimeUnit.MILLISECONDS)
                 .build(),
         )
+    }
+
+    /** 8 PM today, or tomorrow when it is already past. */
+    internal fun nextEvening(now: LocalDateTime): LocalDateTime {
+        val today = now.toLocalDate().atTime(LocalTime.of(20, 0))
+        return if (now.isBefore(today)) today else today.plusDays(1)
     }
 
     internal fun nextMorning(now: LocalDateTime): LocalDateTime {
@@ -91,7 +104,15 @@ class MorningBriefingWorker(context: Context, params: WorkerParameters) : Corout
         val repo = c.businessRepository
         runCatching { repo.pruneOldJourneys(today) }
         val (from, to) = periodRange(Period.YESTERDAY, System.currentTimeMillis(), zone)
-        val text = morningBriefing(today, repo.journeysFrom(today), repo.expensesBetween(from, to)) ?: return Result.success()
+        val zone = ZoneId.systemDefault()
+        // The journeys with the passenger's pending money, the biggest dues and today's reminders, then
+        // yesterday's spending — built on the phone from what the user saved.
+        val ahead = com.raju.aiassistant.domain.memory.headsUp(
+            today, repo.journeysFrom(today), runCatching { repo.allBalances() }.getOrDefault(emptyList()),
+            Reminders.all(applicationContext), zone,
+        )
+        val spent = morningBriefing(today, emptyList(), repo.expensesBetween(from, to))
+        val text = listOfNotNull(ahead, spent).joinToString("\n").ifBlank { return Result.success() }
         BusinessNotifier(applicationContext).show(BusinessNotifier.MORNING_ID, "☀️ Seema: aaj ki briefing", text, LaunchRequest.ACTION_BRIEFING)
         return Result.success()
     }
@@ -127,6 +148,26 @@ class PnrWatchWorker(context: Context, params: WorkerParameters) : CoroutineWork
             BusinessNotifier(applicationContext).show(BusinessNotifier.PNR_ID_BASE + (j.pnr.hashCode() and 0xFF), "🚆 Seema: PNR ${j.pnr}", text, LaunchRequest.ACTION_BRIEFING)
             if (!s.assistantPaused && !s.safetyMode) runCatching { c.speaker.speak(text) }
         }
+        return Result.success()
+    }
+}
+
+/**
+ * 8 PM: tomorrow's journeys, each with what its passenger still owes, so the evening before is enough
+ * time to ask for the money or send the ticket. Silent when there is nothing for tomorrow.
+ */
+class EveningHeadsUpWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val c = (applicationContext as RajuApp).container
+        val s = c.settingsRepository.settings.first()
+        if (!s.businessReminders) return Result.success()
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val text = com.raju.aiassistant.domain.memory.headsUp(
+            today, c.businessRepository.journeysFrom(today.plusDays(1)), runCatching { c.businessRepository.allBalances() }.getOrDefault(emptyList()),
+            emptyList(), ZoneId.systemDefault(), includeTomorrowOnly = true,
+        ) ?: return Result.success()
+        BusinessNotifier(applicationContext).show(BusinessNotifier.EVENING_ID, "🌙 Seema: kal ki taiyari", text, LaunchRequest.ACTION_BRIEFING)
+        if (!s.assistantPaused && !s.safetyMode) runCatching { c.speaker.speak(text) }
         return Result.success()
     }
 }
@@ -184,6 +225,7 @@ class BusinessNotifier(private val context: Context) {
         const val CHANNEL_ID = "business_briefings"
         const val MORNING_ID = 4201
         const val WEEKLY_ID = 4202
+        const val EVENING_ID = 4203
         const val PNR_ID_BASE = 4300
     }
 }

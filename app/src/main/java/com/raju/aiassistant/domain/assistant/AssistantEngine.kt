@@ -52,6 +52,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import com.raju.aiassistant.domain.voice.afterWakeWord
+import com.raju.aiassistant.domain.memory.isEmpty
 import com.raju.aiassistant.domain.voice.isLikelyOwnEcho
 import com.raju.aiassistant.domain.voice.isStopCommand
 import com.raju.aiassistant.domain.voice.stripEcho
@@ -1527,6 +1528,15 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 pnrStatus(action, speak)
             }
+            is AssistantAction.PersonBrief -> {
+                trace("offline command: person brief")
+                // Nothing saved about this name (a place, a film …): a normal question for the AI.
+                if (!personBrief(action, speak)) return false
+            }
+            AssistantAction.HeadsUp -> {
+                trace("offline command: heads-up")
+                headsUpNow(action, speak)
+            }
             is AssistantAction.PaymentCheck -> {
                 trace("offline command: payment check")
                 _state.value = AssistantState.Executing
@@ -2122,6 +2132,8 @@ class AssistantEngine(
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
+            is AssistantAction.PersonBrief -> { personBrief(action, speak) }
+            AssistantAction.HeadsUp -> headsUpNow(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
             is AssistantAction.TrainsBetween -> trainsBetween(action, speak)
             is AssistantAction.TrainLive -> trainLive(action, speak)
@@ -2137,6 +2149,34 @@ class AssistantEngine(
 
     // ---- Railway answers: read from the rail service by the app itself, word for word. The AI adds
     // nothing to them, so no train number, time, status or fare is ever a guess.
+
+    /** Everything saved on the phone about one person, said in one go (nothing goes to the AI). */
+    private suspend fun personBrief(action: AssistantAction.PersonBrief, speak: Boolean): Boolean {
+        val today = today()
+        val facts = com.raju.aiassistant.domain.memory.factsAbout(
+            action.name,
+            runCatching { business.ledgerBalance(action.name) }.getOrNull(),
+            runCatching { business.journeysFrom(today.minusDays(7)) }.getOrDefault(emptyList()),
+            runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()),
+            runCatching { tools.listReminders() }.getOrDefault(emptyList()),
+        )
+        if (facts.isEmpty()) return false
+        informational(action, com.raju.aiassistant.domain.memory.spokenPersonBrief(facts, today, zone()), speak)
+        return true
+    }
+
+    /** Today's and tomorrow's journeys (with pending money), the biggest dues and today's reminders. */
+    private suspend fun headsUpNow(action: AssistantAction, speak: Boolean) {
+        val today = today()
+        val text = com.raju.aiassistant.domain.memory.headsUp(
+            today,
+            runCatching { business.journeysFrom(today) }.getOrDefault(emptyList()),
+            runCatching { business.allBalances() }.getOrDefault(emptyList()),
+            runCatching { tools.listReminders() }.getOrDefault(emptyList()),
+            zone(),
+        ) ?: phrase(lang(), "आज और कल के लिए कुछ खास नहीं है — न यात्रा, न बकाया, न reminder।", "আজ আর কালের জন্য বিশেষ কিছু নেই।")
+        informational(action, text, speak)
+    }
 
     /** Looks for the amount in the bank SMS of the last [PAYMENT_DAYS] days, on the phone; no SMS text leaves it. */
     private suspend fun paymentCheck(action: AssistantAction.PaymentCheck, speak: Boolean) {

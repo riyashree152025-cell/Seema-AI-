@@ -175,6 +175,14 @@ sealed interface AssistantAction {
     data class PnrStatus(val pnr: String) : AssistantAction {
         override val label get() = if (pnr.isBlank()) "PNR status (upcoming journeys)" else "PNR status: $pnr"
     }
+    /** "Rajesh ke baare mein sab batao": khata, journeys, memories and reminders about one person. */
+    data class PersonBrief(val name: String) : AssistantAction {
+        override val label get() = "About $name"
+    }
+    /** "Aaj ki briefing do": today's and tomorrow's journeys, dues and reminders. */
+    data object HeadsUp : AssistantAction {
+        override val label get() = "Briefing"
+    }
     /** "3750.75 ka refund aaya?": the amount looked up in the bank SMS on the phone. */
     data class PaymentCheck(val amountPaise: Long) : AssistantAction {
         override val label get() = "Payment check: ₹${com.raju.aiassistant.domain.sms.rupees(amountPaise)}"

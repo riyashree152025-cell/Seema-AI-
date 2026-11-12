@@ -620,6 +620,27 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun whatIsSavedAboutAPersonIsSaidWithoutTheAi() = runTest {
+        store.mems += Memory(1, "Rajesh ka birthday 5 March", 0)
+        store.mems += Memory(2, "Amit ko chai pasand", 0)
+        val e = engine()
+        e.submit("Rajesh ke baare mein sab batao", fromVoice = true)
+        settle()
+        val answer = e.transcript.value.last().text
+        assertTrue(answer, answer.contains("याद: Rajesh ka birthday 5 March") && !answer.contains("Amit"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aBriefingWithNothingSavedSaysSo() = runTest {
+        val e = engine()
+        e.submit("aaj ki briefing do", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कुछ खास नहीं"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
     fun aRefundIsCheckedInTheBankSmsOnThePhone() = runTest {
         tools.inboxSms = listOf(
             com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.3,750.75 debited from a/c XX1234 to IRCTC", 1_000L),
