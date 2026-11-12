@@ -226,7 +226,11 @@ fun HomeScreen(
 
     )
 
-    val timeProvider = rememberAnimationTime(running = profile.animate, maxFps = profile.maxFps)
+    // Liquid Glass draws more than the eye: while Seema thinks or speaks it runs at 20 fps so the
+    // phone's processor is free for the voice (an offline voice is made on the same processor).
+    val glassBusy = state.homeStyle == "GLASS" &&
+        (assistantState == AssistantState.Thinking || assistantState == AssistantState.Speaking || assistantState == AssistantState.Executing)
+    val timeProvider = rememberAnimationTime(running = profile.animate, maxFps = if (glassBusy) minOf(profile.maxFps, 20) else profile.maxFps)
 
 
 
@@ -321,7 +325,15 @@ fun HomeScreen(
 
                 // Left: Stylish Cybernetic Digital Clock (HH:mm:ss + Date)
 
-                SciFiDigitalClock()
+                val clockContext = androidx.compose.ui.platform.LocalContext.current
+                SciFiDigitalClock(onClick = {
+                    runCatching {
+                        clockContext.startActivity(
+                            android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                })
 
 
 

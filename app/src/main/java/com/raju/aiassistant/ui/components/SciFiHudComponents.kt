@@ -682,6 +682,8 @@ fun SciFiVoiceOrb(
 @Composable
 fun SciFiDigitalClock(
     modifier: Modifier = Modifier,
+    /** Tap on the time (Home: opens the phone's alarms); null = not tappable. */
+    onClick: (() -> Unit)? = null,
 ) {
     var timeText by remember { mutableStateOf("00:00:00") }
     var dateText by remember { mutableStateOf("LIVE HUD") }
@@ -697,10 +699,11 @@ fun SciFiDigitalClock(
         }
     }
 
+    // Plain text, no box (the user's choice): a larger time with the day under it.
     Box(
         modifier = modifier
-            .crystalSurface(shape = CutCornerShape(8.dp), accent = SciFiCyanGlow)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = "Alarm aur clock kholo", onClick = onClick) else Modifier)
+            .padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
         Column {
             Text(
@@ -708,8 +711,9 @@ fun SciFiDigitalClock(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Black,
                     color = Color.White,
-                    fontSize = 15.sp,
-                    letterSpacing = 1.2.sp
+                    fontSize = 18.sp,
+                    letterSpacing = 1.2.sp,
+                    shadow = androidx.compose.ui.graphics.Shadow(SciFiCyanGlow.copy(alpha = 0.6f), blurRadius = 12f),
                 )
             )
             Text(
@@ -717,7 +721,7 @@ fun SciFiDigitalClock(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = SciFiCyanGlow,
-                    fontSize = 9.5.sp,
+                    fontSize = 11.sp,
                     letterSpacing = 0.8.sp
                 )
             )
