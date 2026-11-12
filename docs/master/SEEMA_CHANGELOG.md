@@ -2,6 +2,7 @@
 
 | Commit | Change | Test |
 |---|---|---|
+| (next) | Booking note: "booking note banao" → Seema asks from/to, class (AC asks 3A or 2A), date, passenger name and birth year, then writes a note (text, saved or shared as a file). Passenger ages are this year minus the birth year. Note only: no ticket is booked | BookingNoteTest (pure), engine booking test |
 | (next) | RailKit (api.railkit.in, key in Settings): PNR, trains between stations, live status, seats, fare — spoken from the service's answer only; waiting-ticket chart watch; Tatkal passenger age card (voice or ID photo) with copy buttons | RailKitTest, PassengerAgesTest, engine tests |
 | (next) | Calls: name only (no digits read), "1 नंबर / 2 नंबर" choice, spoken choice dials at once, "लगाओ" = yes, speaker on, "कॉल काटें" notification button; voice lock opens the one-time Activate screen | ContactMatchTest, engine call tests |
 | `5304006` | Ringing call: quick answer (0.6 s cut), keeps listening after a wrong hearing, more words | CallCommandTest, engine test; CI 544 tests |

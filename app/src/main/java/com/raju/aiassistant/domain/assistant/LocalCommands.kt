@@ -23,6 +23,7 @@ object LocalCommands {
         whatsApp(text)?.let { return it }
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
+        if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
         // "Hey Seema, Rahul se 500 mile": the name and polite words in front are not part of the client's name.
         val plain = withoutLeadingFillers(text)
         parseLedger(plain)?.let { return when (it) {

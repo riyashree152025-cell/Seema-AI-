@@ -123,6 +123,8 @@ private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 private const val SCREEN_VERIFY_DELAY_MS = 900L
 /** How long Seema waits for the phone to report that a call she placed has started. */
 private const val CALL_START_WAIT_MS = 8_000L
+/** A booking note left unfinished for this long is dropped (the next answer then is a normal question). */
+private const val BOOKING_TIMEOUT_MS = 5 * 60_000L
 /** After the phone reports the call, the loudspeaker is switched on (once the dialer has set up its audio). */
 private const val SPEAKER_AFTER_DIAL_MS = 1_200L
 /** Failures where another provider may still answer (not a blocked or empty request). */
@@ -367,6 +369,16 @@ class AssistantEngine(
         if (!submitGuard.accept(trimmed, clock())) return
         if (!fromVoice) voice.stop() // typed while listening: don't also take a voice result
         if (fromVoice) { listenFailures = 0; unclearInARow = 0 }
+        // An open booking note takes the answer (a new "booking note" starts it again).
+        if (bookingDraft != null && clock() < bookingUntil && !com.raju.aiassistant.domain.booking.BookingNote.isStart(trimmed)) {
+            followUpUntil = clock() + FOLLOW_UP_MS
+            leaveSleep()
+            lastActivityAt = clock()
+            cancelWork()
+            lastUserText = trimmed
+            job = scope.launch { bookingTurn(trimmed, speak = fromVoice || settings.value.autoSpeakReplies) }
+            return
+        }
         followUpUntil = clock() + FOLLOW_UP_MS
         leaveSleep()
         lastActivityAt = clock()
@@ -1481,6 +1493,11 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 pnrStatus(action, speak)
             }
+            is AssistantAction.BookingNoteStart -> {
+                trace("offline command: booking note")
+                _state.value = AssistantState.Executing
+                startBooking(action, speak)
+            }
             is AssistantAction.PassengerAges -> {
                 trace("offline command: passenger ages")
                 passengerAges(action, speak)
@@ -2056,6 +2073,7 @@ class AssistantEngine(
                 report(action, if (ok) ActionStatus.SUCCESS else ActionStatus.FAILED, if (ok) "PNR ${action.pnr} removed from the diary." else "PNR ${action.pnr} is not in the diary.")
             }
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
+            is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
             is AssistantAction.TrainsBetween -> trainsBetween(action, speak)
             is AssistantAction.TrainLive -> trainLive(action, speak)
@@ -2071,6 +2089,47 @@ class AssistantEngine(
 
     // ---- Railway answers: read from the rail service by the app itself, word for word. The AI adds
     // nothing to them, so no train number, time, status or fare is ever a guess.
+
+    // ---- Booking note: a short conversation that ends in a note (see domain/booking/BookingNote.kt).
+
+    private var bookingDraft: com.raju.aiassistant.domain.booking.BookingDraft? = null
+    private var bookingUntil = 0L
+
+    private suspend fun startBooking(action: AssistantAction, speak: Boolean) {
+        bookingDraft = com.raju.aiassistant.domain.booking.BookingDraft()
+        bookingUntil = clock() + BOOKING_TIMEOUT_MS
+        val msg = phrase(lang(), "ठीक है, बुकिंग नोट बनाती हूँ। कहाँ से? जैसे पुणे।", "ঠিক আছে, বুকিং নোট বানাচ্ছি। কোথা থেকে?")
+        report(action, ActionStatus.SUCCESS, msg)
+        if (speak) say(msg)
+    }
+
+    /** One answer in the open booking note: the next question, or the finished note (saved as a file). */
+    private suspend fun bookingTurn(text: String, speak: Boolean) {
+        val draft = bookingDraft ?: return
+        val action = AssistantAction.BookingNoteStart
+        bookingUntil = clock() + BOOKING_TIMEOUT_MS
+        when (val step = com.raju.aiassistant.domain.booking.BookingNote.step(draft, text, today())) {
+            is com.raju.aiassistant.domain.booking.BookingStep.Ask -> {
+                bookingDraft = step.draft
+                report(action, ActionStatus.SUCCESS, step.prompt)
+                if (speak) say(step.prompt)
+            }
+            is com.raju.aiassistant.domain.booking.BookingStep.Done -> {
+                bookingDraft = null
+                report(action, ActionStatus.SUCCESS, step.note)
+                val saved = tools.shareTextFile(com.raju.aiassistant.domain.booking.BookingNote.fileName(step.draft), step.note)
+                if (saved is ToolOutcome.Failed) report(action, ActionStatus.FAILED, saved.message)
+                if (speak) say(step.spoken)
+            }
+            com.raju.aiassistant.domain.booking.BookingStep.Cancelled -> {
+                bookingDraft = null
+                val msg = phrase(lang(), "ठीक है, बुकिंग नोट रद्द।", "ঠিক আছে, বুকিং নোট বাতিল।")
+                report(action, ActionStatus.CANCELLED, msg)
+                if (speak) say(msg)
+            }
+        }
+        finishTurn()
+    }
 
     /** Tatkal helper: the ages are the app's own subtraction; the card on screen has a copy button for each. */
     private suspend fun passengerAges(action: AssistantAction.PassengerAges, speak: Boolean) {

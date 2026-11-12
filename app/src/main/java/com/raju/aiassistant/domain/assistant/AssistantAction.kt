@@ -175,6 +175,10 @@ sealed interface AssistantAction {
     data class PnrStatus(val pnr: String) : AssistantAction {
         override val label get() = if (pnr.isBlank()) "PNR status (upcoming journeys)" else "PNR status: $pnr"
     }
+    /** "Booking note": Seema asks step by step and writes the note (a file to save or share). */
+    data object BookingNoteStart : AssistantAction {
+        override val label get() = "Booking note"
+    }
     /** Names with birth years, already turned into ages by the app's own sum (shown as a copy card). */
     data class PassengerAges(val passengers: List<com.raju.aiassistant.domain.tatkal.Passenger>) : AssistantAction {
         override val label get() = "Passenger ages (${passengers.size})"

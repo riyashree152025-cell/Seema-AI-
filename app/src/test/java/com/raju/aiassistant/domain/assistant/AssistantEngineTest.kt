@@ -81,6 +81,8 @@ class AssistantEngineTest {
         var ended = 0
         override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
         override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        val shared = mutableListOf<Pair<String, String>>()
+        override fun shareTextFile(name: String, content: String): ToolOutcome { shared += name to content; return ToolOutcome.Done("ready") }
         val speakerCalls = mutableListOf<Boolean>()
         override fun setSpeakerphone(on: Boolean): ToolOutcome { speakerCalls += on; return ToolOutcome.Done("Speaker") }
         val hangUpButtons = mutableListOf<String>()
@@ -606,6 +608,32 @@ class AssistantEngineTest {
         assertEquals(listOf("4512345678"), asked)
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32, confirm") && speaker.spoken.last().contains("Rajdhani")) // brackets are spoken as a pause
         assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aBookingNoteIsAskedForStepByStepAndSavedAsAFile() = runTest {
+        val e = engine()
+        e.submit("booking note banao", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कहाँ से"))
+        e.submit("पुणे से हावड़ा AC कल", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("3A या 2A"))
+        e.submit("3A", fromVoice = true)
+        settle()
+        e.submit("Rajesh Singh", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("जन्म का साल"))
+        e.submit("1986", fromVoice = true)
+        settle()
+        e.submit("बस", fromVoice = true)
+        settle()
+        assertEquals(1, tools.shared.size)
+        val (file, note) = tools.shared.single()
+        assertTrue(file, file.startsWith("booking-note-") && file.endsWith(".txt"))
+        assertTrue(note, note.contains("Rajesh Singh — उम्र 40 साल (जन्म 1986)") && note.contains("3A"))
+        assertTrue(provider.calls.isEmpty()) // the note is made on the phone, never by the AI
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("बुकिंग नोट बन गया"))
     }
 
     @Test
