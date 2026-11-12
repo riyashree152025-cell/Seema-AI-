@@ -628,7 +628,9 @@ class AssistantEngineTest {
         val e = engine()
         e.submit("सीमा 3750.75 का रिफंड आया कि नहीं चेक करो", fromVoice = true)
         settle()
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("हाँ, ₹3,750.75 आपके खाते में आ गए हैं"))
+        val answer = e.transcript.value.last { it.role == ChatRole.SYSTEM || it.role == ChatRole.ASSISTANT }.text
+        assertTrue(answer, answer.contains("हाँ, ₹3,750.75 आपके खाते में आ गए हैं"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("आ गए हैं"))
         assertTrue(provider.calls.isEmpty()) // no SMS text ever goes to the AI
         assertTrue(e.transcript.value.none { it.text.contains("XX1234") }) // the bank message itself is not repeated
     }
@@ -1050,27 +1052,28 @@ class AssistantEngineTest {
     fun afterHeySeemaTheConversationGoesOnWithoutTheName() = runTest {
         wakeToStartOn()
         val wake = FakeWake()
-        val heard = FakeTranscriber("Seema, time batao")
-        val e = sleepyEngine(wake, heard, AiResult.Success("Das baj rahe hain."), AiResult.Success("Kal dhoop rahegi."))
+        // Requests the AI answers (a clock or weather question would be answered on the phone).
+        val heard = FakeTranscriber("Seema, ek kahani sunao")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Ek raja tha."), AiResult.Success("Ek bandar tha."))
         e.startHandsFree()
         now = 5_000
         wake.onUtterance!!(speech(amplitude = 5_000))
         settle()
-        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "time batao" })
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "ek kahani sunao" })
         // She listens again after her answer: the next question needs no name.
         assertEquals(AssistantState.Listening, e.state.value)
-        voice.onResult!!("aur kal ka mausam?")
+        voice.onResult!!("ab ek aur kahani sunao")
         settle()
         assertEquals(2, provider.calls.size)
-        assertEquals("Kal dhoop rahegi.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
+        assertEquals("Ek bandar tha.", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
     }
 
     @Test
     fun quietForTheSleepTimeNeedsTheNameAgain() = runTest {
         wakeToStartOn()
         val wake = FakeWake()
-        val heard = FakeTranscriber("Seema, time batao")
-        val e = sleepyEngine(wake, heard, AiResult.Success("Das baj rahe hain."), AiResult.Success("Nahi."))
+        val heard = FakeTranscriber("Seema, ek kahani sunao")
+        val e = sleepyEngine(wake, heard, AiResult.Success("Ek raja tha."), AiResult.Success("Nahi."))
         e.startHandsFree()
         now = 5_000
         wake.onUtterance!!(speech(amplitude = 5_000))
@@ -1079,7 +1082,7 @@ class AssistantEngineTest {
         voice.onError!!(VoiceError("silence", noSpeech = true))
         runCurrent()
         assertEquals(AssistantState.Sleeping, e.state.value)
-        heard.text = "aur kuch batao" // no name now
+        heard.text = "ek aur kahani sunao" // no name now
         now += 10_000
         wake.onUtterance!!(speech(amplitude = 5_000))
         settle()

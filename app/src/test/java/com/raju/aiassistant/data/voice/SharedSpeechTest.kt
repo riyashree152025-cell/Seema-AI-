@@ -54,8 +54,8 @@ class SharedSpeechTest {
     private val speech = frame(3_000)
 
     /**
-     * 300 ms of room calibration, 600 ms of speech, then the 1.4 s pause that ends the turn: the turn's
-     * audio is 115 frames (the 10 frames after the pause are not part of it).
+     * 300 ms of room calibration, 600 ms of speech (a short command), then the 0.8 s pause that ends a
+     * short turn: the turn's audio is 85 frames (the 40 frames after the pause are not part of it).
      */
     private val oneTurn = List(15) { silence } + List(30) { speech } + List(80) { silence }
 
@@ -76,7 +76,7 @@ class SharedSpeechTest {
         val outcomes = oneTurn.map { c.feed(it) }
         val done = outcomes.first { it != null }
         assertTrue(done is SpeechCapture.Outcome.Done)
-        assertEquals(115 * MIC_FRAME_BYTES, (done as SpeechCapture.Outcome.Done).pcm.size)
+        assertEquals(85 * MIC_FRAME_BYTES, (done as SpeechCapture.Outcome.Done).pcm.size)
         assertEquals(1, outcomes.count { it != null }) // one decision, once
     }
 
