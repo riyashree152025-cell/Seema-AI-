@@ -42,21 +42,26 @@ class SecureKeyStore(context: Context) {
         val stored = encode(cipher.iv) + SEPARATOR + encode(encrypted)
         val ok = prefs.edit().putString(id.storageKey, stored).commit()
         _configured.value = readConfiguredIds()
-        ok && read(id) == trimmed
+        ok && (read(id) as? Read.Ok)?.value == trimmed
     }
 
     /**
-     * Decrypts the secret, or returns null if absent. If a stored value can no longer be decrypted
-     * (Keystore key lost, e.g. after reinstall or data restore), the broken entry is removed so the
-     * app shows "Not set" and the user re-enters the key instead of seeing a key that never works.
+     * Decrypts the secret, or returns null. Only a value that can never be decrypted again (wrong or
+     * invalidated Keystore key after a reinstall or restore, damaged text) is removed, so the app shows
+     * "Not set" and the user re-enters it. A passing Keystore error (busy, locked, a vendor glitch) only
+     * returns null this time: the saved key is kept and works again on the next try.
      */
     suspend fun get(id: SecretId): String? = withContext(Dispatchers.IO) {
-        val value = read(id)
-        if (value == null && prefs.contains(id.storageKey)) {
-            prefs.edit().remove(id.storageKey).apply()
-            _configured.value = readConfiguredIds()
+        when (val r = read(id)) {
+            is Read.Ok -> r.value
+            Read.Missing -> null
+            Read.Unavailable -> null
+            Read.Broken -> {
+                prefs.edit().remove(id.storageKey).apply()
+                _configured.value = readConfiguredIds()
+                null
+            }
         }
-        value
     }
 
     suspend fun remove(id: SecretId): Boolean = withContext(Dispatchers.IO) {
@@ -65,17 +70,25 @@ class SecureKeyStore(context: Context) {
         ok
     }
 
-    private fun read(id: SecretId): String? {
-        val stored = prefs.getString(id.storageKey, null) ?: return null
+    private sealed interface Read {
+        data class Ok(val value: String) : Read
+        data object Missing : Read
+        /** Can never be decrypted again. */
+        data object Broken : Read
+        /** The Keystore failed this time; the value may still be fine. */
+        data object Unavailable : Read
+    }
+
+    private fun read(id: SecretId): Read {
+        val stored = prefs.getString(id.storageKey, null) ?: return Read.Missing
         val parts = stored.split(SEPARATOR)
-        if (parts.size != 2) return null
+        if (parts.size != 2) return Read.Broken
         return try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, decode(parts[0])))
-            String(cipher.doFinal(decode(parts[1])), Charsets.UTF_8)
+            Read.Ok(String(cipher.doFinal(decode(parts[1])), Charsets.UTF_8))
         } catch (e: Exception) {
-            // Keystore key lost or data corrupted: treat as not configured; user must re-enter.
-            null
+            if (isUnrecoverableSecretError(e)) Read.Broken else Read.Unavailable
         }
     }
 
@@ -111,4 +124,18 @@ class SecureKeyStore(context: Context) {
         const val PREFS_NAME = "raju_secure_store"
         const val SEPARATOR = ":"
     }
+}
+
+/**
+ * A stored secret that can never be decrypted again: the tag does not match (another or a new Keystore
+ * key, damaged text), the text is not Base64 / the IV is malformed, or Android invalidated the key.
+ * Anything else (KeyStoreException, ProviderException, a busy or locked Keystore) may pass, so the
+ * value must be kept.
+ */
+internal fun isUnrecoverableSecretError(e: Throwable): Boolean = when (e) {
+    is javax.crypto.BadPaddingException -> true // AEADBadTagException is one: wrong key or damaged text
+    is IllegalArgumentException -> true // not Base64, or an invalid IV
+    is java.security.InvalidAlgorithmParameterException -> true // malformed IV
+    is java.security.UnrecoverableKeyException -> true
+    else -> e.javaClass.name == "android.security.keystore.KeyPermanentlyInvalidatedException"
 }
