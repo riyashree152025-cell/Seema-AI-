@@ -94,3 +94,37 @@ fun parseRoutineTime(text: String): Pair<Int, Int>? {
     val min = m.groupValues[2].ifEmpty { "0" }.toInt()
     return if (h in 0..23 && min in 0..59) h to min else null
 }
+
+/** What the editor's Save gives: the routine to keep, or what to fix (in Hindi, shown under the fields). */
+sealed interface RoutineCheck {
+    data class Ok(val routine: Routine) : RoutineCheck
+    data class Problem(val message: String) : RoutineCheck
+}
+
+/**
+ * Checks the editor's fields before saving. [understood] says whether Seema can do a step on the phone
+ * (LocalCommands); a step she cannot do is refused here, not skipped silently at run time.
+ */
+fun checkRoutine(
+    id: Long,
+    name: String,
+    stepsText: String,
+    timeText: String,
+    enabled: Boolean,
+    existing: List<Routine>,
+    understood: (String) -> Boolean,
+): RoutineCheck {
+    val n = name.trim().replace(Regex("\\s+"), " ")
+    if (n.isEmpty()) return RoutineCheck.Problem("Routine का नाम लिखिए, जैसे Good Night।")
+    if (n.length > 40) return RoutineCheck.Problem("नाम छोटा रखिए (40 अक्षर तक)।")
+    if (existing.any { it.id != id && norm(it.name) == norm(n) }) return RoutineCheck.Problem("\"$n\" नाम की routine पहले से है।")
+    val steps = stepsFrom(stepsText)
+    if (steps.isEmpty()) return RoutineCheck.Problem("कम से कम एक काम लिखिए, हर लाइन में एक।")
+    val unknown = steps.filterNot(understood)
+    if (unknown.isNotEmpty()) {
+        return RoutineCheck.Problem("ये काम Seema फ़ोन पर नहीं समझ पाई: ${unknown.joinToString(" · ")}। ऐसे लिखिए: torch band karo, volume 20 karo, aaj ki briefing do.")
+    }
+    val time = timeText.trim()
+    val hm = if (time.isEmpty()) null else parseRoutineTime(time) ?: return RoutineCheck.Problem("समय ऐसे लिखिए: 07:30 (24 घंटे वाला), या खाली छोड़िए।")
+    return RoutineCheck.Ok(Routine(id, n, steps, hm?.first, hm?.second, enabled))
+}

@@ -2,6 +2,7 @@ package com.raju.aiassistant.domain.routine
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RoutinesTest {
@@ -38,5 +39,26 @@ class RoutinesTest {
         assertEquals(21 to 0, parseRoutineTime("21"))
         assertNull(parseRoutineTime("25:00"))
         assertNull(parseRoutineTime("subah"))
+    }
+
+    private val knows: (String) -> Boolean = { it.contains("torch") || it.contains("volume") }
+
+    @Test
+    fun theEditorSavesOnlyWhatSeemaCanDo() {
+        val ok = checkRoutine(5, "  Good   Morning ", "torch on karo\n\n- volume 40 karo", "7:05", true, listOf(night), knows)
+        assertEquals(RoutineCheck.Ok(Routine(5, "Good Morning", listOf("torch on karo", "volume 40 karo"), 7, 5)), ok)
+        assertEquals(RoutineCheck.Ok(Routine(6, "Voice only", listOf("torch on karo"))), checkRoutine(6, "Voice only", "torch on karo", "", true, emptyList(), knows))
+        // Editing a routine keeps its own name.
+        assertTrue(checkRoutine(1, "good night", "torch band karo", "", true, listOf(night), knows) is RoutineCheck.Ok)
+    }
+
+    @Test
+    fun theEditorSaysWhatToFix() {
+        fun problem(c: RoutineCheck) = (c as RoutineCheck.Problem).message
+        assertTrue(problem(checkRoutine(5, " ", "torch on karo", "", true, emptyList(), knows)).contains("नाम"))
+        assertTrue(problem(checkRoutine(5, "GOOD NIGHT", "torch on karo", "", true, listOf(night), knows)).contains("पहले से"))
+        assertTrue(problem(checkRoutine(5, "X", "\n \n", "", true, emptyList(), knows)).contains("कम से कम एक काम"))
+        assertTrue(problem(checkRoutine(5, "X", "torch on karo\ngaana gao", "", true, emptyList(), knows)).contains("gaana gao"))
+        assertTrue(problem(checkRoutine(5, "X", "torch on karo", "25:00", true, emptyList(), knows)).contains("07:30"))
     }
 }

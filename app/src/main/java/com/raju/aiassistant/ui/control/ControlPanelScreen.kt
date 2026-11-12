@@ -21,28 +21,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CutCornerShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,10 +72,7 @@ import kotlinx.coroutines.launch
  * - Header: < [Robot] Automation + 3 Dots Menu
  * - Top Card: Automation Service (Green glowing gear) + 'Run Routines Automatically' + Toggle
  * - Section: 'Your Routines' (View All >)
- *     1. [Sun] Good Morning (Start with greetings) + Toggle
- *     2. [Clock] Night Mode (Reduce activity) + Toggle
- *     3. [Home] Smart Home (Control devices) + Toggle
- * - Big Action Button: + Add New Routine (Purple/Magenta Gradient Button)
+ *     The user's own routines (RoutinesSection: edit, switch, run, + Add New Routine), then Night Mode
  * - Footer: ⚡ Automation is Active (Emerald Green Lightning)
  * - Quick System Telemetry & Hardware Tools integrated below
  */
@@ -97,12 +87,8 @@ fun ControlPanelScreen(
     val scope = rememberCoroutineScope()
 
     var automationEnabled by remember { mutableStateOf(!settings.assistantPaused) }
-    var goodMorningActive by remember { mutableStateOf(false) }
     var nightModeActive by remember { mutableStateOf(settings.lowPowerMode) }
-    var smartHomeActive by remember { mutableStateOf(false) }
 
-    var showAddDialog by remember { mutableStateOf(false) }
-    var newRoutineName by remember { mutableStateOf("") }
 
     var batteryPct by remember { mutableIntStateOf(92) }
     var ramPct by remember { mutableIntStateOf(62) }
@@ -274,20 +260,8 @@ fun ControlPanelScreen(
                 }
             }
 
-            // 4. Three Routines Cards
-            RoutineItemCard(
-                title = "Good Morning",
-                subtitle = "ON करते ही आज की briefing सुनाती है",
-                icon = Icons.Filled.WbSunny,
-                iconTint = Color(0xFFFFD600),
-                active = goodMorningActive,
-                onToggle = {
-                    goodMorningActive = it
-                    if (it) {
-                        scope.launch { container.engine.submit("Good morning SEEMA") }
-                    }
-                }
-            )
+            // 4. The user's own routines (saved on the phone), then the phone's night mode.
+            RoutinesSection()
 
             RoutineItemCard(
                 title = "Night Mode",
@@ -302,45 +276,6 @@ fun ControlPanelScreen(
                     }
                 }
             )
-
-            RoutineItemCard(
-                title = "Smart Home",
-                // Honest: nothing is connected to this yet, so it cannot be switched on.
-                subtitle = "अभी उपलब्ध नहीं — कोई device जुड़ा नहीं है",
-                icon = Icons.Filled.Home,
-                iconTint = Color(0xFF8A97A8),
-                active = false,
-                onToggle = { smartHomeActive = false }
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // 5. Big Action Button: + Add New Routine (Purple Gradient)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Brush.horizontalGradient(listOf(Color(0xFF16324F), Color(0xFF1E4A6E), Color(0xFF16324F))))
-                    .border(1.dp, Brush.linearGradient(listOf(com.raju.aiassistant.ui.components.Premium.Gold.copy(alpha = 0.7f), com.raju.aiassistant.ui.components.Premium.Aqua.copy(alpha = 0.45f))), RoundedCornerShape(18.dp))
-                    .clickable { showAddDialog = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        "+  Add New Routine",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = com.raju.aiassistant.ui.components.Premium.TextHigh,
-                            fontSize = 17.sp,
-                            letterSpacing = 0.4.sp
-                        )
-                    )
-                }
-            }
 
             // 6. Bottom Indicator: ⚡ Automation is Active
             Row(
@@ -399,42 +334,6 @@ fun ControlPanelScreen(
             Spacer(Modifier.height(16.dp))
         }
 
-        // Add Routine Dialog
-        if (showAddDialog) {
-            AlertDialog(
-                onDismissRequest = { showAddDialog = false },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (newRoutineName.isNotBlank()) {
-                                scope.launch { container.engine.submit("Create routine: $newRoutineName") }
-                            }
-                            showAddDialog = false
-                            newRoutineName = ""
-                        }
-                    ) {
-                        Text("Add", color = Color.White)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showAddDialog = false }) {
-                        Text("Cancel", color = Color.White)
-                    }
-                },
-                title = { Text("Add New Routine", color = Color.White) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Enter the phrase or command for this routine:", color = Color.White.copy(alpha = 0.8f))
-                        OutlinedTextField(
-                            value = newRoutineName,
-                            onValueChange = { newRoutineName = it },
-                            placeholder = { Text("e.g. Leave Home, Meeting Mode", color = Color.Gray) }
-                        )
-                    }
-                },
-                containerColor = Color(0xFF071224)
-            )
-        }
     }
 }
 
