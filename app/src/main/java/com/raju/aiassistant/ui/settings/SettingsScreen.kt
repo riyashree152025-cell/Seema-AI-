@@ -2403,6 +2403,7 @@ fun PrivacyScreen(
                 style = MaterialTheme.typography.bodySmall, color = com.raju.aiassistant.ui.theme.TextSecondary,
             )
         }
+        BackupPanel(viewModel)
         com.raju.aiassistant.ui.components.HudPanel(title = "फ़ोन से बाहर क्या जाता है") {
             listOf(
                 "आपका सवाल और जवाब के लिए ज़रूरी बातें: चुने हुए AI provider को।",

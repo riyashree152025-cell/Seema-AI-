@@ -66,6 +66,14 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val database by lazy { RajuDatabase.create(appContext) }
+    /** Password-locked backup and restore of the user's data (never the API keys). */
+    val backupManager by lazy {
+        com.raju.aiassistant.data.backup.BackupManager(
+            appContext,
+            flushDatabase = { database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close() },
+            closeDatabase = { database.close() },
+        )
+    }
     val chatDao by lazy { database.chatDao() }
     val actionLogDao by lazy { database.actionLogDao() }
     val http by lazy { defaultHttpClient() }

@@ -397,6 +397,23 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
     fun setPersonality(v: Personality) = launch { repo.setPersonality(v) }
     fun setBargeIn(v: Boolean) = launch { repo.setBargeIn(v) }
+
+    /** Encrypted backup to the file the user picked; [done] gets the message to show. */
+    fun exportBackup(uri: android.net.Uri, password: CharArray, done: (String) -> Unit) = viewModelScope.launch {
+        val r = c.backupManager.export(uri, password)
+        password.fill(' ')
+        done(when (r) { is com.raju.aiassistant.data.backup.BackupManager.Result.Done -> r.message; is com.raju.aiassistant.data.backup.BackupManager.Result.Failed -> r.message })
+    }
+
+    /** Restores from a backup file; on success [restarted] runs (the app must restart to use the data). */
+    fun restoreBackup(uri: android.net.Uri, password: CharArray, done: (String, Boolean) -> Unit) = viewModelScope.launch {
+        val r = c.backupManager.restore(uri, password)
+        password.fill(' ')
+        when (r) {
+            is com.raju.aiassistant.data.backup.BackupManager.Result.Done -> done(r.message, true)
+            is com.raju.aiassistant.data.backup.BackupManager.Result.Failed -> done(r.message, false)
+        }
+    }
     fun setWakeToStart(v: Boolean) = launch { repo.setWakeToStart(v) }
     fun setBargeInSpeaker(v: Boolean) = launch { repo.setBargeInSpeaker(v) }
 
