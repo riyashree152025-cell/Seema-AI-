@@ -104,7 +104,6 @@ class MorningBriefingWorker(context: Context, params: WorkerParameters) : Corout
         val repo = c.businessRepository
         runCatching { repo.pruneOldJourneys(today) }
         val (from, to) = periodRange(Period.YESTERDAY, System.currentTimeMillis(), zone)
-        val zone = ZoneId.systemDefault()
         // The journeys with the passenger's pending money, the biggest dues and today's reminders, then
         // yesterday's spending — built on the phone from what the user saved.
         val ahead = com.raju.aiassistant.domain.memory.headsUp(
