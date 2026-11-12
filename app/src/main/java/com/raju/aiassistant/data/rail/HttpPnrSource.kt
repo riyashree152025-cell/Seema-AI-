@@ -24,6 +24,9 @@ class HttpPnrSource(private val http: OkHttpClient, private val keys: SecureKeyS
         else endpoint.toHttpUrlOrNull()?.newBuilder()?.addQueryParameter("pnr", pnr)?.build()?.toString()
             ?: return@withContext PnrFetch.Failed("PNR service URL is not valid.")
         val token = keys.get(SecretId.PNR_STATUS_TOKEN)?.trim()
+        if (!token.isNullOrEmpty() && !com.raju.aiassistant.core.security.isEncryptedOrOnDevice(url)) {
+            return@withContext PnrFetch.Failed("PNR service token is sent only over https:// — change the service URL to https.")
+        }
         val request = runCatching {
             Request.Builder().url(url).get().apply { if (!token.isNullOrEmpty()) header("Authorization", "Bearer $token") }.build()
         }.getOrElse { return@withContext PnrFetch.Failed("PNR service URL is not valid.") }

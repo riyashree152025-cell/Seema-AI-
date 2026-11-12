@@ -1229,7 +1229,9 @@ class AssistantEngine(
 
     private suspend fun keyFor(id: ProviderId): String? {
         val raw = secret(id.secret)?.takeIf { it.isNotBlank() }
-        return if (id == ProviderId.OLLAMA) raw ?: "http://192.168.31.55:11434" else raw
+        // Ollama has no key; its saved address stands in for one. No built-in address: without one saved,
+        // nothing is sent (it used to go to a fixed LAN address, which could be any device on the Wi-Fi).
+        return raw
     }
 
     /** Tries the other configured providers in turn; returns the first real reply, or null. */
@@ -1292,7 +1294,9 @@ class AssistantEngine(
         fun result(answeredBy: ProviderId? = null, model: String? = null, reply: String? = null, error: String? = null, fallbackReason: String? = null) =
             ActiveAiTest(id, answeredBy, model, clock() - started, reply, error, fallbackReason)
         if (!isOnline() && id != ProviderId.OLLAMA) return result(error = "No internet connection.")
-        val key = keyFor(id) ?: return result(error = "${id.displayName} API key is not set.")
+        val key = keyFor(id) ?: return result(
+            error = if (id == ProviderId.OLLAMA) "Ollama PC address is not set (Settings → AI Brain → Ollama)." else "${id.displayName} API key is not set.",
+        )
         val provider = providerFor(id, key)
         val model = when (val m = resolveModel(id, key, provider)) {
             is AiResult.Success -> m.value

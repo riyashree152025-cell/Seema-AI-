@@ -52,6 +52,8 @@ class CleartextGuard : okhttp3.Interceptor {
 
 /** Shared HTTPS client: sane timeouts, no logging of bodies or headers (keys stay out of logs). */
 fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    // Application interceptor: refused before DNS or a connection; network interceptor: redirects too.
+    .addInterceptor(CleartextGuard())
     .addNetworkInterceptor(CleartextGuard())
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(60, TimeUnit.SECONDS)

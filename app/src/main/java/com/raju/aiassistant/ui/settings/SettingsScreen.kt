@@ -2173,10 +2173,12 @@ fun VoiceEngineSecretCard(
                 ) {
                     TextButton(onClick = {
                         // Each key's own site (the Deepgram card used to point to Cartesia).
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(secretId.helpUrl)))
+                        if (secretId.helpUrl.startsWith("https://")) {
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(secretId.helpUrl))) }
+                        }
                     }) {
                         Text(
-                            "Get key: " + secretId.helpUrl.removePrefix("https://").removePrefix("http://").substringBefore('/'),
+                            if (secretId.helpUrl.startsWith("https://")) "Get key: " + secretId.helpUrl.removePrefix("https://").substringBefore('/') else "",
                             color = Color(0xFF00E5FF),
                             fontSize = 14.5.sp
                         )

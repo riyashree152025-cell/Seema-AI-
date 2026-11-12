@@ -44,9 +44,9 @@ Open `%USERPROFILE%\.seema_ai\companion_config.json` in Notepad or run:
 ### Option A: Via Wi-Fi (Same Network)
 1. Find your PC's IP address (displayed on the companion console, e.g. `192.168.31.55`).
 2. In SEEMA AI App → **Settings** → **AI Assistant** → **Ollama (PC Local)**:
-   - Set URL: `http://192.168.31.55:11434`
+   - Set URL: your PC's address, e.g. `http://192.168.1.20:11434` (plain HTTP on Wi-Fi: the app warns that chats are readable on that network; USB or Tailscale avoids that)
 3. In **PC Sync & Companion**:
-   - Set Endpoint: `http://192.168.31.55:11435`
+   - Set Endpoint: `http://127.0.0.1:11435` over USB (see below) or `http://<pc-name>.<tailnet>.ts.net:11435` over Tailscale. A plain `http://192.168…` Wi-Fi address is refused by the app (the token and memories would be readable on the network).
    - Set Token: Your private token from `companion_config.json`
 
 ### Option B: Via USB Cable (ADB Port Forwarding)
@@ -72,3 +72,11 @@ By default, Ollama only listens on `127.0.0.1`. To allow other devices on your l
 Set system environment variable:
 `OLLAMA_HOST=0.0.0.0:11434`
 and restart Ollama.
+
+## Security notes (current behaviour)
+- The companion listens on `127.0.0.1` by default. To listen elsewhere, set `"bind_host"` in
+  `companion_config.json` (for Tailscale: this PC's Tailscale IP). It still only answers private/loopback clients.
+- Transport is plain HTTP. The phone app sends the PC token only to `127.0.0.1` (USB, `adb reverse`), `https://`,
+  or a Tailscale `*.ts.net` name. PC sync has no built-in address: it is off until you save one.
+- `companion_config.json` (holds the token) and the memory/conversation files are set to owner-only (0600) where the OS allows.
+- `open_url` runs without a shell and accepts only `http://`/`https://`; `open_app` launches only a fixed list.

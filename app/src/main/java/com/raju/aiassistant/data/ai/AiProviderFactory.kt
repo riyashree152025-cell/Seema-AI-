@@ -20,7 +20,8 @@ class AiProviderFactory(private val http: OkHttpClient) {
     companion object {
         fun normalizeOllamaUrl(raw: String): String {
             val trimmed = raw.trim()
-            if (trimmed.isBlank()) return "http://192.168.31.55:11434/v1"
+            // Nothing saved: this phone itself (nothing leaves it), never a guessed LAN address.
+            if (trimmed.isBlank()) return OLLAMA_DEFAULT_URL
             val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "http://$trimmed"
             val clean = withScheme.trimEnd('/')
             val hostAndPort = clean.substringAfter("://")

@@ -33,22 +33,32 @@ class PcSyncClient(
     private val http: OkHttpClient,
     private val secureKeyStore: SecureKeyStore,
 ) {
-    private suspend fun getEndpoint(): String {
-        val raw = secureKeyStore.get(SecretId.PC_SYNC_ENDPOINT)?.trim().orEmpty()
-        val defaultUrl = "http://192.168.31.55:11435"
-        val endpoint = if (raw.isBlank()) defaultUrl else raw
-        val withScheme = if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) endpoint else "http://$endpoint"
-        return withScheme.trimEnd('/')
-    }
-
     private suspend fun getToken(): String = secureKeyStore.get(SecretId.PC_SYNC_TOKEN)?.trim().orEmpty()
 
+    /**
+     * The companion's address, or why it may not be used. There is no built-in address: without one saved,
+     * PC sync is off. Plain http:// on the Wi-Fi is refused because the token and the memories would be
+     * readable by anyone on that network; https://, this phone, or a Tailscale name (*.ts.net) is required.
+     */
+    private suspend fun base(): AiResult<String> = when (val t = com.raju.aiassistant.core.security.pcSyncTarget(secureKeyStore.get(SecretId.PC_SYNC_ENDPOINT))) {
+        com.raju.aiassistant.core.security.PcSyncTarget.NotSet ->
+            AiResult.Failure(FailureKind.NOT_CONFIGURED, "PC sync is off: no PC Companion address is saved.")
+        is com.raju.aiassistant.core.security.PcSyncTarget.Insecure ->
+            AiResult.Failure(FailureKind.UNKNOWN, PC_SYNC_INSECURE)
+        is com.raju.aiassistant.core.security.PcSyncTarget.Ready -> AiResult.Success(t.baseUrl)
+    }
+
+    private fun Request.Builder.auth(token: String): Request.Builder = apply { if (token.isNotEmpty()) header("Authorization", "Bearer $token") }
+
     suspend fun checkStatus(): AiResult<String> = withContext(Dispatchers.IO) {
-        val base = getEndpoint()
+        val base = when (val b = base()) {
+            is AiResult.Success -> b.value
+            is AiResult.Failure -> return@withContext b
+        }
         val token = getToken()
         val req = Request.Builder()
             .url("$base/api/v1/status")
-            .header("Authorization", "Bearer $token")
+            .auth(token)
             .get()
             .build()
         try {
@@ -70,7 +80,10 @@ class PcSyncClient(
     }
 
     suspend fun pushMemories(memories: List<Memory>): AiResult<Int> = withContext(Dispatchers.IO) {
-        val base = getEndpoint()
+        val base = when (val b = base()) {
+            is AiResult.Success -> b.value
+            is AiResult.Failure -> return@withContext b
+        }
         val token = getToken()
         val payload = buildJsonObject {
             putJsonArray("memories") {
@@ -84,7 +97,7 @@ class PcSyncClient(
         }
         val req = Request.Builder()
             .url("$base/api/v1/sync/memories")
-            .header("Authorization", "Bearer $token")
+            .auth(token)
             .post(payload.toRequestBody())
             .build()
         try {
@@ -104,11 +117,14 @@ class PcSyncClient(
     }
 
     suspend fun pullMemories(): AiResult<List<String>> = withContext(Dispatchers.IO) {
-        val base = getEndpoint()
+        val base = when (val b = base()) {
+            is AiResult.Success -> b.value
+            is AiResult.Failure -> return@withContext b
+        }
         val token = getToken()
         val req = Request.Builder()
             .url("$base/api/v1/sync/memories")
-            .header("Authorization", "Bearer $token")
+            .auth(token)
             .get()
             .build()
         try {
@@ -129,3 +145,8 @@ class PcSyncClient(
         }
     }
 }
+
+/** Why plain http on the Wi-Fi is refused for PC sync (shown to the user). */
+const val PC_SYNC_INSECURE =
+    "PC sync needs an encrypted connection: use an https:// address or the PC's Tailscale name (…ts.net). " +
+        "Plain http:// on Wi-Fi would let others on the network read the token and your memories, so nothing was sent."

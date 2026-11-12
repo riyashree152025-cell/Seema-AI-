@@ -8,6 +8,10 @@ Security Features:
 - Cryptographically strong 256-bit random auth token (auto-generated via secrets).
 - Constant-time HMAC authentication against timing attacks.
 - Strict network restriction: only accepts requests from private LAN/loopback IPs.
+- Listens on 127.0.0.1 by default (reach it from the phone over USB: `adb reverse`). Set "bind_host"
+  in the config to listen elsewhere (e.g. this PC's Tailscale address). Traffic is plain HTTP: the
+  Seema app sends the token only to 127.0.0.1 (USB) or a Tailscale *.ts.net name, never to a Wi-Fi IP.
+- Config and data files are readable only by this user (0600) where the OS supports it.
 - Non-root, non-destructive sandboxed command execution.
 - Zero external dependencies required (uses standard library http.server, urllib, ipaddress, secrets, hmac).
 """
@@ -27,6 +31,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 DEFAULT_PORT = 11435
+# Loopback only by default: the phone reaches it over USB with `adb reverse tcp:11435 tcp:11435`.
+DEFAULT_BIND_HOST = "127.0.0.1"
 OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434"
 DATA_DIR = Path.home() / ".seema_ai"
 CONFIG_FILE = DATA_DIR / "companion_config.json"
@@ -57,6 +63,8 @@ def ensure_data_dir():
         config["ollama_url"] = OLLAMA_DEFAULT_URL
     if "allowed_actions" not in config:
         config["allowed_actions"] = ["open_url", "open_app", "system_info"]
+    if "bind_host" not in config:
+        config["bind_host"] = DEFAULT_BIND_HOST
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -68,7 +76,17 @@ def ensure_data_dir():
         with open(CONVERSATION_FILE, "w", encoding="utf-8") as f:
             json.dump([], f)
 
+    # The token and the synced memories: readable by this user only (no effect where chmod is not supported).
+    for path in (CONFIG_FILE, MEMORIES_FILE, CONVERSATION_FILE):
+        restrict_to_owner(path)
+
     return config
+
+def restrict_to_owner(path):
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 def load_config():
     return ensure_data_dir()
@@ -297,7 +315,8 @@ def run_server():
     config = load_config()
     port = config.get("port", DEFAULT_PORT)
     SeemaCompanionHandler.config = config
-    server_address = ("0.0.0.0", port)
+    host = config.get("bind_host", DEFAULT_BIND_HOST)
+    server_address = (host, port)
     httpd = HTTPServer(server_address, SeemaCompanionHandler)
     ip = get_local_ip()
     token = config.get("auth_token", "")
@@ -306,10 +325,11 @@ def run_server():
     print("=" * 65)
     print("  SEEMA AI — PC Companion & Unified Brain Server (Secure)")
     print("=" * 65)
-    print(f"  • Status: RUNNING on port {port}")
+    print(f"  • Status: RUNNING on {host}:{port}")
     print(f"  • PC IP Address: {ip}")
-    print(f"  • Connect from Phone: http://{ip}:{port}")
-    print(f"  • USB ADB Port Forward: adb reverse tcp:{port} tcp:{port}")
+    print(f"  • Connect from Phone (USB): adb reverse tcp:{port} tcp:{port}, then http://127.0.0.1:{port}")
+    print("  • Plain HTTP: the Seema app will not send the token to a Wi-Fi address (http://192.168…);")
+    print("    use USB (above) or this PC's Tailscale name (…ts.net) with bind_host set to its Tailscale IP.")
     print(f"  • Auth Token: [SECURE] {masked_token}")
     print(f"  • Config File: {CONFIG_FILE}")
     print("  • Security: Restricted to private LAN/loopback only.")

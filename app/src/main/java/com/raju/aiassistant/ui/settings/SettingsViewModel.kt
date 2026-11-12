@@ -184,11 +184,8 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     /** Real authenticated request; the result (and only a real success) is shown as Connected. */
     fun testSecret(id: SecretId) {
         viewModelScope.launch {
-            val key = c.secureKeyStore.get(id) ?: when (id) {
-                SecretId.OLLAMA_ENDPOINT -> "http://192.168.31.55:11434"
-                SecretId.PC_SYNC_ENDPOINT -> "http://192.168.31.55:11435"
-                else -> return@launch setStatus(id, "No key saved.", true)
-            }
+            // No built-in addresses: Ollama and the PC companion are used only at an address the user saved.
+            val key = c.secureKeyStore.get(id) ?: return@launch setStatus(id, "No key saved.", true)
             setStatus(id, "Testing connection…", false, busy = true)
             val provider = ProviderId.entries.firstOrNull { it.secret == id }
             val result: AiResult<String> = when {
@@ -198,7 +195,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                         if (c.currentSettings.value.modelFor(provider) == null) {
                             pickDefaultModel(provider, r.value)?.let { repo.setModel(provider, it.id) }
                         }
-                        AiResult.Success("Connected — ${r.value.size} models available.")
+                        AiResult.Success("Connected — ${r.value.size} models available." + ollamaWarning(provider, key))
                     }
                     is AiResult.Failure -> r
                 }
@@ -265,39 +262,16 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    /** Real request with the chosen model and voice; also fills the model and voice pickers. */
-    private suspend fun testPcSync(): AiResult<String> = withContext(Dispatchers.IO) {
-        val endpoint = c.secureKeyStore.get(SecretId.PC_SYNC_ENDPOINT)?.ifBlank { null } ?: "http://192.168.31.55:11435"
-        val token = c.secureKeyStore.get(SecretId.PC_SYNC_TOKEN) ?: ""
-        val normalized = if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) endpoint else "http://$endpoint"
-        val cleanUrl = normalized.trimEnd('/') + "/api/v1/status"
-        try {
-            val req = okhttp3.Request.Builder()
-                .url(cleanUrl)
-                .header("Authorization", "Bearer $token")
-                .get()
-                .build()
-            c.http.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    val body = resp.body?.string().orEmpty()
-                    val host = runCatching {
-                        val obj = com.raju.aiassistant.data.ai.JsonFormat.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
-                        (obj["hostname"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    }.getOrNull() ?: "PC"
-                    AiResult.Success("Connected to PC ($host). Unified Brain Sync is active.")
-                } else if (resp.code == 401) {
-                    AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.INVALID_KEY, "Authentication failed. Check your PC Companion Auth Token.")
-                } else {
-                    AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.SERVER, "PC Companion returned HTTP ${resp.code}.")
-                }
-            }
-        } catch (e: Exception) {
-            AiResult.Failure(
-                com.raju.aiassistant.domain.ai.FailureKind.NETWORK,
-                "Cannot reach PC Companion at $cleanUrl. Run 'scripts/pc_companion/start_companion.bat' on PC and check firewall."
-            )
-        }
+    /** Ollama over plain http on the Wi-Fi works, but the chats are readable on that network: say so. */
+    private fun ollamaWarning(provider: com.raju.aiassistant.domain.ai.ProviderId, endpoint: String): String {
+        if (provider != com.raju.aiassistant.domain.ai.ProviderId.OLLAMA) return ""
+        val url = com.raju.aiassistant.data.ai.AiProviderFactory.normalizeOllamaUrl(endpoint)
+        return if (com.raju.aiassistant.core.security.isEncryptedOrOnDevice(url)) ""
+        else " ⚠ Not encrypted: chats to this PC travel as plain http on your Wi-Fi and others on the network could read them. Use https:// or the PC's Tailscale name (…ts.net) to protect them."
     }
+
+    /** The PC companion's status, through the same guarded client sync uses (no token over plain http). */
+    private suspend fun testPcSync(): AiResult<String> = c.pcSyncClient.checkStatus()
 
     private suspend fun testElevenLabs(key: String): AiResult<String> {
         val client = ElevenLabsClient(c.http, key)
