@@ -15,12 +15,30 @@ class GlassMathTest {
         for (t in 0..200) {
             val tt = t * 0.37f
             assertTrue(liquidLevel(1f, tt, 2.2f) in 0.3f..0.66f)
-            for (x in -10..10) assertTrue(surfaceOffset(x / 10f, tt, 1f, 2.2f) in -0.16f..0.16f)
+            for (x in -10..10) assertTrue(surfaceOffset(x / 10f, tt, 1f, 2.2f, 0.22f) in -0.3f..0.3f)
         }
-        // Calm liquid barely moves; a loud voice makes real waves.
-        val calm = (-10..10).maxOf { kotlin.math.abs(surfaceOffset(it / 10f, 1f, AMBIENT_ENERGY, 1f)) }
-        val wavy = (-10..10).maxOf { kotlin.math.abs(surfaceOffset(it / 10f, 1f, 1f, 1f)) }
-        assertTrue(calm < 0.04f && wavy > 0.06f)
+    }
+
+    @Test
+    fun theLiquidIsAlwaysAliveAndLivelierWithTheVoice() {
+        fun maxWave(life: Float) = (0..60).maxOf { t -> (-10..10).maxOf { kotlin.math.abs(surfaceOffset(it / 10f, t * 0.25f, life, 1f)) } }
+        // Never a flat line, even with no measured voice (shared microphone off).
+        assertTrue(maxWave(liquidLife(AssistantState.Idle, AMBIENT_ENERGY)) > 0.04f)
+        assertTrue(maxWave(1f) > maxWave(0.1f) * 1.8f)
+        assertTrue(liquidLife(AssistantState.Listening, AMBIENT_ENERGY) > liquidLife(AssistantState.Idle, AMBIENT_ENERGY))
+        assertTrue(liquidLife(AssistantState.Sleeping, AMBIENT_ENERGY) < liquidLife(AssistantState.Idle, AMBIENT_ENERGY))
+        // Tilting the phone tilts the surface one way, then the other.
+        assertTrue(tiltSlope(5f) > 0f && tiltSlope(-5f) < 0f && tiltSlope(50f) == 0.22f)
+    }
+
+    @Test
+    fun theAuroraAndStarsStayOnScreen() {
+        for (i in 0 until 3) for (t in 0..100) for (x in 0..10) assertTrue(auroraY(i, x / 10f, t * 0.7f) in 0.08f..0.70f)
+        for (i in 0 until 80) {
+            val (x, y, b) = star(i, i * 0.3f)
+            assertTrue(x in 0f..1f && y in 0f..0.85f && b in 0.35f..1f)
+        }
+        assertTrue(auroraColors(AssistantState.Speaking) != auroraColors(AssistantState.Listening))
     }
 
     @Test

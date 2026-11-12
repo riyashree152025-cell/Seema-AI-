@@ -29,8 +29,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.raju.aiassistant.domain.model.AssistantState
 import kotlin.math.min
 
-/** Warm black behind the sphere (the eye look keeps its own blue background). */
-val GLASS_BACKGROUND = listOf(Color(0xFF07060A), Color(0xFF0B0A10), Color(0xFF020203))
+/** Deep night sky behind the aurora (the eye look keeps its own blue background). */
+val GLASS_BACKGROUND = listOf(Color(0xFF040817), Color(0xFF060B1C), Color(0xFF02030A))
 
 /**
  * Home's second look, "Liquid Glass": a realistic glass sphere holding glowing liquid — molten gold over
@@ -56,9 +56,17 @@ fun LiquidGlassVisualizer(
     val bottom by animateColorAsState(Color(palette.liquidBottom), tween(600), label = "glassBottom")
     val glow by animateColorAsState(Color(palette.glow), tween(600), label = "glassGlow")
     val energy = remember { floatArrayOf(AMBIENT_ENERGY) }
+    val slope = remember { floatArrayOf(0f) }
     val tilt = rememberTilt(enabled = richEffects)
     val surface = remember { Path() }
+    val foam = remember { Path() }
     val clip = remember { Path() }
+    val curtain = remember { Path() }
+    val caustic = remember { Path() }
+    val aurora = auroraColors(state).map { Color(it) }
+    val a0 by animateColorAsState(aurora[0], tween(900), label = "aurora0")
+    val a1 by animateColorAsState(aurora[1], tween(900), label = "aurora1")
+    val a2 by animateColorAsState(aurora[2], tween(900), label = "aurora2")
     val speed = glassSpeed(state)
 
     Canvas(modifier.clearAndSetSemantics {}) {
@@ -66,30 +74,136 @@ fun LiquidGlassVisualizer(
         energy[0] = smoothEnergy(energy[0], waveEnergy(state, speechLevel(), micLevel()))
         val e = energy[0]
         val voice = ((e - AMBIENT_ENERGY) / (1f - AMBIENT_ENERGY)).coerceIn(0f, 1f)
+        val life = liquidLife(state, e)
+        // The surface eases towards the tilt like a real liquid would.
+        slope[0] += (tiltSlope(tilt[0]) - slope[0]) * 0.06f
+
+        // 1. The whole screen: night sky, twinkling stars and northern-lights curtains.
+        drawStars(t, if (richEffects) 70 else 30)
+        drawAurora(t, listOf(a0, a1, a2), if (richEffects) 3 else 2, voice, curtain, richEffects)
+
         val area = sphereArea() ?: Rect(Offset.Zero, size)
         val r = min(area.width, area.height) * 0.36f
         if (r <= 1f) return@Canvas // no room yet (first layout pass)
         val c = area.center
 
         drawAmbience(c, r, glow, voice)
+        drawOrbit(c, r, t, speed, glow, back = true)
 
-        // The glass body: dark, slightly blue, so the liquid's light carries the sphere.
-        drawCircle(Brush.radialGradient(listOf(Color(0xFF101A2C), Color(0xFF05080F)), c, r), r, c)
+        // 2. The glass body: dark sapphire with a faint mist of the aurora's colour in its upper half.
+        drawCircle(Brush.radialGradient(listOf(Color(0xFF13203A), Color(0xFF060A14)), c, r), r, c)
 
         clip.reset()
         clip.addOval(Rect(c, r))
         clipPath(clip) {
-            drawLiquid(c, r, t, e, speed, top, bottom, surface, richEffects)
+            drawMist(c, r, t, a0, a2)
+            drawLiquid(c, r, t, e, life, speed, slope[0], top, bottom, surface, foam, caustic, richEffects)
             drawLights(c, r, t, speed, voice, top, glow, richEffects)
-            if (richEffects) drawBubbles(c, r, t, e, speed)
+            if (richEffects) drawBubbles(c, r, t, e, life, speed, slope[0])
             // Inner shadow at the edge: the sphere gets its depth.
             drawCircle(
-                Brush.radialGradient(0.70f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.62f), center = c, radius = r),
+                Brush.radialGradient(0.68f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f), center = c, radius = r),
                 r, c,
             )
         }
         drawGlassRim(c, r, glow)
         drawReflections(c, r, tilt)
+        drawOrbit(c, r, t, speed, glow, back = false)
+    }
+}
+
+/** Twinkling stars over the whole screen (fixed places, so they do not jump). */
+private fun DrawScope.drawStars(t: Float, count: Int) {
+    for (i in 0 until count) {
+        val (x, y, b) = star(i, t)
+        drawCircle(Color.White.copy(alpha = 0.55f * b), radius = 0.6f + 1.1f * ((i * 0.37f) % 1f), center = Offset(x * size.width, y * size.height))
+    }
+}
+
+/**
+ * Northern lights across the whole screen: each curtain is bright along a slowly waving line and fades
+ * upwards, with fine vertical rays shimmering in it (rich effects only). Added light (BlendMode.Plus).
+ */
+private fun DrawScope.drawAurora(t: Float, colors: List<Color>, bands: Int, voice: Float, path: Path, rich: Boolean) {
+    val w = size.width
+    val h = size.height
+    val steps = 36
+    for (i in 0 until bands) {
+        val color = colors[i % colors.size]
+        val height = h * (0.20f + 0.05f * i)
+        path.reset()
+        var minY = h
+        var maxY = 0f
+        for (k in 0..steps) {
+            val x = k.toFloat() / steps
+            val y = auroraY(i, x, t) * h
+            if (k == 0) path.moveTo(0f, y) else path.lineTo(x * w, y)
+            minY = min(minY, y)
+            maxY = kotlin.math.max(maxY, y)
+        }
+        for (k in steps downTo 0) {
+            val x = k.toFloat() / steps
+            path.lineTo(x * w, auroraY(i, x, t) * h - height)
+        }
+        path.close()
+        val alpha = 0.30f + 0.12f * voice - 0.05f * i
+        drawPath(
+            path,
+            Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.55f to color.copy(alpha = alpha * 0.45f),
+                0.92f to color.copy(alpha = alpha),
+                1f to color.copy(alpha = alpha * 0.2f),
+                startY = minY - height, endY = maxY + h * 0.01f,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+        if (rich) {
+            // Rays: thin vertical streaks rising from the curtain's bright edge.
+            var x = (i * 7f) % 14f
+            while (x < w) {
+                val xf = x / w
+                val y = auroraY(i, xf, t) * h
+                val shimmer = 0.5f + 0.5f * kotlin.math.sin(t * 1.3f + x * 0.05f + i)
+                drawLine(
+                    color.copy(alpha = 0.10f * shimmer),
+                    Offset(x, y), Offset(x, y - height * (0.5f + 0.5f * shimmer)),
+                    strokeWidth = 2f, blendMode = BlendMode.Plus,
+                )
+                x += 14f
+            }
+        }
+    }
+}
+
+/** A faint, slowly turning mist inside the empty upper glass, so it never looks like a black hole. */
+private fun DrawScope.drawMist(c: Offset, r: Float, t: Float, a: Color, b: Color) {
+    val p1 = Offset(c.x + r * 0.35f * kotlin.math.cos(t * 0.25f), c.y - r * 0.35f + r * 0.1f * kotlin.math.sin(t * 0.3f))
+    val p2 = Offset(c.x - r * 0.30f * kotlin.math.cos(t * 0.2f + 1f), c.y - r * 0.45f)
+    drawCircle(Brush.radialGradient(listOf(a.copy(alpha = 0.22f), Color.Transparent), p1, r * 0.8f), r * 0.8f, p1, blendMode = BlendMode.Plus)
+    drawCircle(Brush.radialGradient(listOf(b.copy(alpha = 0.18f), Color.Transparent), p2, r * 0.7f), r * 0.7f, p2, blendMode = BlendMode.Plus)
+}
+
+/**
+ * A thin tilted orbit of light around the sphere with a spark running along it. Drawn in two halves —
+ * the back half before the sphere, the front half after — so the ring really goes around it.
+ */
+private fun DrawScope.drawOrbit(c: Offset, r: Float, t: Float, speed: Float, glow: Color, back: Boolean) {
+    val rx = r * 1.32f
+    val ry = r * 0.30f
+    rotate(-16f, pivot = c) {
+        drawArc(
+            glow.copy(alpha = if (back) 0.10f else 0.28f), startAngle = if (back) 180f else 0f, sweepAngle = 180f, useCenter = false,
+            topLeft = Offset(c.x - rx, c.y - ry), size = Size(rx * 2f, ry * 2f), style = Stroke(width = r * 0.008f),
+        )
+        val a = t * 0.7f * speed
+        val front = kotlin.math.sin(a) > 0f
+        if (front != back) {
+            val p = Offset(c.x + rx * kotlin.math.cos(a), c.y + ry * kotlin.math.sin(a))
+            val k = if (back) 0.45f else 1f
+            drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = 0.55f * k), Color.Transparent), p, r * 0.12f), r * 0.12f, p, blendMode = BlendMode.Plus)
+            drawCircle(Color.White.copy(alpha = 0.9f * k), r * 0.018f, p)
+        }
     }
 }
 
@@ -108,32 +222,66 @@ private fun DrawScope.drawAmbience(c: Offset, r: Float, glow: Color, voice: Floa
     )
 }
 
-/** The liquid: a waving surface filled gold → sapphire, with a fainter second wave behind it. */
+/**
+ * The liquid: a waving, sloshing surface (level with the ground when the phone tilts) filled gold →
+ * deep blue, a second fainter wave behind it, a glow rising from the bottom, moving caustic light lines
+ * inside, and a bright foam line along the surface.
+ */
 private fun DrawScope.drawLiquid(
-    c: Offset, r: Float, t: Float, e: Float, speed: Float,
-    top: Color, bottom: Color, path: Path, rich: Boolean,
+    c: Offset, r: Float, t: Float, e: Float, life: Float, speed: Float, slope: Float,
+    top: Color, bottom: Color, path: Path, foam: Path, caustic: Path, rich: Boolean,
 ) {
     val level = liquidLevel(e, t, speed)
     val restY = c.y + r - 2f * r * level
+    val steps = if (rich) 48 else 24
+    fun surfaceAt(x: Float, phase: Float) = restY + surfaceOffset(x, t + phase, life, speed, slope) * r
     fun wave(phase: Float, alpha: Float) {
         path.reset()
-        val steps = if (rich) 40 else 20
         path.moveTo(c.x - r, c.y + r)
         for (i in 0..steps) {
             val x = -1f + 2f * i / steps
-            path.lineTo(c.x + x * r, restY + surfaceOffset(x, t + phase, e, speed) * r)
+            path.lineTo(c.x + x * r, surfaceAt(x, phase))
         }
         path.lineTo(c.x + r, c.y + r)
         path.close()
-        drawPath(path, Brush.verticalGradient(listOf(top.copy(alpha = alpha), bottom.copy(alpha = alpha)), startY = restY - r * 0.16f, endY = c.y + r))
+        drawPath(
+            path,
+            Brush.verticalGradient(
+                0f to top.copy(alpha = alpha),
+                0.45f to androidx.compose.ui.graphics.lerp(top, bottom, 0.55f).copy(alpha = alpha),
+                1f to bottom.copy(alpha = alpha),
+                startY = restY - r * 0.3f, endY = c.y + r,
+            ),
+        )
     }
-    if (rich) wave(phase = 1.9f, alpha = 0.35f)
-    wave(phase = 0f, alpha = 0.95f)
-    // A bright line of light along the surface.
-    drawLine(
-        Brush.horizontalGradient(listOf(Color.Transparent, top.copy(alpha = 0.55f), Color.Transparent), c.x - r, c.x + r),
-        Offset(c.x - r, restY), Offset(c.x + r, restY), strokeWidth = r * 0.012f,
-    )
+    if (rich) wave(phase = 2.1f, alpha = 0.38f)
+    wave(phase = 0f, alpha = 0.96f)
+
+    // Light rising from the bottom of the liquid.
+    val glowAt = Offset(c.x, c.y + r * 0.75f)
+    drawCircle(Brush.radialGradient(listOf(top.copy(alpha = 0.35f + 0.25f * life), Color.Transparent), glowAt, r * 0.9f), r * 0.9f, glowAt, blendMode = BlendMode.Plus)
+
+    // Caustics: soft wavy light lines moving through the liquid.
+    if (rich) for (k in 0 until 3) {
+        caustic.reset()
+        val depth = 0.25f + 0.22f * k
+        for (i in 0..steps) {
+            val x = -1f + 2f * i / steps
+            val y = surfaceAt(x, 0f) + (c.y + r - restY) * depth + r * 0.05f * kotlin.math.sin(x * (6f + k) + t * (1.2f + 0.4f * k) * speed)
+            if (i == 0) caustic.moveTo(c.x + x * r, y) else caustic.lineTo(c.x + x * r, y)
+        }
+        drawPath(caustic, Color.White.copy(alpha = 0.10f + 0.06f * life), style = Stroke(width = r * 0.012f), blendMode = BlendMode.Plus)
+    }
+
+    // Foam: the bright edge of the surface.
+    foam.reset()
+    for (i in 0..steps) {
+        val x = -1f + 2f * i / steps
+        val y = surfaceAt(x, 0f)
+        if (i == 0) foam.moveTo(c.x + x * r, y) else foam.lineTo(c.x + x * r, y)
+    }
+    drawPath(foam, Color.White.copy(alpha = 0.55f), style = Stroke(width = r * 0.014f))
+    drawPath(foam, top.copy(alpha = 0.5f), style = Stroke(width = r * 0.05f), blendMode = BlendMode.Plus)
 }
 
 /** Glowing blobs drifting inside, added on top of the liquid; a hot core pulses while she speaks. */
@@ -145,7 +293,7 @@ private fun DrawScope.drawLights(c: Offset, r: Float, t: Float, speed: Float, vo
         val p = Offset(c.x + bx * r, c.y + by * r)
         val br = r * (0.38f + 0.10f * voice)
         drawCircle(
-            Brush.radialGradient(listOf(colors[i].copy(alpha = 0.30f + 0.25f * voice), Color.Transparent), p, br),
+            Brush.radialGradient(listOf(colors[i].copy(alpha = 0.34f + 0.30f * voice), Color.Transparent), p, br),
             br, p, blendMode = BlendMode.Plus,
         )
     }
@@ -155,16 +303,18 @@ private fun DrawScope.drawLights(c: Offset, r: Float, t: Float, speed: Float, vo
     }
 }
 
-/** Small bubbles rising through the liquid. */
-private fun DrawScope.drawBubbles(c: Offset, r: Float, t: Float, e: Float, speed: Float) {
+/** Small bubbles rising through the liquid, quicker when it is lively. */
+private fun DrawScope.drawBubbles(c: Offset, r: Float, t: Float, e: Float, life: Float, speed: Float, slope: Float) {
     val level = liquidLevel(e, t, speed)
-    val surfaceY = c.y + r - 2f * r * level
-    for (i in 0 until 7) {
-        val rise = ((t * 0.12f * speed + i / 7f) % 1f)
-        val x = c.x + r * (-0.55f + 1.1f * ((i * 0.37f) % 1f)) + r * 0.03f * kotlin.math.sin(t * 2f + i)
-        val y = (c.y + r * 0.92f) - rise * ((c.y + r * 0.92f) - surfaceY)
-        val br = r * (0.012f + 0.010f * ((i * 0.53f) % 1f))
-        drawCircle(Color.White.copy(alpha = 0.22f * (1f - rise)), br, Offset(x, y))
+    val restY = c.y + r - 2f * r * level
+    for (i in 0 until 9) {
+        val rise = ((t * (0.10f + 0.12f * life) * speed + i / 9f) % 1f)
+        val xs = -0.6f + 1.2f * ((i * 0.37f) % 1f)
+        val x = c.x + r * xs + r * 0.03f * kotlin.math.sin(t * 2f + i)
+        val top = restY + surfaceOffset(xs, t, life, speed, slope) * r
+        val y = (c.y + r * 0.92f) - rise * ((c.y + r * 0.92f) - top)
+        val br = r * (0.012f + 0.012f * ((i * 0.53f) % 1f))
+        drawCircle(Color.White.copy(alpha = 0.30f * (1f - rise)), br, Offset(x, y))
     }
 }
 

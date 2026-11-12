@@ -37,19 +37,70 @@ fun glassSpeed(state: AssistantState): Float = when (state) {
 /** The share of the sphere filled with liquid (0..1): breathes gently, rises with the voice. */
 fun liquidLevel(energy: Float, t: Float, speed: Float): Float {
     val voice = ((energy - AMBIENT_ENERGY) / (1f - AMBIENT_ENERGY)).coerceIn(0f, 1f)
-    val breath = 0.018f * sin(t * 0.9f * speed)
+    val breath = 0.025f * sin(t * 0.9f * speed)
     return (0.46f + 0.12f * voice + breath).coerceIn(0.3f, 0.66f)
 }
 
 /**
- * The liquid surface at [x] (-1 left edge … 1 right edge of the sphere), as a share of the radius above
- * or below the resting level. Two waves; taller with the voice, never higher than 0.16 of the radius.
+ * How lively the liquid is, 0..1, even without a measured voice level: it always sloshes a little,
+ * more while listening or thinking (the microphone level is 0 when the shared microphone is off).
  */
-fun surfaceOffset(x: Float, t: Float, energy: Float, speed: Float): Float {
+fun liquidLife(state: AssistantState, energy: Float): Float {
     val voice = ((energy - AMBIENT_ENERGY) / (1f - AMBIENT_ENERGY)).coerceIn(0f, 1f)
-    val amp = 0.025f + 0.11f * voice
-    val w = sin(x * 3.1f + t * 1.7f * speed) * 0.65f + sin(x * 5.3f - t * 2.3f * speed + 1.3f) * 0.35f
-    return (amp * w).coerceIn(-0.16f, 0.16f)
+    val base = when (state) {
+        AssistantState.Listening -> 0.45f
+        AssistantState.Thinking, AssistantState.Executing -> 0.55f
+        AssistantState.Speaking -> 0.40f
+        AssistantState.Sleeping, AssistantState.Offline -> 0.12f
+        else -> 0.25f
+    }
+    return (base + 0.6f * voice).coerceIn(0f, 1f)
+}
+
+/**
+ * The liquid surface at [x] (-1 left edge … 1 right edge of the sphere), as a share of the radius above
+ * or below the resting level: waves that grow with [life], a slow slosh, and the [slope] the phone's tilt
+ * gives (real liquid stays level when the glass tilts). Never more than 0.3 of the radius.
+ */
+fun surfaceOffset(x: Float, t: Float, life: Float, speed: Float, slope: Float = 0f): Float {
+    val amp = 0.03f + 0.10f * life
+    val w = sin(x * 3.1f + t * 1.9f * speed) * 0.55f +
+        sin(x * 5.7f - t * 2.6f * speed + 1.3f) * 0.30f +
+        sin(x * 9.3f + t * 3.4f * speed + 0.4f) * 0.15f
+    val slosh = 0.06f * life * sin(t * 0.8f * speed) * x
+    return (amp * w + slosh + slope * x).coerceIn(-0.3f, 0.3f)
+}
+
+/** The surface's tilt from the phone's sideways tilt (accelerometer x, m/s²): at most 0.22 of the radius. */
+fun tiltSlope(tiltX: Float): Float = (tiltX / 9.81f * 0.35f).coerceIn(-0.22f, 0.22f)
+
+/**
+ * One northern-lights curtain: the height of band [i] at [x] (0 left … 1 right of the screen), as a share
+ * of the screen height, drifting with [t]. Bands lie in the upper two thirds (0.08 … 0.70).
+ */
+fun auroraY(i: Int, x: Float, t: Float): Float {
+    val base = 0.20f + 0.13f * i
+    val y = base + 0.07f * sin(x * (4.0f + i) + t * (0.18f + 0.05f * i) + i * 1.7f) +
+        0.035f * sin(x * (9.0f - i) - t * (0.27f + 0.04f * i))
+    return y.coerceIn(0.08f, 0.70f)
+}
+
+/** Northern-lights colours for the state (up to three curtains), as ARGB. */
+fun auroraColors(state: AssistantState): List<Long> = when (state) {
+    AssistantState.Listening -> listOf(0xFF22D3EE, 0xFF3B82F6, 0xFF34D399)
+    AssistantState.Thinking, AssistantState.Executing -> listOf(0xFFA78BFA, 0xFF6366F1, 0xFFEC4899)
+    AssistantState.Speaking -> listOf(0xFFFBBF24, 0xFFF472B6, 0xFF34D399)
+    AssistantState.Error -> listOf(0xFFF87171, 0xFFFB923C, 0xFF9333EA)
+    AssistantState.Sleeping, AssistantState.Offline -> listOf(0xFF1E3A5F, 0xFF312E81, 0xFF134E4A)
+    else -> listOf(0xFF34D399, 0xFF22D3EE, 0xFF8B5CF6)
+}
+
+/** A star's place (0..1 of the screen) and how bright it twinkles now (0..1), the same every frame. */
+fun star(i: Int, t: Float): Triple<Float, Float, Float> {
+    val x = ((i * 0.618034f) % 1f)
+    val y = ((i * 0.381966f * 1.7f) % 1f) * 0.85f
+    val twinkle = 0.35f + 0.65f * (0.5f + 0.5f * sin(t * (0.8f + (i % 5) * 0.3f) + i))
+    return Triple(x, y, twinkle)
 }
 
 /** Where light blob [i] of [count] floats inside the sphere, in radii from the centre (within 0.6). */
