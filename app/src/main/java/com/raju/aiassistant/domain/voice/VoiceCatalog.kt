@@ -134,10 +134,11 @@ object VoiceCatalog {
         VoiceModelOption("aura-2-harmonia-en", "Harmonia", "सौम्य"),
     )
 
-    const val DEEPGRAM_DEFAULT_STT = "nova-3:multi"
+    const val DEEPGRAM_DEFAULT_STT = "nova-3:hi"
     val deepgramSttModels = listOf(
-        SttModelOption("nova-3:multi", "Nova-3 Hinglish", "Hindi + English मिलाकर बोलें तो सबसे अच्छा", recommended = true),
-        SttModelOption("nova-3:hi", "Nova-3 Hindi", "सिर्फ़ Hindi बोलते हों तो"),
+        // Hindi first: on the phone "multi" wrote Hindi speech as Spanish or in Telugu letters.
+        SttModelOption("nova-3:hi", "Nova-3 Hindi", "Hindi (बीच में English शब्द भी चलेंगे) — सबसे भरोसेमंद", recommended = true),
+        SttModelOption("nova-3:multi", "Nova-3 Hinglish (multi)", "कई भाषाएँ — कभी-कभी गलत भाषा पकड़ लेता है"),
         SttModelOption("nova-2:hi", "Nova-2 Hindi", "पुराना model, backup के लिए"),
         SttModelOption("nova-3:en", "Nova-3 English", "सिर्फ़ English"),
     )

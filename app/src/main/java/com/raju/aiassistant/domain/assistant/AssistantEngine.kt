@@ -2371,6 +2371,9 @@ class AssistantEngine(
     // ---- Booking note: a short conversation that ends in a note (see domain/booking/BookingNote.kt).
 
     private var bookingDraft: com.raju.aiassistant.domain.booking.BookingDraft? = null
+    /** The booking note's last question and how many times in a row it was asked (badly heard answers). */
+    private var bookingLastPrompt: String? = null
+    private var bookingRepeats = 0
 
     /** Live camera: the camera in use (front or not) while on, and when it switches itself off. */
     private var liveCameraFront: Boolean? = null
@@ -2379,6 +2382,8 @@ class AssistantEngine(
 
     private suspend fun startBooking(action: AssistantAction, speak: Boolean) {
         bookingDraft = com.raju.aiassistant.domain.booking.BookingDraft()
+        bookingLastPrompt = null
+        bookingRepeats = 0
         bookingUntil = clock() + BOOKING_TIMEOUT_MS
         val msg = phrase(lang(), "ठीक है, बुकिंग नोट बनाती हूँ। कहाँ से? जैसे पुणे।", "ঠিক আছে, বুকিং নোট বানাচ্ছি। কোথা থেকে?")
         report(action, ActionStatus.SUCCESS, msg)
@@ -2392,6 +2397,20 @@ class AssistantEngine(
         bookingUntil = clock() + BOOKING_TIMEOUT_MS
         when (val step = com.raju.aiassistant.domain.booking.BookingNote.step(draft, text, today())) {
             is com.raju.aiassistant.domain.booking.BookingStep.Ask -> {
+                // The same question a third time: the answers are not being understood, so stop
+                // instead of asking forever.
+                bookingRepeats = if (step.prompt == bookingLastPrompt) bookingRepeats + 1 else 0
+                bookingLastPrompt = step.prompt
+                if (bookingRepeats >= 2) {
+                    bookingDraft = null
+                    bookingLastPrompt = null
+                    bookingRepeats = 0
+                    val msg = phrase(lang(), "जवाब ठीक से समझ नहीं आया, इसलिए बुकिंग नोट रोक दिया। फिर से शुरू करने के लिए \"booking note banao\" बोलिए।", "উত্তর বুঝতে পারিনি, বুকিং নোট থামিয়ে দিলাম।")
+                    report(action, ActionStatus.CANCELLED, msg)
+                    if (speak) say(msg)
+                    finishTurn()
+                    return
+                }
                 bookingDraft = step.draft
                 report(action, ActionStatus.SUCCESS, step.prompt)
                 if (speak) say(step.prompt)

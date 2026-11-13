@@ -113,6 +113,9 @@ object TurnPacing {
         else EndpointDetector(
             frameMs = frameMs, silenceMs = NORMAL_SILENCE_MS,
             shortSilenceMs = SHORT_SILENCE_MS, shortSpeechMs = SHORT_SPEECH_MS,
+            // On the phone a normal voice a little away from the phone was "no speech" at 150 x 2.5,
+            // and the 4.5 s wait restarted while the user began to speak (words lost in the gap).
+            noSpeechTimeoutMs = NO_SPEECH_MS, minThreshold = VOICE_FLOOR, noiseFactor = VOICE_OVER_NOISE,
         )
 
     const val QUICK_SILENCE_MS = 600
@@ -121,4 +124,9 @@ object TurnPacing {
     const val SHORT_SILENCE_MS = 800
     const val SHORT_SPEECH_MS = 1_500
     const val QUICK_MAX_MS = 6_000
+    /** Wait this long for the user to start talking before the turn counts as "no speech". */
+    const val NO_SPEECH_MS = 8_000
+    /** Quietest level that counts as a voice (the wake listener hears the same voice at 110). */
+    const val VOICE_FLOOR = 110.0
+    const val VOICE_OVER_NOISE = 2.2
 }

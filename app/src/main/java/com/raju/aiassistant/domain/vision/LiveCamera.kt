@@ -34,3 +34,19 @@ fun parseLiveCamera(text: String): LiveCameraCommand? {
     if (LIVE.matches(withoutSide)) return LiveCameraCommand.Start(front = FRONT.containsMatchIn(t))
     return null
 }
+
+private val LOOK = Regex("dikh|dikha|dekh|dekho|batao|bata|kya hai|kaun hai|दिख|देख|बताओ|बता|क्या है|कौन है", RegexOption.IGNORE_CASE)
+private val CAMERA_WORD = Regex("camera|kamera|कैमरा|कैमरे", RegexOption.IGNORE_CASE)
+private val FRONT_SIDE = Regex("front|selfie|aage|आगे|फ्रंट|सेल्फी|samne|सामने", RegexOption.IGNORE_CASE)
+
+/**
+ * "Back camera chalu karo, peeche kya dikh raha hai batao" / "camera se dekh ke batao ye kya hai": one
+ * photo now and an answer about it (front camera when "front / selfie / aage / samne" is said). Not
+ * "camera kholo" (that opens the camera app) and not live camera (parsed first).
+ */
+fun parseLookCamera(text: String): Pair<Boolean, String>? {
+    val t = text.trim()
+    if (t.length > 160 || !CAMERA_WORD.containsMatchIn(t) || !LOOK.containsMatchIn(t)) return null
+    if (parseLiveCamera(t) != null) return null
+    return FRONT_SIDE.containsMatchIn(t) to t
+}

@@ -24,6 +24,7 @@ object LocalCommands {
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
         if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
+        com.raju.aiassistant.domain.vision.parseLookCamera(withoutLeadingFillers(text))?.let { (front, q) -> return AssistantAction.LookCamera(front, q) }
         com.raju.aiassistant.domain.vision.parseLiveCamera(withoutLeadingFillers(text))?.let {
             return when (it) {
                 is com.raju.aiassistant.domain.vision.LiveCameraCommand.Start -> AssistantAction.LiveCamera(on = true, front = it.front)

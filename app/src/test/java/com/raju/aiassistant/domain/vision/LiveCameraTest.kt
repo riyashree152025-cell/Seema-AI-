@@ -18,4 +18,14 @@ class LiveCameraTest {
         assertNull(parseLiveCamera("camera se dekh ke batao ye kya hai"))
         assertNull(parseLiveCamera("live cricket score batao"))
     }
+
+    @Test
+    fun aCameraQuestionIsAnsweredFromOnePhoto() {
+        // What the user said on the phone.
+        assertEquals(false, parseLookCamera("back camera chalu karo peeche kya dikh raha hai mere ko batao")?.first)
+        assertEquals(true, parseLookCamera("front camera se dekh ke batao main kaisa lag raha hoon")?.first)
+        assertEquals(false, parseLookCamera("कैमरा से देख के बताओ ये क्या है")?.first)
+        assertNull(parseLookCamera("camera kholo"))
+        assertNull(parseLookCamera("live camera chalu karo"))
+    }
 }

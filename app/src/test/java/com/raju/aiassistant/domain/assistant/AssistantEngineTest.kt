@@ -2603,7 +2603,8 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
             describeImage = { jpeg, q -> seen = jpeg.size to q; AiResult.Success("Aap muskura rahe hain.") },
         )
-        e.submit("front camera se dekho main kaisa lag raha hoon", fromVoice = true)
+        // No "camera" in the words: the AI decides to look (its "look" action is still followed).
+        e.submit("selfie lekar dekho main kaisa lag raha hoon", fromVoice = true)
         settle()
         assertEquals(listOf(true to false), tools.photos) // front camera, not saved to the gallery
         assertEquals(3, seen!!.first)
@@ -2667,6 +2668,25 @@ class AssistantEngineTest {
         settle()
         assertTrue(provider.systems.first().contains("MOOD NOW: The user says they are tired"))
         assertTrue(!provider.systems.last().contains("MOOD NOW")) // only for that answer
+    }
+
+    @Test
+    fun aCameraQuestionTakesOnePhotoWithoutAskingTheChatAi() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        var seen: String? = null
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            describeImage = { _, q -> seen = q; AiResult.Success("Peeche ek khidki hai.") },
+        )
+        e.submit("back camera chalu karo peeche kya dikh raha hai mere ko batao", fromVoice = true)
+        settle()
+        assertEquals(listOf(false to false), tools.photos) // back camera, not saved
+        assertTrue(seen!!.startsWith("back camera chalu karo peeche kya dikh raha hai"))
+        assertEquals("Peeche ek khidki hai.", speaker.spoken.last())
+        assertTrue(provider.calls.isEmpty())
     }
 
     @Test

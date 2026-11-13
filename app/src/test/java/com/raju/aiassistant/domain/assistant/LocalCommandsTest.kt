@@ -89,7 +89,8 @@ class LocalCommandsTest {
         assertEquals(AssistantAction.TakePhoto(front = true), p("front camera se photo lo"))
         assertEquals(AssistantAction.OpenApp("Camera"), p("camera kholo"))
         assertEquals(AssistantAction.OpenApp("Camera"), p("कैमरा खोलो"))
-        assertNull(p("front camera se dekho main kaisa lag raha hoon")) // needs the AI to look
+        // A camera question is answered on the phone from one photo now (the AI only describes the photo).
+        assertEquals(AssistantAction.LookCamera(true, "front camera se dekho main kaisa lag raha hoon"), p("front camera se dekho main kaisa lag raha hoon"))
     }
 
     @Test

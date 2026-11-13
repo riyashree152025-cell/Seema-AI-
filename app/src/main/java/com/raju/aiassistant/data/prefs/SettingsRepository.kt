@@ -195,7 +195,8 @@ class SettingsRepository(private val context: Context) {
         val CARTESIA_MOOD = stringPreferencesKey("cartesia_mood")
         val DEEPGRAM_VOICE = stringPreferencesKey("deepgram_voice")
         val STT_ENGINE = stringPreferencesKey("stt_engine")
-        val DEEPGRAM_STT = stringPreferencesKey("deepgram_stt_model")
+        // v2: the earlier default "multi" wrote Hindi as Spanish / Telugu on the phone; everyone starts on Hindi again.
+        val DEEPGRAM_STT = stringPreferencesKey("deepgram_stt_model_v2")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
         val SPEECH_PITCH = floatPreferencesKey("speech_pitch")
         val VOICE_ENGINE_AUTO = booleanPreferencesKey("voice_engine_auto")
