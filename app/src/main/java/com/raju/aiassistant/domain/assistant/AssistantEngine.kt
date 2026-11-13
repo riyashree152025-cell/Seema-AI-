@@ -1197,7 +1197,9 @@ class AssistantEngine(
                     )
                     return
                 }
-                note("↪ ${providerId.shortName}: ${streamed.message} — answered by ${backup.provider.shortName} instead.")
+                // Short: the service's own error text (quota numbers, organisation ids) means nothing to the user.
+                val why = if (streamed.kind == com.raju.aiassistant.domain.ai.FailureKind.QUOTA_EXCEEDED) "limit reached" else streamed.message.take(80)
+                note("↪ ${providerId.shortName}: $why — answered by ${backup.provider.shortName} instead.")
                 answeredBy = backup.provider
                 answeredModel = backup.model
                 backup.text

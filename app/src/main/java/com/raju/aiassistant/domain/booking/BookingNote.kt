@@ -136,9 +136,25 @@ object BookingNote {
         list.firstNotNullOfOrNull { w -> RELATIVE[w]?.let { today.plusDays(it) } }
 
     /** One step of the note: reads what was said, fills what it can, and asks for the next missing piece. */
-    fun step(draft: BookingDraft, text: String, today: LocalDate): BookingStep {
+    /**
+     * What the recogniser wrote, made readable: number words to digits ("उन्नीस सौ छियासी" → 1986) and
+     * spoken classes to codes ("3 a", "थ्री ए", "तीन एसी", "third AC" → 3A; the same for 2A / 1A).
+     */
+    internal fun spokenClean(said: String): String {
+        var t = com.raju.aiassistant.domain.language.hindiNumbersToDigits(said)
+        fun cls(digit: String, words: String) {
+            t = Regex("(?<![\\p{L}\\p{N}])(?:$digit|$words)\\s*(?:a|ए|ac|एसी|e)(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE).replace(t, "${digit}A")
+        }
+        cls("3", "teen|तीन|three|थ्री|third|थर्ड|3rd")
+        cls("2", "do|दो|two|टू|second|सेकंड|सेकेंड|2nd")
+        cls("1", "ek|एक|one|वन|first|फर्स्ट|1st")
+        return t
+    }
+
+    fun step(draft: BookingDraft, said: String, today: LocalDate): BookingStep {
+        if (CANCEL.containsMatchIn(normalize(said))) return BookingStep.Cancelled
+        val text = spokenClean(said)
         val n = normalize(text)
-        if (CANCEL.containsMatchIn(n)) return BookingStep.Cancelled
         val list = words(text)
         val orig = wordsAsSaid(text)
         var d = draft
