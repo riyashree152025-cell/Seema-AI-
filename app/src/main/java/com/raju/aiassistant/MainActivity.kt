@@ -106,10 +106,16 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         leftAt = android.os.SystemClock.elapsedRealtime()
+        // Floating Seema over the other app (not for a rotation, and nothing while the app lock is closed).
+        if (!isChangingConfigurations) {
+            val s = (application as RajuApp).container.currentSettings.value
+            com.raju.aiassistant.ui.overlay.FloatingSeema.onAppHidden(this, appLocked = s.appLock && !unlocked.value && deviceSecure())
+        }
     }
 
     override fun onStart() {
         super.onStart()
+        com.raju.aiassistant.ui.overlay.FloatingSeema.onAppShown()
         // Away for more than half a minute: lock again (a quick trip to a permission page does not).
         if (leftAt != 0L && android.os.SystemClock.elapsedRealtime() - leftAt > 30_000L) unlocked.value = false
     }

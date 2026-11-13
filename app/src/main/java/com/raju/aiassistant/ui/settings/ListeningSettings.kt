@@ -41,6 +41,12 @@ fun ListeningPanel(s: UserSettings, viewModel: SettingsViewModel) {
 
         ToggleRow("Sirf naam se jaage (\"Hey Seema\" / \"Seema\")", s.wakeWord, viewModel::setWakeWord)
 
+        ToggleRow("Floating Seema — app band karne par screen par chhota glass card / aankh (chhoo kar bolo, roko, kholo)", s.floatingPopup, viewModel::setFloatingPopup)
+        Text(
+            "\"Doosre app ke upar dikhana\" ki ijazat chahiye (Settings → Diagnose). Mic sirf 🎤 dabane par ya \"Hey Seema\" par khulta hai.",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
+
         ToggleRow("Shared Mic Engine (Beta)", s.micHub, viewModel::setMicHub)
         Text(
             "Reduces microphone conflicts and wake-up lag using centralized MicHub",

@@ -2050,7 +2050,7 @@ fun VoiceCatalogScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text((if (isFavorite) "★ " else "") + speaker.name + (if (isFavorite) " (राजू जी की पसंद)" else ""), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                        Text((if (isFavorite) "★ " else "") + speaker.name + (if (isFavorite) " (आपकी पसंद)" else ""), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
                         Text(speaker.note, style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 14.5.sp))
                     }
                     RadioButton(selected = isSelected, onClick = { viewModel.setSarvamSpeaker(speaker.id) })

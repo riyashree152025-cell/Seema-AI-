@@ -267,6 +267,15 @@ class AssistantEngine(
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
     private fun lang(): SeemaLanguage = SeemaLanguage.fromTag(settings.value.speechLanguage) ?: conversationLanguage.value
+
+    private val endearment = Endearment()
+
+    /**
+     * Her own fixed lines in the conversation's language. She knows the user's name but does not keep
+     * saying it: the name in a line becomes a pet name now and then (by her personality), or is left out.
+     */
+    private fun phrase(language: SeemaLanguage, hindi: String, bengali: String): String =
+        endearment.personalize(com.raju.aiassistant.domain.language.phrase(language, hindi, bengali), settings.value.personality, language)
     /** The last message mixed Hindi and Bengali evenly: ask which language instead of guessing. */
     private var languageUnclear = false
 
@@ -2769,7 +2778,8 @@ class AssistantEngine(
             if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "मैं आपके फोन की घंटी बजा रही हूँ राजू, सुनिए!", "আমি আপনার ফোনের রিং বাজাচ্ছি রাজু, শুনুন!"))
             return
         }
-        val line = phrase(lang(), "राजू जी, फोन यहाँ है!", "রাজু, ফোন এখানে!")
+        // Calling out to him to find the phone: here his name is right.
+        val line = com.raju.aiassistant.domain.language.phrase(lang(), "राजू जी, फोन यहाँ है!", "রাজু, ফোন এখানে!")
         if (!beacon.start(hardware, line)) {
             report(action, ActionStatus.FAILED, "फोन की आवाज़ चालू नहीं हो पाई।")
             return

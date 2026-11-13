@@ -95,6 +95,7 @@ class SettingsRepository(private val context: Context) {
             musicService = enumOr(this[Keys.MUSIC_SERVICE], d.musicService),
             memoryEnabled = this[Keys.MEMORY] ?: d.memoryEnabled,
             safetyMode = this[Keys.SAFETY] ?: d.safetyMode,
+            floatingPopup = this[Keys.FLOATING_POPUP] ?: d.floatingPopup,
             assistantPaused = this[Keys.PAUSED] ?: d.assistantPaused,
             userName = this[Keys.USER_NAME] ?: d.userName,
             userEmail = this[Keys.USER_EMAIL] ?: d.userEmail,
@@ -165,6 +166,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setMusicService(v: MusicService) = edit { it[Keys.MUSIC_SERVICE] = v.name }
     suspend fun setMemoryEnabled(v: Boolean) = edit { it[Keys.MEMORY] = v }
     suspend fun setSafetyMode(v: Boolean) = edit { it[Keys.SAFETY] = v }
+    suspend fun setFloatingPopup(v: Boolean) = edit { it[Keys.FLOATING_POPUP] = v }
     suspend fun setAssistantPaused(v: Boolean) = edit { it[Keys.PAUSED] = v }
     suspend fun saveProfile(name: String, email: String) = edit {
         it[Keys.USER_NAME] = name
@@ -233,6 +235,7 @@ class SettingsRepository(private val context: Context) {
         val MUSIC_SERVICE = stringPreferencesKey("music_service")
         val MEMORY = booleanPreferencesKey("memory_enabled")
         val SAFETY = booleanPreferencesKey("safety_mode")
+        val FLOATING_POPUP = booleanPreferencesKey("floating_popup")
         val PAUSED = booleanPreferencesKey("assistant_paused")
         val USER_NAME = stringPreferencesKey("user_name")
         val USER_EMAIL = stringPreferencesKey("user_email")

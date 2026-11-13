@@ -165,6 +165,8 @@ data class UserSettings(
     val musicService: MusicService = MusicService.YOUTUBE_MUSIC,
     val memoryEnabled: Boolean = true,
     val safetyMode: Boolean = false,
+    /** Floating Seema: a small glass card / eye bubble over other apps while Seema is in the background. */
+    val floatingPopup: Boolean = true,
     val assistantPaused: Boolean = false,
     val userName: String = "Raju",
     val userEmail: String = "ruhulamin16121998@gmail.com",

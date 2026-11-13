@@ -69,6 +69,9 @@ fun LivingEyeVisualizer(
     val eyeTexture = ImageBitmap.imageResource(com.raju.aiassistant.R.drawable.seema_eye)
     // Energy carried between frames so the waves swell and fade instead of jumping.
     val energy = remember { floatArrayOf(AMBIENT_ENERGY) }
+    // Where the eye looks right now (x, y in -1..1 of its reach) and the time of the last frame: the
+    // jump to each new point is carried from frame to frame, like a real eye.
+    val look = remember { floatArrayOf(0f, 0f, Float.NaN) }
     Canvas(modifier.clearAndSetSemantics {}) {
         val t = time()
         val target = waveEnergy(state, speechLevel(), micLevel())
@@ -78,7 +81,7 @@ fun LivingEyeVisualizer(
         val area = eyeArea()
         val centerY = area?.let { (it.center.y / size.height).coerceIn(0.1f, 0.9f) } ?: waveCenterY
         if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, centerY)
-        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeTexture, richEffects)
+        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeTexture, richEffects, look)
     }
 }
 
@@ -146,6 +149,7 @@ private fun DrawScope.drawLivingEye(
     t: Float, energy: Float, state: AssistantState, accent: Color, area: Rect?, touch: Pair<Offset, Float>?,
     texture: androidx.compose.ui.graphics.ImageBitmap,
     richEffects: Boolean,
+    look: FloatArray,
 ) {
     val c = area?.center ?: center
     val asleep = state == AssistantState.Sleeping || state == AssistantState.Offline
@@ -160,63 +164,115 @@ private fun DrawScope.drawLivingEye(
     // Glow around the eye in the state colour.
     drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f * dim), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
 
-    // Gaze: own drift + micro-saccades, or towards a touch for a moment. The whole eye moves with
-    // 0.65 of it; the pupil moves with all of it (parallax: the pupil sits deeper than the iris front).
-    val (ix, iy) = eyeGaze(t, state)
-    val (tx, ty, tw) = touch?.let { (p, at) -> touchGaze((p.x - c.x) / r, (p.y - c.y) / r, t - at) } ?: Triple(0f, 0f, 0f)
-    val gx = ix * (1f - tw) + tx * tw
-    val gy = iy * (1f - tw) + ty * tw
-    val eyeAt = Offset(c.x + gx * r * OUTER_PARALLAX, c.y + gy * r * OUTER_PARALLAX)
-    val pupilAt = Offset(c.x + gx * r * INNER_PARALLAX, c.y + gy * r * INNER_PARALLAX)
-
-    // The user's design: an extremely wide almond, always fully open, filled to both corners with the iris.
+    // The user's design: an extremely wide almond, always fully open, filled to both corners with iris fibres.
     val eyeW = minOf(r * 3.3f, (area?.width ?: size.width) * 0.98f)
     val eyeH = r * 1.78f
     val lids = almondPath(c.x - eyeW / 2f, c.y - eyeH / 2f, eyeW, eyeH)
+
+    // Where she looks: the fixation of this moment for her state (or a touch for a moment), reached with
+    // a quick human jump, plus a slow drift and the tiny tremor of a living eye.
+    val (fx, fy) = lookTarget(t, state)
+    val (tx, ty, tw) = touch?.let { (p, at) -> touchGaze((p.x - c.x) / r, (p.y - c.y) / r, t - at) } ?: Triple(0f, 0f, 0f)
+    val targetX = fx * (1f - tw) + (tx / TOUCH_GAZE_MAX) * 0.9f * tw
+    val targetY = fy * (1f - tw) + (ty / TOUCH_GAZE_MAX) * 0.9f * tw
+    val dt = if (look[2].isNaN()) Float.POSITIVE_INFINITY else t - look[2]
+    if (dt == Float.POSITIVE_INFINITY || dt < 0f) { look[0] = targetX; look[1] = targetY } else {
+        look[0] = lookStep(look[0], targetX, dt)
+        look[1] = lookStep(look[1], targetY, dt)
+    }
+    look[2] = t
+    val (driftX, driftY) = eyeGaze(t, state)
+    val (tremX, tremY) = if (asleep) 0f to 0f else microSaccade(t, 0.02f)
+    val lx = (look[0] + driftX * 0.5f + tremX).coerceIn(-1f, 1f)
+    val ly = (look[1] + driftY * 0.5f + tremY).coerceIn(-1f, 1f)
+
+    // The moving iris: a real iris disc, a little taller than the almond (the lids crop its top and
+    // bottom, as in a human eye), free to travel to both corners.
+    val ri = eyeH * IRIS_HEIGHT_SHARE
+    val reachX = (eyeW / 2f - ri * 0.72f).coerceAtLeast(0f)
+    val reachY = eyeH * 0.16f
+    val irisAt = Offset(c.x + lx * reachX, c.y + ly * reachY)
+    // The pupil sits deeper than the iris front: it shifts a touch further (parallax).
+    val pupilAt = Offset(irisAt.x + lx * r * 0.03f, irisAt.y + ly * r * 0.03f)
+    // Looking to the side, a round iris is seen a little edge-on.
+    val turn = 1f - 0.10f * kotlin.math.abs(lx)
+
     clipPath(lids) {
-    // One iris image as wide as the almond (plus a margin for the gaze): its own fibres fill the corners,
-    // no white, no seam. The almond crops its top and bottom; the pupil stays round in the middle.
-    val ri = eyeW * 0.56f
-    val d = (2f * ri).toInt().coerceAtLeast(1)
-    drawImage(
-        texture,
-        srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
-        srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
-        dstOffset = androidx.compose.ui.unit.IntOffset((eyeAt.x - ri).toInt(), (eyeAt.y - ri).toInt()),
-        dstSize = androidx.compose.ui.unit.IntSize(d, d),
-        alpha = dim,
-        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-    )
+        // The eye body: the same fibres, wide and still, deep in shadow — no white, no seam, both corners full.
+        val rb = eyeW * 0.56f
+        val db = (2f * rb).toInt().coerceAtLeast(1)
+        drawImage(
+            texture,
+            srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
+            srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
+            dstOffset = androidx.compose.ui.unit.IntOffset((c.x - rb).toInt(), (c.y - rb).toInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(db, db),
+            alpha = dim,
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+        )
+        drawRect(EYE_BODY_SHADE.copy(alpha = 0.58f))
 
-    // Life in the outer blue fibres only (the pupil, the hazel collar and the glass highlight stay as drawn).
-    drawFiberLife(t, energy, eyeAt, ri, dim, texture, richEffects)
-
-    // Pupil: the texture's own pupil is its resting size; when she listens or speaks it dilates with the
-    // voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at its
-    // edge so it recedes into the eye. It never shrinks below the drawn pupil.
-    val grow = (pupilScale(t, energy, state) / PUPIL_SHARE).coerceAtLeast(1f)
-    if (grow > 1.005f) {
-        val pr = ri * TEXTURE_PUPIL_SHARE * grow
-        val feather = 3f * density
+        // A soft shadow ring where the iris meets the eye body, so it sits in the eye instead of on it.
+        val sr = ri * 1.28f
         drawCircle(
             Brush.radialGradient(
-                0f to PUPIL_CORE, (pr / (pr + feather * 2)) to PUPIL_CORE, ((pr + feather) / (pr + feather * 2)) to PUPIL_SHADOW.copy(alpha = 0.7f), 1f to Color.Transparent,
-                center = pupilAt, radius = pr + feather * 2,
+                0f to Color.Transparent, (ri * 0.88f / sr) to Color.Transparent, (ri / sr) to Color.Black.copy(alpha = 0.55f), 1f to Color.Transparent,
+                center = irisAt, radius = sr,
             ),
-            pr + feather * 2, pupilAt,
+            sr, irisAt,
         )
-    }
 
-    // While she processes, a soft light circles over the blue iris.
-    if (eyeRadarActive(state)) {
-        val a = t * 3.8f
-        val glow = Offset(eyeAt.x + cos(a) * ri * 0.5f, eyeAt.y + sin(a) * eyeH * 0.3f)
-        drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, ri * 0.2f), ri * 0.2f, glow)
-    }
+        scale(scaleX = turn, scaleY = 1f, pivot = irisAt) {
+            val d = (2f * ri).toInt().coerceAtLeast(1)
+            drawImage(
+                texture,
+                srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
+                srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
+                dstOffset = androidx.compose.ui.unit.IntOffset((irisAt.x - ri).toInt(), (irisAt.y - ri).toInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(d, d),
+                alpha = dim,
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+            )
+
+            // Life in the outer blue fibres only (the pupil, the hazel collar and the glass highlight stay as drawn).
+            drawFiberLife(t, energy, irisAt, ri, dim, texture, richEffects)
+
+            // Pupil: the texture's own pupil is its resting size; when she listens or speaks it dilates with
+            // the voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at
+            // its edge so it recedes into the eye. It never shrinks below the drawn pupil.
+            val grow = (pupilScale(t, energy, state) / PUPIL_SHARE).coerceAtLeast(1f)
+            if (grow > 1.005f) {
+                val pr = ri * TEXTURE_PUPIL_SHARE * grow
+                val feather = 2.5f * density
+                drawCircle(
+                    Brush.radialGradient(
+                        0f to PUPIL_CORE, (pr / (pr + feather * 2)) to PUPIL_CORE, ((pr + feather) / (pr + feather * 2)) to PUPIL_SHADOW.copy(alpha = 0.7f), 1f to Color.Transparent,
+                        center = pupilAt, radius = pr + feather * 2,
+                    ),
+                    pr + feather * 2, pupilAt,
+                )
+            }
+
+            // A faint rim of the state colour around the iris.
+            drawCircle(accent.copy(alpha = 0.22f * dim), ri * 0.975f, irisAt, style = Stroke(width = 1.2f * density))
+        }
+
+        // While she processes, a soft light circles over the blue iris.
+        if (eyeRadarActive(state)) {
+            val a = t * 3.8f
+            val glow = Offset(irisAt.x + cos(a) * ri * 0.6f, irisAt.y + sin(a) * ri * 0.6f)
+            drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, ri * 0.25f), ri * 0.25f, glow)
+        }
     }
     // No lids, no dark line: only a faint glow of the state colour along the edge.
     drawPath(lids, accent.copy(alpha = 0.30f * dim), style = Stroke(width = 3f * density))
 }
+
+/** The moving iris's radius as a share of the almond's height (a little over half: the lids crop it). */
+const val IRIS_HEIGHT_SHARE = 0.64f
+
+/** The shade over the still fibres of the eye body, so the moving iris stands out from it. */
+private val EYE_BODY_SHADE = Color(0xFF020611)
 
 
 /** The user's human-eye shape: corners at 52 % height, lids as two cubic curves (a little flat). */

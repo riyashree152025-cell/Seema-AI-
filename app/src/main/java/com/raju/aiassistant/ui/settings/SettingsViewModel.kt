@@ -215,7 +215,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     is AiResult.Success -> AiResult.Success("Connected — received ${r.value.size / 1024} KB of audio. Deepgram can now listen (Speech input) and speak English.")
                     is AiResult.Failure -> r
                 }
-                else -> when (val r = SarvamTtsClient(c.http, key).synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", c.currentSettings.value.sarvamSpeaker, "hi-IN", 1f)) {
+                else -> when (val r = SarvamTtsClient(c.http, key).synthesize("हाय बाबू! मैं सीमा हूँ।", c.currentSettings.value.sarvamSpeaker, "hi-IN", 1f)) {
                     is AiResult.Success -> {
                         parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
                         AiResult.Success("Connected — Sarvam Bulbul (${c.currentSettings.value.sarvamSpeaker}), received ${r.value.size / 1024} KB.")
@@ -279,7 +279,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val s = c.currentSettings.value
         val voice = s.elevenVoiceId ?: VoiceCatalog.bestDefault(_elevenVoices.value)?.also { repo.setElevenVoice(it.id, it.name) }?.id
             ?: VoiceCatalog.ELEVEN_FALLBACK_VOICE
-        return when (val r = client.synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", voice, s.elevenModel, 1f)) {
+        return when (val r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.elevenModel, 1f)) {
             is AiResult.Success -> {
                 parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
                 AiResult.Success("Connected — model ${s.elevenModel}, received ${r.value.size / 1024} KB.")
@@ -294,7 +294,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val s = c.currentSettings.value
         val voice = s.cartesiaVoiceId ?: VoiceCatalog.bestDefault(_cartesiaVoices.value)?.also { repo.setCartesiaVoice(it.id, it.name) }?.id
             ?: return AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, _voiceListMessage.value ?: "No Cartesia voice found.")
-        return when (val r = client.synthesize("नमस्ते राजू जी! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)) {
+        return when (val r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)) {
             is AiResult.Success -> {
                 parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
                 val vName = s.cartesiaVoiceName ?: _cartesiaVoices.value.firstOrNull { it.id == voice }?.name ?: "Cartesia"
@@ -430,6 +430,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     }
     fun setSleepAfterSeconds(v: Int) = launch { repo.setSleepAfterSeconds(v) }
     fun setWakeWord(v: Boolean) = launch { repo.setWakeWord(v) }
+    fun setFloatingPopup(v: Boolean) = launch { repo.setFloatingPopup(v) }
     fun setMicHub(v: Boolean) = launch { repo.setMicHub(v) }
     fun setHybridBrain(v: Boolean) = launch { repo.setHybridBrain(v) }
     fun setAppLock(v: Boolean) = launch { repo.setAppLock(v) }

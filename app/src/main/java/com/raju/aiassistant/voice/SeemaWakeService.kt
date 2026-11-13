@@ -95,12 +95,15 @@ class SeemaWakeService : Service() {
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         runCatching { (application as com.raju.aiassistant.RajuApp).container.stopEverything() }
+        com.raju.aiassistant.ui.overlay.FloatingSeema.hide()
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         running = false
+        // Without the microphone service she cannot hear in the background: the popup goes too.
+        com.raju.aiassistant.ui.overlay.FloatingSeema.hide()
         lockJob?.cancel()
         serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
@@ -144,6 +147,9 @@ class SeemaWakeService : Service() {
                 else "'हे सीमा' बंद है — माइक सिर्फ़ तब खुलता है जब आप ऐप में बोलते हैं।",
             )
             .setContentIntent(tapIntent)
+            // Talk to her from any app, right from the notification shade.
+            .addAction(0, "🎤 बोलो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_TALK, 1))
+            .addAction(0, "⏹ रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_STOP, 2))
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

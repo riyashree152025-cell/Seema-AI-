@@ -83,8 +83,8 @@ fun spokenPnrStatus(s: PnrSnapshot): String = buildString {
 /** The alert for a change found in the background. */
 fun spokenPnrAlert(s: PnrSnapshot, changes: List<PnrChange>): String {
     val head = when {
-        PnrChange.CHART_PREPARED in changes && s.allConfirmed -> "राजू भाई, चार्ट बन गया है — टिकट कन्फर्म हो गया। "
-        PnrChange.CHART_PREPARED in changes -> "राजू भाई, चार्ट बन गया है — टिकट पूरा कन्फर्म नहीं हुआ। "
+        PnrChange.CHART_PREPARED in changes && s.allConfirmed -> "सुनिए, चार्ट बन गया है — टिकट कन्फर्म हो गया। "
+        PnrChange.CHART_PREPARED in changes -> "सुनिए, चार्ट बन गया है — टिकट पूरा कन्फर्म नहीं हुआ। "
         PnrChange.CONFIRMED in changes -> "Khushkhabri! Ticket confirm ho gaya। "
         else -> "PNR status badla hai। "
     }
