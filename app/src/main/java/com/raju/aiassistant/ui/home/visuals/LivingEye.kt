@@ -169,38 +169,34 @@ private fun DrawScope.drawLivingEye(
     val eyeAt = Offset(c.x + gx * r * OUTER_PARALLAX, c.y + gy * r * OUTER_PARALLAX)
     val pupilAt = Offset(c.x + gx * r * INNER_PARALLAX, c.y + gy * r * INNER_PARALLAX)
 
-    // The human eye (the user's shape): an almond between two lids. The iris moves inside it; the lids
-    // stay, blink now and then, and are half closed while she sleeps.
-    val eyeW = minOf(r * 3.0f, (area?.width ?: size.width) * 0.96f)
-    val open = eyeOpenness(t, asleep)
-    val eyeH = r * 1.78f * open
+    // The user's design: an extremely wide almond, always fully open, filled to both corners with the iris.
+    val eyeW = minOf(r * 3.3f, (area?.width ?: size.width) * 0.98f)
+    val eyeH = r * 1.78f
     val lids = almondPath(c.x - eyeW / 2f, c.y - eyeH / 2f, eyeW, eyeH)
     clipPath(lids) {
-    // The white of the eye: soft, a little blue, darker towards the corners (it is round).
-    drawOval(
-        Brush.radialGradient(listOf(SCLERA.copy(alpha = dim), SCLERA_EDGE.copy(alpha = dim)), c, eyeW * 0.55f),
-        topLeft = Offset(c.x - eyeW / 2f, c.y - eyeH / 2f - r), size = androidx.compose.ui.geometry.Size(eyeW, eyeH + 2f * r),
-    )
-    val d = (2f * r).toInt().coerceAtLeast(1)
+    // One iris image as wide as the almond (plus a margin for the gaze): its own fibres fill the corners,
+    // no white, no seam. The almond crops its top and bottom; the pupil stays round in the middle.
+    val ri = eyeW * 0.56f
+    val d = (2f * ri).toInt().coerceAtLeast(1)
     drawImage(
         texture,
         srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
         srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
-        dstOffset = androidx.compose.ui.unit.IntOffset((eyeAt.x - r).toInt(), (eyeAt.y - r).toInt()),
+        dstOffset = androidx.compose.ui.unit.IntOffset((eyeAt.x - ri).toInt(), (eyeAt.y - ri).toInt()),
         dstSize = androidx.compose.ui.unit.IntSize(d, d),
         alpha = dim,
         filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
     )
 
     // Life in the outer blue fibres only (the pupil, the hazel collar and the glass highlight stay as drawn).
-    drawFiberLife(t, energy, eyeAt, r, dim, texture, richEffects)
+    drawFiberLife(t, energy, eyeAt, ri, dim, texture, richEffects)
 
     // Pupil: the texture's own pupil is its resting size; when she listens or speaks it dilates with the
     // voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at its
     // edge so it recedes into the eye. It never shrinks below the drawn pupil.
     val grow = (pupilScale(t, energy, state) / PUPIL_SHARE).coerceAtLeast(1f)
     if (grow > 1.005f) {
-        val pr = r * TEXTURE_PUPIL_SHARE * grow
+        val pr = ri * TEXTURE_PUPIL_SHARE * grow
         val feather = 3f * density
         drawCircle(
             Brush.radialGradient(
@@ -214,20 +210,14 @@ private fun DrawScope.drawLivingEye(
     // While she processes, a soft light circles over the blue iris.
     if (eyeRadarActive(state)) {
         val a = t * 3.8f
-        val glow = Offset(eyeAt.x + cos(a) * r * 0.66f, eyeAt.y + sin(a) * r * 0.66f)
-        drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, r * 0.28f), r * 0.28f, glow)
+        val glow = Offset(eyeAt.x + cos(a) * ri * 0.5f, eyeAt.y + sin(a) * eyeH * 0.3f)
+        drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, ri * 0.2f), ri * 0.2f, glow)
     }
-    // The upper lid's shadow on the eye, and a little under the lower lid.
-    drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.32f to Color.Transparent, 0.85f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.30f), startY = c.y - eyeH / 2f - r * 0.2f, endY = c.y + eyeH / 2f))
     }
-    // The lid lines: a dark lash line above, a thin one below, with the state colour glowing along them.
-    drawPath(lids, accent.copy(alpha = 0.35f * dim), style = Stroke(width = 6f * density))
-    drawPath(lids, LID_LINE.copy(alpha = dim), style = Stroke(width = 2.4f * density))
+    // No lids, no dark line: only a faint glow of the state colour along the edge.
+    drawPath(lids, accent.copy(alpha = 0.30f * dim), style = Stroke(width = 3f * density))
 }
 
-private val SCLERA = Color(0xFFE6ECF3)
-private val SCLERA_EDGE = Color(0xFF8E9AAD)
-private val LID_LINE = Color(0xFF07090F)
 
 /** The user's human-eye shape: corners at 52 % height, lids as two cubic curves (a little flat). */
 private fun almondPath(left: Float, top: Float, w: Float, h: Float): Path = Path().apply {
