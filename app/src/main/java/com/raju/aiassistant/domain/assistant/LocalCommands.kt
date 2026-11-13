@@ -19,8 +19,10 @@ import com.raju.aiassistant.domain.tools.MediaCommand
  */
 object LocalCommands {
 
-    fun parse(text: String): AssistantAction? {
+    fun parse(said: String): AssistantAction? {
+        val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         whatsApp(text)?.let { return it }
+        whatsAppNoText(text)?.let { return it }
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
         if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
@@ -298,6 +300,22 @@ object LocalCommands {
         RegexOption.IGNORE_CASE,
     )
     private val SEEMA_START = Regex("^(?:(?:hey|hi|हे) )?(?:seema|सीमा)[,\\s]+", RegexOption.IGNORE_CASE)
+
+    // "WhatsApp mein Rizwan Travels ko message karo" / "Rizwan ko WhatsApp karo": who, but no words yet.
+    private val WA_NO_TEXT = Regex(
+        "^(?:whatsapp\\s+(?:me|mein|में|मे|pe|par|पर)\\s+)?(.{2,40}?)\\s+(?:ko|को)\\s+(?:whatsapp\\s+)?(?:pe\\s+|par\\s+|पर\\s+)?(?:(?:ek\\s+|एक\\s+)?(?:message|msg|मैसेज|मेसेज|संदेश)\\s+)?(?:karo|kar do|bhejo|bhej do|करो|कर दो|भेजो|भेज दो)$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun whatsAppNoText(text: String): AssistantAction? {
+        val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "").replace(Regex("^[,\\s]+"), "")
+        if (!t.contains("whatsapp", ignoreCase = true)) return null
+        val who = WA_NO_TEXT.matchEntire(t)?.groupValues?.get(1)?.trim()?.removePrefix("WhatsApp ")?.trim() ?: return null
+        if (who.isEmpty() || who.split(' ').size > 4 || who.contains("whatsapp", ignoreCase = true)) return null
+        // "kholo aur Riya", "usko": not a name (the AI knows who is meant).
+        if (Regex("(?i)(?<![\\p{L}])(?:aur|और|kholo|खोलो|usko|isko|उसको|इसको|unko|उनको)(?![\\p{L}])").containsMatchIn(who)) return null
+        return AssistantAction.WhatsAppAskText(who)
+    }
 
     private fun whatsApp(text: String): AssistantAction? {
         val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "").replace(Regex("^[,\\s]+"), "")

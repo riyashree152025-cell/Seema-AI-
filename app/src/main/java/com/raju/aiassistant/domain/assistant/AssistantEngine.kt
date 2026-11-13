@@ -104,6 +104,8 @@ private const val NOT_YET = -1L
 private const val AI_TIMEOUT_MS = 45_000L
 /** The short "which phone task is this" request: if it takes longer, the normal conversation answers. */
 private const val ROUTER_TIMEOUT_MS = 6_000L
+/** How long the answer to "WhatsApp par kya likhun?" is waited for. */
+private const val WA_ASK_MS = 60_000L
 /** Exchanges of recent conversation sent with each AI request, and their size limit. */
 private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
@@ -404,7 +406,7 @@ class AssistantEngine(
      */
     private fun onHeard(rawHeard: String) {
         // Hindi written in another Indian script by the recogniser ("గీతా") is read as Devanagari.
-        val heard = com.raju.aiassistant.domain.language.toDevanagari(rawHeard)
+        val heard = com.raju.aiassistant.domain.language.fixCommonMishearings(com.raju.aiassistant.domain.language.toDevanagari(rawHeard))
         // Switched off: nothing that was heard is acted on or answered.
         if (settings.value.assistantPaused) { trace("off: heard result dropped"); return }
         trace("recognized (${heard.length} chars)")
@@ -982,6 +984,14 @@ class AssistantEngine(
         // "Batao" / "haan padho" a little after "Padh ke sunau kya?": read that message.
         if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
+        }
+        // "Rizwan Travels ko kya likhun?" was asked: this sentence is the message (sent after the usual confirm).
+        waAskContact?.let { who ->
+            waAskContact = null
+            if (clock() < waAskUntil && text.isNotBlank()) {
+                trace("whatsapp text received")
+                if (runLocalCommand(AssistantAction.WhatsApp(who, text.trim()), speak = fromVoice || s.autoSpeakReplies)) return
+            }
         }
         // Live camera on: a question that is not a phone command is answered from a fresh photo.
         liveCameraFront?.let { front ->
@@ -1634,6 +1644,11 @@ class AssistantEngine(
             AssistantAction.ReminderNeedsTime -> {
                 trace("offline command: reminder without a time")
                 informational(action, phrase(lang(), "कब याद दिलाऊँ? समय के साथ बोलिए, जैसे \"कल सुबह 9 बजे याद दिलाना\" या \"2 घंटे बाद याद दिलाना\"।", "কখন মনে করাব? সময় বলুন, যেমন \"কাল সকাল ৯টায় মনে করিও\"।"), speak)
+            }
+            is AssistantAction.WhatsAppAskText -> {
+                waAskContact = action.contact
+                waAskUntil = clock() + WA_ASK_MS
+                informational(action, phrase(lang(), "${action.contact} को WhatsApp पर क्या लिखूँ?", "${action.contact}-কে WhatsApp-এ কী লিখব?"), speak)
             }
             AssistantAction.TatkalWhen -> {
                 trace("offline command: tatkal opening")
@@ -2292,6 +2307,7 @@ class AssistantEngine(
             is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            is AssistantAction.WhatsAppAskText -> { waAskContact = action.contact; waAskUntil = clock() + WA_ASK_MS; informational(action, phrase(lang(), "${action.contact} को WhatsApp पर क्या लिखूँ?", "${action.contact}-কে WhatsApp-এ কী লিখব?"), speak) }
             is AssistantAction.TatkalReminder -> tatkalReminder(action, speak)
             AssistantAction.ReminderNeedsTime -> report(action, ActionStatus.SUCCESS, "Asked when to remind.")
             is AssistantAction.LiveCamera -> {
@@ -2418,6 +2434,10 @@ class AssistantEngine(
     /** The booking note's last question and how many times in a row it was asked (badly heard answers). */
     private var bookingLastPrompt: String? = null
     private var bookingRepeats = 0
+
+    /** "Kya likhun?" asked for a WhatsApp message: the contact, and until when the next sentence is the text. */
+    private var waAskContact: String? = null
+    private var waAskUntil = 0L
 
     /** Live camera: the camera in use (front or not) while on, and when it switches itself off. */
     private var liveCameraFront: Boolean? = null

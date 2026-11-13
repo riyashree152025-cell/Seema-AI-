@@ -2635,6 +2635,21 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun whatsAppWithoutWordsAsksWhatToWriteAndTheNextSentenceIsTheMessage() = runTest {
+        val e = engine()
+        e.submit("What's up में रिज़वान Travels को message करो", fromVoice = true)
+        settle()
+        assertEquals("रिज़वान Travels को WhatsApp पर क्या लिखूँ?", speaker.spoken.last())
+        assertTrue(provider.calls.isEmpty())
+        e.submit("kal subah 10 baje gaadi bhejna", fromVoice = true)
+        settle()
+        // The usual WhatsApp flow takes over (it asks before sending); nothing went to the AI.
+        assertTrue(speaker.spoken.last(), speaker.spoken.last() != "रिज़वान Travels को WhatsApp पर क्या लिखूँ?")
+        assertTrue(e.transcript.value.any { it.text.contains("रिज़वान") && it.role != ChatRole.USER })
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
     fun aTatkalBookingToRememberIsSetOnThePhoneNotSentToTheAi() = runTest {
         val e = engine()
         e.submit("anand ka tatkal booking hai yaad diladena", fromVoice = true)

@@ -207,6 +207,10 @@ sealed interface AssistantAction {
     data class BookingNoteWith(val said: String) : AssistantAction {
         override val label get() = "Booking note"
     }
+    /** "Rizwan Travels ko WhatsApp message karo" with no words yet: Seema asks what to write. */
+    data class WhatsAppAskText(val contact: String) : AssistantAction {
+        override val label get() = "WhatsApp: what to write?"
+    }
     /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
     data object TatkalWhen : AssistantAction {
         override val label get() = "Tatkal opening"

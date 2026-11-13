@@ -28,3 +28,11 @@ fun toDevanagari(text: String): String {
     }
     return out.toString()
 }
+
+
+private val WHATSAPP_HEARD = Regex(
+    "(?i)(?<![\\p{L}])(?:what'?s\\s?up|what\\s?sapp|वॉट्स\\s?अप|वाट्स\\s?अप|व्हाट्स\\s?अप|व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|वॉट्सएप)(?![\\p{L}])",
+)
+
+/** Words the recogniser often gets wrong in commands: "What's up में … message करो" is WhatsApp. */
+fun fixCommonMishearings(text: String): String = WHATSAPP_HEARD.replace(text, "WhatsApp")

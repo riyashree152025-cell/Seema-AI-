@@ -14,7 +14,7 @@ object IntentRouter {
     fun system(today: LocalDate): String = """
 Turn ONE spoken Hindi/Hinglish/Bengali phone command into ONE JSON object, nothing else. Speech recognition makes mistakes: fix obvious mishearings ("3 a"=3A, "उन्नीस सौ छियासी"=1986, numbers in words = digits). Keep names as said. Leave out fields that were not said. If it is a question, chat or anything not in the list: {"type":"chat"}.
 Types:
-call{contact} · sms{contact,text} · whatsapp{contact,text} · open_app{name} · flashlight{state:on|off} · volume{percent} · set_alarm{hour,minute} · set_timer{minutes} · reminder_add{text,in_minutes | at:"YYYY-MM-DDTHH:MM"} · tatkal_reminder{name,class:ac|sleeper} (remind to book someone's Tatkal ticket) · booking_note{from,to,class:1A|2A|3A|SL|CC|2S,date:"YYYY-MM-DD",passenger,birth_year} (note down a ticket booking someone asked for) · look_camera{camera:back|front,question} · live_camera{on:true|false} · take_photo{camera} · inbox_check{period:today|yesterday|week|month,kind:all|credit|debit} · payment_check{amount} · ledger_add{name,amount,kind:gave|got} · ledger_balance{name} · expense_add{amount,note} · pnr_status{pnr} · play_music{query} · navigate{destination} · battery · find_phone · lock_screen
+call{contact} · sms{contact,text} · whatsapp{contact,text?} ("What's up" = WhatsApp; text only if said) · open_app{name} · flashlight{state:on|off} · volume{percent} · set_alarm{hour,minute} · set_timer{minutes} · reminder_add{text,in_minutes | at:"YYYY-MM-DDTHH:MM"} · tatkal_reminder{name,class:ac|sleeper} (remind to book someone's Tatkal ticket) · booking_note{from,to,class:1A|2A|3A|SL|CC|2S,date:"YYYY-MM-DD",passenger,birth_year} (note down a ticket booking someone asked for) · look_camera{camera:back|front,question} · live_camera{on:true|false} · take_photo{camera} · inbox_check{period:today|yesterday|week|month,kind:all|credit|debit} · payment_check{amount} · ledger_add{name,amount,kind:gave|got} · ledger_balance{name} · expense_add{amount,note} · pnr_status{pnr} · play_music{query} · navigate{destination} · battery · find_phone · lock_screen
 Today: $today
 """.trim()
 
@@ -37,6 +37,7 @@ Today: $today
         fun str(k: String) = (obj[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
         return when (str("type")?.lowercase()) {
             null, "chat" -> null
+            "whatsapp" -> str("contact")?.let { c -> str("text")?.let { AssistantAction.WhatsApp(c, it) } ?: AssistantAction.WhatsAppAskText(c) }
             "tatkal_reminder" -> AssistantAction.TatkalReminder(str("name"), str("class")?.lowercase()?.startsWith("s") == true)
             "booking_note" -> AssistantAction.BookingNoteWith(
                 listOfNotNull(

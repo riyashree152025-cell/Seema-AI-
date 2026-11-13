@@ -228,7 +228,8 @@ class LocalCommandsTest {
 
     @Test
     fun aWhatsAppRequestWithoutWordsOrAPersonGoesToTheAi() {
-        assertNull(p("WhatsApp par Riya ko message bhejo")) // what to write? the AI asks
+        // What to write? Asked on the phone now (on the phone the AI answered it could not send).
+        assertEquals(AssistantAction.WhatsAppAskText("Riya"), p("WhatsApp par Riya ko message bhejo"))
         assertNull(p("WhatsApp kholo aur Riya ko message bhejo"))
         assertNull(p("WhatsApp par usko hello bhejo")) // who is "usko"? the AI knows the conversation
         assertEquals(AssistantAction.OpenApp("whatsapp"), p("WhatsApp kholo"))
