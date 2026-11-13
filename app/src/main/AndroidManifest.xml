@@ -4,6 +4,9 @@
 
     <!-- Install-time (normal) permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- "Display over other apps": Android's exemption that lets Seema open apps / pages from behind
+         another app (otherwise it silently ignores them). Granted by the user in Settings. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Wi-Fi / Bluetooth on/off status for the dashboard's quick controls (status only, nothing is changed). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

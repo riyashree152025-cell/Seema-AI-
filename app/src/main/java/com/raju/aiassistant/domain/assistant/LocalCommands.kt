@@ -23,6 +23,7 @@ object LocalCommands {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         whatsApp(text)?.let { return it }
         whatsAppNoText(text)?.let { return it }
+        parseAppSearch(withoutLeadingFillers(text))?.let { return AssistantAction.AppSearch(it.app, it.query) }
         sms(text)?.let { return it }
         typeOnScreen(text)?.let { return it }
         if (com.raju.aiassistant.domain.booking.BookingNote.isStart(withoutLeadingFillers(text))) return AssistantAction.BookingNoteStart
@@ -156,13 +157,21 @@ object LocalCommands {
     private const val VOL = "(?:volume|awaz|aawaz|awaaz|aawaaz|आवाज़|आवाज|वॉल्यूम|वोल्यूम)"
     private val VOLUME_NUMBER = Regex("^$VOL (\\d{1,3})(?: ?(?:percent|pratishat|%|प्रतिशत|परसेंट))?(?: (?:par|pe|पर|पे))?$DO$")
     private val VOLUME_FULL = Regex("^$VOL (?:full|max|maximum|poori|puri|पूरी|फुल)$DO$")
+    // "Volume kam karo" / "आवाज़ बढ़ाओ": a clear step (30 % / 80 %) instead of going to the AI.
+    private val VOLUME_DOWN = Regex("^$VOL (?:thoda |थोड़ा |थोडा )?(?:kam|dheere|dhimi|low|कम|धीरे|धीमी)$DO$")
+    private val VOLUME_UP = Regex("^$VOL (?:thoda |थोड़ा |थोडा )?(?:badhao|badha do|badhaao|tez|zyada|jyada|high|बढ़ाओ|बढ़ा दो|बढाओ|तेज़|तेज|ज़्यादा|ज्यादा)(?: (?:karo|kar do|करो|कर दो))?$")
 
     private fun volume(t: String): AssistantAction? {
         VOLUME_NUMBER.matchEntire(t)?.let { m ->
             val p = m.groupValues[1].toInt()
             return if (p in 0..100) AssistantAction.Volume(p) else null
         }
-        return if (VOLUME_FULL.matches(t)) AssistantAction.Volume(100) else null
+        return when {
+            VOLUME_FULL.matches(t) -> AssistantAction.Volume(100)
+            VOLUME_DOWN.matches(t) -> AssistantAction.Volume(30)
+            VOLUME_UP.matches(t) -> AssistantAction.Volume(80)
+            else -> null
+        }
     }
 
     // ------------------------------------------------------------------ timer
@@ -437,12 +446,14 @@ object LocalCommands {
     private val SETTINGS = Regex(
         "^(wifi|wi fi|wi-fi|वाईफाई|वाई फाई|bluetooth|ब्लूटूथ|display|डिस्प्ले|sound|साउंड|battery|बैटरी|notification|notifications|नोटिफिकेशन)" +
             "(?: (?:ki|ka|की|का))? (?:settings|setting|सेटिंग|सेटिंग्स)(?: (?:kholo|khol do|open karo|open kar do|open|dikhao|खोलो|खोल दो|ओपन करो|दिखाओ))?$|" +
-            "^(?:settings|setting|सेटिंग|सेटिंग्स) (?:kholo|khol do|open karo|open kar do|खोलो|खोल दो|ओपन करो)$",
+            "^(?:settings|setting|सेटिंग|सेटिंग्स) (?:kholo|khol do|open karo|open kar do|खोलो|खोल दो|ओपन करो)$|" +
+            // "Bluetooth chalu karo": Android lets no app switch Wi-Fi / Bluetooth itself; its page opens.
+            "^(wifi|wi fi|wi-fi|वाईफाई|वाई फाई|bluetooth|ब्लूटूथ) (?:chalu|chaalu|on|band|off|चालू|बंद|ऑन|ऑफ)(?: (?:karo|kar do|करो|कर दो))?$",
     )
 
     private fun openSettings(t: String): AssistantAction? {
         val m = SETTINGS.matchEntire(t) ?: return null
-        val what = m.groupValues[1]
+        val what = m.groupValues[1].ifEmpty { m.groupValues.getOrNull(2).orEmpty() }
         val page = when {
             what.isEmpty() -> SettingsPage.GENERAL
             what.startsWith("w") || what.startsWith("वा") -> SettingsPage.WIFI

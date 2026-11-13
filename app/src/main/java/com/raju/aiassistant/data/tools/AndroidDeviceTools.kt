@@ -157,10 +157,11 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         val pm = context.packageManager
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val apps = pm.queryIntentActivities(launcher, 0)
-        val match = apps.firstOrNull { it.loadLabel(pm).toString().lowercase() == wanted }
-            ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().startsWith(wanted) }
-            ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().contains(wanted) }
-            ?: return ToolOutcome.Failed("No installed app called \"$name\" was found.")
+        // English, Hinglish or Devanagari ("क्रोम") names all find the app (AppNameMatch).
+        val labels = apps.map { it.loadLabel(pm).toString() }
+        val bestLabel = com.raju.aiassistant.domain.tools.AppNameMatch.best(name, labels)
+            ?: return ToolOutcome.Failed("\"$name\" नाम का कोई ऐप फ़ोन में नहीं मिला।")
+        val match = apps[labels.indexOf(bestLabel)]
         val label = match.loadLabel(pm).toString()
         val packageName = match.activityInfo.packageName
 
@@ -604,7 +605,9 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
      * exemption that lets her open apps from anywhere.
      */
     private fun canOpenScreens(): Boolean =
-        appOnScreen() || com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        appOnScreen() || com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning() ||
+            // "Display over other apps" is Android's other exemption for opening screens from behind.
+            runCatching { Settings.canDrawOverlays(context) }.getOrDefault(false)
 
     private fun blockedInBackground(): ToolOutcome.Failed = ToolOutcome.Failed(BACKGROUND_BLOCKED)
 
@@ -902,6 +905,6 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     private companion object {
         const val MAX_SMS_SCANNED = 3_000
         const val MAPS_PKG = "com.google.android.apps.maps"
-        const val BACKGROUND_BLOCKED = "सीमा पीछे से (दूसरे ऐप के ऊपर) स्क्रीन नहीं खोल सकती। Settings → Accessibility में Seema AI चालू कीजिए, या सीमा की स्क्रीन खोलकर फिर बोलिए।"
+        const val BACKGROUND_BLOCKED = "दूसरे ऐप के ऊपर से कुछ खोलने के लिए एक बार अनुमति चाहिए: Seema → Settings → Diagnose में \"दूसरे ऐप के ऊपर खोलना\" दबाकर Allow कीजिए (या Accessibility में Seema AI चालू कीजिए)।"
     }
 }

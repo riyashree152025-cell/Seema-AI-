@@ -108,6 +108,12 @@ private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>, wa
             callScreeningIntent(context), newTask = false,
         ),
         Check("Notification padhna", notificationAccess, "Notification access mein Seema AI ON karein", Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)),
+        Check(
+            "Doosre app ke upar kholna (peeche se app / page / alarm kholna)",
+            runCatching { Settings.canDrawOverlays(context) }.getOrDefault(false),
+            "\"Display over other apps\" mein Seema AI Allow karein",
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")),
+        ),
         Check("Accessibility (WhatsApp auto-send, doosre app se kaam)", accessibility, "Accessibility mein Seema AI ON karein (pehle App info → ⋮ → Allow restricted settings)", Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
         Check("\"Hey Seema\" se jaagna", wakeWord, "Neeche \"Sirf naam se jaage\" ON karein", null),
         Check("Doosre app ke upar sunna (notification \"सीमा AI तैयार है\")", com.raju.aiassistant.voice.SeemaWakeService.running, "Seema ON karke app ek baar kholiye (Mic Allow ho)", appDetails),

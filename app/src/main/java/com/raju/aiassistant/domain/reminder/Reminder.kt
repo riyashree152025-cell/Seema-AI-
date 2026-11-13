@@ -21,7 +21,7 @@ private const val PART = "(subah|subha|savere|morning|सुबह|सवेर�
 private val DAY = Regex("(?<![\\p{L}])(aaj|kal|parso|parson|today|tomorrow|आज|कल|परसों)(?![\\p{L}])", RegexOption.IGNORE_CASE)
 private val CLOCK = Regex("(?:$PART\\s+)?(?:ko\\s+|को\\s+)?(\\d{1,2})(?:[:.](\\d{2}))?\\s*(?:baje|bje|बजे)(?:\\s+$PART)?", RegexOption.IGNORE_CASE)
 private val FILLERS = Regex("^(?:(?:mujhe|mujhko|muje|please|zara|मुझे|ज़रा|जरा|ko|को|ki|कि|ke liye|के लिए|ka|का)\\s+)+|(?:\\s+(?:ka|ki|ke liye|का|की|के लिए|ko|को|please))+$", RegexOption.IGNORE_CASE)
-private val LIST = Regex("^(?:mere |mera |मेरे )?(?:reminder|reminders|रिमाइंडर) (?:batao|bata do|dikhao|list karo|list|kya hain|kya hai|बताओ|दिखाओ|क्या हैं)$|^(?:kaun se|kitne|कौन से|कितने) (?:reminder|रिमाइंडर) (?:hain|lage hain|हैं|लगे हैं)$", RegexOption.IGNORE_CASE)
+private val LIST = Regex("^(?:(?:sab|saare|sabhi|सब|सारे|सभी) )?(?:mere |mera |मेरे )?(?:reminder|reminders|रिमाइंडर) (?:batao|bata do|dikhao|list karo|list|kya hain|kya hai|बताओ|दिखाओ|क्या हैं)$|^(?:kaun se|kitne|कौन से|कितने) (?:reminder|रिमाइंडर) (?:hain|lage hain|हैं|लगे हैं)$", RegexOption.IGNORE_CASE)
 private val CANCEL_ALL = Regex("^(?:sab|saare|sabhi|all|सब|सारे|सभी) (?:reminder|reminders|रिमाइंडर) (?:hatao|hata do|cancel karo|cancel|delete karo|band karo|हटाओ|हटा दो|बंद करो)$", RegexOption.IGNORE_CASE)
 private val CANCEL_LAST = Regex("^(?:aakhri|akhri|last|pichla|आख़िरी|आखिरी|पिछला) (?:reminder|रिमाइंडर) (?:hatao|hata do|cancel karo|cancel|delete karo|हटाओ|हटा दो)$", RegexOption.IGNORE_CASE)
 

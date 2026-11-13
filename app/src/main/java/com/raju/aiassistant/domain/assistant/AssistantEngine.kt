@@ -1659,6 +1659,15 @@ class AssistantEngine(
                 trace("offline command: reminder without a time")
                 informational(action, phrase(lang(), "कब याद दिलाऊँ? समय के साथ बोलिए, जैसे \"कल सुबह 9 बजे याद दिलाना\" या \"2 घंटे बाद याद दिलाना\"।", "কখন মনে করাব? সময় বলুন, যেমন \"কাল সকাল ৯টায় মনে করিও\"।"), speak)
             }
+            is AssistantAction.AppSearch -> {
+                trace("offline command: app search")
+                val outcome = tools.openWebPage(appSearchUrl(action.app, action.query))
+                report(action, outcome)
+                if (speak) say(
+                    if (outcome is ToolOutcome.Done) phrase(lang(), "${action.query} खोल दिया है।", "${action.query} খুলে দিয়েছি।")
+                    else (outcome as? ToolOutcome.Failed)?.message ?: phrase(lang(), "नहीं खुल पाया।", "খোলা গেল না।"),
+                )
+            }
             is AssistantAction.WhatsAppAskText -> {
                 waAskContact = action.contact
                 waAskUntil = clock() + WA_ASK_MS
@@ -2322,6 +2331,7 @@ class AssistantEngine(
             is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            is AssistantAction.AppSearch -> report(action, tools.openWebPage(appSearchUrl(action.app, action.query)))
             is AssistantAction.WhatsAppAskText -> { waAskContact = action.contact; waAskUntil = clock() + WA_ASK_MS; informational(action, phrase(lang(), "${action.contact} को WhatsApp पर क्या लिखूँ?", "${action.contact}-কে WhatsApp-এ কী লিখব?"), speak) }
             is AssistantAction.TatkalReminder -> tatkalReminder(action, speak)
             AssistantAction.ReminderNeedsTime -> report(action, ActionStatus.SUCCESS, "Asked when to remind.")

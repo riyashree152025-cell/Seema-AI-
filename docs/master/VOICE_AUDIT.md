@@ -39,3 +39,24 @@ OpenAiCompatible / Gemini providers, BrainRouter, IntentRouter, PromptBuilder, L
 - Home / back over other apps needs Accessibility (Android rule).
 - Groq free plan ≈ 7,000 input tokens / minute; the fallback AI answers when it is used up.
 - Nothing above is phone-tested yet.
+
+# Phone capabilities A–Z (second pass)
+
+Method: (1) every action the chat AI is told about was fed to the parser with exactly the documented fields
+(ActionContractTest, ~60 actions); (2) one Devanagari sentence per basic command, as Hindi recognition writes
+it, through the phone's own parser (HindiCommandsTest); (3) every Android tool checked for the "opened from
+behind another app" rule and for a truthful failure message.
+
+| Capability | Result | Fix |
+|---|---|---|
+| Udhaar book via AI (`ledger_add`) | ❌ never worked: its "type: gave/got" field clashed with the action's own "type" | field is "kind" |
+| Search inside an app (Chrome, YouTube, Maps, Play Store, Amazon, Flipkart, Spotify) | ❌ tried to find buttons on screen | opens the app's own results link (`app_search`), local + AI |
+| App names in Devanagari ("क्रोम खोलो") | ❌ no app found after recognition became Hindi | AppNameMatch: sound-skeleton + Hindi system names |
+| "वॉल्यूम कम/बढ़ाओ", "ब्लूटूथ चालू", "सब रिमाइंडर बताओ" | ⚠️ went to the AI | local (30 % / 80 %, settings page, list) |
+| Opening anything from behind another app | ⚠️ only with Accessibility | also with "Display over other apps" (one Allow, Diagnose has the button) |
+| AI claiming it "can control everything" | ⚠️ untrue | instructions say Accessibility is needed and to use app_search |
+| Expense summary by voice | ⚠️ not in the short task list | added |
+| Calls, SMS, WhatsApp (+ ask text), alarms, timers, reminders, Tatkal, torch, camera, live camera, screenshots, lock, home, back, notifications, calendar, inbox / refund, booking note, PNR | ✅ understood (Devanagari and Hinglish) | — |
+
+Android limits (not fixable in code): unlocking the phone, banking / UPI, switching Wi-Fi / Bluetooth by
+itself (its settings page opens), tapping arbitrary buttons reliably in every app.

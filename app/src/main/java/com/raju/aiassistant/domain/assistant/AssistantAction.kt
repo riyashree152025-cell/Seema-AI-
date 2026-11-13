@@ -211,6 +211,10 @@ sealed interface AssistantAction {
     data class WhatsAppAskText(val contact: String) : AssistantAction {
         override val label get() = "WhatsApp: what to write?"
     }
+    /** "Chrome kholo aur ChatGPT search karo", "YouTube pe … dhundo": the app's own results link (AppSearch.kt). */
+    data class AppSearch(val app: String?, val query: String) : AssistantAction {
+        override val label get() = "Search${app?.let { " in $it" } ?: ""}: $query"
+    }
     /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
     data object TatkalWhen : AssistantAction {
         override val label get() = "Tatkal opening"
@@ -435,10 +439,12 @@ private fun parseAction(json: String): AssistantAction? {
             AssistantAction.Navigate(d, mode)
         }
         "copy", "copy_text" -> str("text")?.let { AssistantAction.CopyText(it) }
+        "app_search", "browser_search" -> str("query")?.let { AssistantAction.AppSearch(str("app"), it) }
         "ledger_add", "udhaar_add" -> {
             val name = str("name")
             val paise = str("amount")?.let { rupeesToPaise(it) }
-            val kind = when (str("type")?.lowercase()) {
+            // "kind" (the action's own "type" is already "ledger_add": the old field name could never match).
+            val kind = when ((str("kind") ?: str("direction"))?.lowercase()) {
                 "got", "received", "mila", "mile" -> com.raju.aiassistant.domain.ledger.LedgerKind.GOT
                 "gave", "given", "diya", "diye" -> com.raju.aiassistant.domain.ledger.LedgerKind.GAVE
                 else -> null
