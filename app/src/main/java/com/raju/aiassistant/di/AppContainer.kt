@@ -191,15 +191,19 @@ class AppContainer(context: Context) {
             preferCloud = { online.value && deepgramTranscriber.isAvailable() },
         ) { currentSettings.value.wakeWord }
     }
-    /** Headphones or a headset (wired, Bluetooth, USB) are connected: Seema's voice is not on the loudspeaker. */
-    fun headphonesConnected(): Boolean {
+    /**
+     * A wired or USB headset: the only headphones call-style audio (and so barge-in) is used with.
+     * Bluetooth is left out on purpose: in call-style audio a Bluetooth headset switches to its phone-call
+     * link — Seema's voice turns thin and choppy, the headset's far-away microphone replaces the phone's,
+     * and every switch costs a second or two. With Bluetooth she speaks as normal media and listens with
+     * the phone's own microphone.
+     */
+    fun wiredHeadsetConnected(): Boolean {
         val outputs = appContext.getSystemService(android.media.AudioManager::class.java)
             ?.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
         return outputs.any {
             it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                 it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
                 it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
         }
     }
@@ -425,14 +429,14 @@ class AppContainer(context: Context) {
             bargeIn = MicBargeIn(
                 appContext, appScope, playbackLevel = { audioPlayer.levelNow() }, callStyle = { conversationAudio.active },
                 hub = micHub, useHub = { currentSettings.value.micHub },
-                speakerMode = { !headphonesConnected() && currentSettings.value.bargeInSpeaker },
+                speakerMode = { !wiredHeadsetConnected() && currentSettings.value.bargeInSpeaker },
             ),
             conversationMode = conversationAudio,
             transcriber = deepgramTranscriber,
             wakeListener = wakeListener,
             onWake = { com.raju.aiassistant.voice.SeemaWakeService.wakeScreen(appContext) },
             onModelReplaced = { id, model -> appScope.launch { settingsRepository.setModel(id, model) } },
-            headphones = ::headphonesConnected,
+            headphones = ::wiredHeadsetConnected,
             describeImage = { jpeg, question ->
                 askAboutImages(
                     listOf(jpeg), question,

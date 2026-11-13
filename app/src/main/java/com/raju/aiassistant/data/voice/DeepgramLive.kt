@@ -38,7 +38,11 @@ class DeepgramLiveSession(
             .addQueryParameter("smart_format", "true")
             .addQueryParameter("punctuate", "true")
             .apply {
-                if (model.startsWith("nova-3")) keyterms.filter { it.isNotBlank() }.distinct().take(MAX_KEYTERMS).forEach { addQueryParameter("keyterm", it) }
+                // Key terms only where Deepgram documents them (English and multi): a refused parameter
+                // would fail the live link on every turn and each answer would wait for the upload instead.
+                if (model.startsWith("nova-3") && (language == "multi" || language.startsWith("en"))) {
+                    keyterms.filter { it.isNotBlank() }.distinct().take(MAX_KEYTERMS).forEach { addQueryParameter("keyterm", it) }
+                }
             }
             .build()
         val request = Request.Builder().url(url).header("Authorization", "Token $key").build()

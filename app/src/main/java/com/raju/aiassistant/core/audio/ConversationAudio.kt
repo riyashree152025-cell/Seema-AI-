@@ -47,7 +47,7 @@ class ConversationAudio(context: Context) : ConversationMode {
     private fun routeToSpeakerOrHeadset(am: AudioManager) {
         val headsetTypes = setOf(
             AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_USB_HEADSET, // never Bluetooth: its phone-call link sounds thin and choppy
         )
         if (Build.VERSION.SDK_INT >= 31) {
             val devices = am.availableCommunicationDevices

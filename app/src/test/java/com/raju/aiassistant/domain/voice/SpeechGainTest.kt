@@ -44,4 +44,26 @@ class SpeechGainTest {
         val middle = (2_000 until 2_400).maxOf { i -> abs(((raised[2 * i + 1].toInt() shl 8) or (raised[2 * i].toInt() and 0xFF)).toShort().toInt()) }
         assertTrue(middle > 15_000)
     }
+
+    @Test
+    fun liveFramesAreRaisedWithoutClippingAndTheLevelIsRemembered() {
+        val g = StreamGain(startPeak = STT_TARGET_PEAK / 4f)
+        // Quiet speech (as the phone's microphone gives it): raised to the most allowed within two seconds.
+        var last = ByteArray(0)
+        repeat(100) { last = g.apply(tone(1_500, samples = 320)) }
+        assertTrue("peak ${peak(last)}", peak(last) in 10_000..STT_TARGET_PEAK + 50) // 1,500 x 8 at most
+        assertTrue(g.current > 6f)
+        // A sudden loud sound is never clipped: the gain drops in the same frame.
+        val loud = g.apply(tone(20_000, samples = 320))
+        assertTrue("peak ${peak(loud)}", peak(loud) <= STT_TARGET_PEAK + 50)
+        // A pause does not pump the gain straight back up.
+        val before = g.current
+        repeat(10) { g.apply(ByteArray(640)) }
+        assertTrue(g.current < before * 1.5f)
+        // The next turn starts from the level this one learned, not from scratch.
+        val next = StreamGain()
+        assertTrue(abs(next.current - g.current) < 1.5f)
+        // Silence stays silence.
+        assertArrayEquals(ByteArray(640), StreamGain().apply(ByteArray(640)))
+    }
 }

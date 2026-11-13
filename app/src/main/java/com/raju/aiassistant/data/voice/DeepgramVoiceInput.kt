@@ -80,8 +80,11 @@ class DeepgramVoiceInput(
             runCatching { live.open(key, option.model, option.language, terms) }
             liveSession = live
             _listening.value = true
+            // The phone's recognition microphone is quiet: the live frames are raised like the uploaded
+            // recording is (unraised, Deepgram wrote Hindi as Spanish or Telugu, or heard nothing).
+            val gain = com.raju.aiassistant.domain.voice.StreamGain()
             val pcm = try {
-                withContext(Dispatchers.IO) { recordTurn { frame -> live.send(frame) } }
+                withContext(Dispatchers.IO) { recordTurn { frame -> live.send(gain.apply(frame)) } }
             } catch (e: MicrophoneException) {
                 live.cancel()
                 onError(VoiceError("The microphone could not be started (${e.message}). Another app may be using it."))
@@ -97,16 +100,15 @@ class DeepgramVoiceInput(
             if (_partial.value.isBlank()) _partial.value = "…"
             val fast = live.finish()
             liveSession = null
-            if (fast != null) {
+            // A sure live transcript is used at once; an unsure one is checked again on the whole
+            // recording (raised as a whole, which recognises better) instead of giving up.
+            if (fast != null && fast.confidence >= MIN_CONFIDENCE) {
                 android.util.Log.i("SeemaVoice", "stt: live transcript ready (${fast.text.length} chars)")
                 _partial.value = fast.text
-                when {
-                    fast.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true, heard = fast.text))
-                    else -> onResult(fast.text)
-                }
+                onResult(fast.text)
                 return@launch
             }
-            android.util.Log.i("SeemaVoice", "stt: live link unavailable, uploading the recording")
+            android.util.Log.i("SeemaVoice", if (fast == null) "stt: live link unavailable, uploading the recording" else "stt: live transcript unsure, checking the recording")
             // A quiet turn is raised before recognition ("Speech was heard but no words were recognised").
             when (val r = DeepgramClient(http, key).transcribeDetailed(pcm16ToWav(com.raju.aiassistant.domain.voice.louderForStt(pcm), SAMPLE_RATE), option.model, option.language, terms)) {
                 is AiResult.Success -> {
@@ -114,13 +116,14 @@ class DeepgramVoiceInput(
                     _partial.value = heard.text
                     when {
                         // Speech was recorded but no words came back: ask again rather than act on nothing.
-                        heard.text.isBlank() -> onError(VoiceError("Speech was heard but no words were recognised.", unclear = true))
+                        heard.text.isBlank() -> onError(VoiceError("Speech was heard but no words were recognised.", unclear = true, heard = fast?.text))
                         // Very unsure: better to ask again than to act on a wrong word.
                         heard.confidence < MIN_CONFIDENCE -> onError(VoiceError("I didn't hear that clearly.", unclear = true, heard = heard.text))
                         else -> onResult(heard.text)
                     }
                 }
-                is AiResult.Failure -> onError(VoiceError("Deepgram: ${r.message}"))
+                // The upload failed but the live words are there: an unsure hearing, not a broken service.
+                is AiResult.Failure -> if (fast != null) onError(VoiceError("I didn't hear that clearly.", unclear = true, heard = fast.text)) else onError(VoiceError("Deepgram: ${r.message}"))
             }
         }
     }

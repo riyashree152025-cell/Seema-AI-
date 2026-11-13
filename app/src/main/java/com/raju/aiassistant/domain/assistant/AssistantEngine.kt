@@ -615,7 +615,7 @@ class AssistantEngine(
         // The system recogniser (another app) gets only silence while call-style audio is on, and
         // without headphones call-style audio would play her voice from the earpiece.
         if (!callStyleAllowed()) conversationMode.exit()
-        trace("listen ${if (handsFree) "hands-free" else "tap"} ${if (voice.capturesInApp()) "in-app" else "system"} recogniser")
+        trace("listen ${if (handsFree) "hands-free" else "tap"} ${if (voice.capturesInApp()) "in-app" else "system"} recogniser${if (conversationMode.active) " (call-style audio)" else ""}")
         listenStartedAt = clock()
         voice.start(
             lang().tag,
@@ -873,7 +873,8 @@ class AssistantEngine(
                 trace("wake: name check failed, trying once more")
                 raw = runCatching { t.transcribe(pcm) }.getOrNull()
             }
-            val heard = raw?.trim().orEmpty()
+            // (Hindi written in another Indian script by the recogniser is read as Devanagari.)
+            val heard = com.raju.aiassistant.domain.language.toDevanagari(raw?.trim().orEmpty())
             // Privacy: only lengths in the log, never what was said.
             trace("wake heard: ${heard.length} chars")
             if (!asleep) return
@@ -1250,7 +1251,7 @@ class AssistantEngine(
 
         if (hadActions && _state.value != AssistantState.Error) {
             _state.value = AssistantState.Success
-            delay(1_200)
+            delay(doneShownMs())
         }
         finishTurn()
     }
@@ -1679,7 +1680,7 @@ class AssistantEngine(
         if (!endTurn) return true
         if (_state.value != AssistantState.Error) {
             _state.value = AssistantState.Success
-            delay(1_200)
+            delay(doneShownMs())
         }
         finishTurn()
         return true
@@ -1733,6 +1734,12 @@ class AssistantEngine(
             runRoutine(r, speak = true)
         }
     }
+
+    /**
+     * How long "Done" stays on screen before the turn ends. In a voice conversation the microphone opens
+     * again only after this, so it is short there (1.2 s of not listening after every answer was lost words).
+     */
+    private fun doneShownMs(): Long = if (_voiceSession.value || handsFree) 200L else 1_200L
 
     private fun finishTurn() {
         val s = settings.value
@@ -1834,7 +1841,7 @@ class AssistantEngine(
         val audio = withTimeoutOrNull(20_000) { utterance.await() }
         bargeIn.stop()
         _state.value = AssistantState.Thinking
-        val raw = audio?.let { runCatching { transcriber?.transcribe(it) }.getOrNull() }?.trim().orEmpty()
+        val raw = com.raju.aiassistant.domain.language.toDevanagari(audio?.let { runCatching { transcriber?.transcribe(it) }.getOrNull() }?.trim().orEmpty())
         val heard = stripEcho(raw, spoken)
         // On the loudspeaker the "interruption" may be only her own words coming back: that is no reason to stop.
         val ownEcho = onSpeaker && !isStopCommand(heard) && isLikelyOwnEcho(heard, spoken)

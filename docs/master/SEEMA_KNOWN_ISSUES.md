@@ -29,3 +29,8 @@
     changes them the countdown is wrong until the app is updated.
 16. Bank SMS formats differ by bank: a bank whose credit / debit words or amount format are not recognised is
     missed by the inbox and refund checks.
+17. Barge-in ("ruko" by voice) works only with a wired / USB headset. With Bluetooth or on the loudspeaker
+    Seema is stopped by a tap (the loudspeaker test setting is off by default). Reason: barge-in needs
+    call-style audio, which on Bluetooth makes her voice thin and choppy and uses the headset's microphone.
+18. Speech recognition is Hindi (nova-3:hi) by default; "multi" wrote Hindi as Spanish / Telugu on the
+    phone. Key terms (names) are not sent in Hindi mode.
