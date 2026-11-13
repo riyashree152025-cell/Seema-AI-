@@ -91,6 +91,8 @@ object FloatingSeema {
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val o = OverlayOwner().also { it.start() }
         mode.value = FloatMode.CARD
+        // Read once, outside the composition: with the app lock on, the popup shows no words.
+        val hideWords = c.currentSettings.value.appLock
         val v = ComposeView(context).apply {
             setViewTreeLifecycleOwner(o)
             setViewTreeSavedStateRegistryOwner(o)
@@ -99,7 +101,7 @@ object FloatingSeema {
                 FloatingSeemaContent(
                     container = c,
                     mode = mode.value,
-                    hideWords = c.currentSettings.value.appLock,
+                    hideWords = hideWords,
                     onFold = { setMode(FloatMode.BUBBLE) },
                     onOpenCard = { setMode(FloatMode.CARD) },
                     onClose = { hide() },
