@@ -65,8 +65,11 @@ fun LivingEyeVisualizer(
 ) {
     val accent by animateColorAsState(Color(accentArgb), tween(450), label = "eyeAccent")
     // The eye itself: the photo-real iris from the approved reference render (hazel collar, electric
-    // blue fibres, wet corneal highlights), brought to life below with gaze, parallax and dilation.
-    val eyeTexture = ImageBitmap.imageResource(com.raju.aiassistant.R.drawable.seema_eye)
+    // blue fibres, wet corneal highlights), brought to life below with gaze and dilation.
+    // Made from it: the same iris with only its blue fibres (they fill the whole almond and stay still), and
+    // its centre alone — pupil and hazel collar, with a soft edge — which is what moves, like a real pupil.
+    val eyeFibres = ImageBitmap.imageResource(com.raju.aiassistant.R.drawable.seema_eye_fibres)
+    val eyeCore = ImageBitmap.imageResource(com.raju.aiassistant.R.drawable.seema_eye_core)
     // Energy carried between frames so the waves swell and fade instead of jumping.
     val energy = remember { floatArrayOf(AMBIENT_ENERGY) }
     // Where the eye looks right now (x, y in -1..1 of its reach) and the time of the last frame: the
@@ -81,7 +84,7 @@ fun LivingEyeVisualizer(
         val area = eyeArea()
         val centerY = area?.let { (it.center.y / size.height).coerceIn(0.1f, 0.9f) } ?: waveCenterY
         if (drawWaves) drawAmbientWaves(t, e, accent, richEffects, centerY)
-        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeTexture, richEffects, look)
+        if (drawEye) drawLivingEye(t, e, state, accent, area, lastTouch(), eyeFibres, eyeCore, richEffects, look)
     }
 }
 
@@ -147,7 +150,8 @@ private fun DrawScope.drawAmbientWaves(t: Float, energy: Float, accent: Color, r
 
 private fun DrawScope.drawLivingEye(
     t: Float, energy: Float, state: AssistantState, accent: Color, area: Rect?, touch: Pair<Offset, Float>?,
-    texture: androidx.compose.ui.graphics.ImageBitmap,
+    fibres: androidx.compose.ui.graphics.ImageBitmap,
+    core: androidx.compose.ui.graphics.ImageBitmap,
     richEffects: Boolean,
     look: FloatArray,
 ) {
@@ -186,93 +190,73 @@ private fun DrawScope.drawLivingEye(
     val lx = (look[0] + driftX * 0.5f + tremX).coerceIn(-1f, 1f)
     val ly = (look[1] + driftY * 0.5f + tremY).coerceIn(-1f, 1f)
 
-    // The moving iris: a real iris disc, a little taller than the almond (the lids crop its top and
-    // bottom, as in a human eye), free to travel to both corners.
-    val ri = eyeH * IRIS_HEIGHT_SHARE
-    val reachX = (eyeW / 2f - ri * 0.72f).coerceAtLeast(0f)
-    val reachY = eyeH * 0.16f
-    val irisAt = Offset(c.x + lx * reachX, c.y + ly * reachY)
-    // The pupil sits deeper than the iris front: it shifts a touch further (parallax).
-    val pupilAt = Offset(irisAt.x + lx * r * 0.03f, irisAt.y + ly * r * 0.03f)
-    // Looking to the side, a round iris is seen a little edge-on.
-    val turn = 1f - 0.10f * kotlin.math.abs(lx)
+    // The whole almond stays filled with the still blue fibres, exactly as designed; only the centre —
+    // the black pupil in its hazel-brown collar — moves inside them, as a real pupil does.
+    val rb = eyeW * 0.56f
+    val rc = rb * CORE_SHARE
+    // How far the centre may travel: towards both corners, keeping its brown collar inside the eye.
+    val reachX = (eyeW / 2f - rb * 0.58f * 0.82f).coerceIn(0f, rb * 0.40f)
+    val reachY = eyeH * 0.08f
+    val coreAt = Offset(c.x + lx * reachX, c.y + ly * reachY)
+    // Looking to the side, the round pupil and collar are seen a little edge-on.
+    val turn = 1f - 0.08f * kotlin.math.abs(lx)
 
     clipPath(lids) {
-        // The eye body: the same fibres, wide and still, deep in shadow — no white, no seam, both corners full.
-        val rb = eyeW * 0.56f
         val db = (2f * rb).toInt().coerceAtLeast(1)
         drawImage(
-            texture,
+            fibres,
             srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
-            srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
+            srcSize = androidx.compose.ui.unit.IntSize(fibres.width, fibres.height),
             dstOffset = androidx.compose.ui.unit.IntOffset((c.x - rb).toInt(), (c.y - rb).toInt()),
             dstSize = androidx.compose.ui.unit.IntSize(db, db),
             alpha = dim,
-            filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
         )
-        drawRect(EYE_BODY_SHADE.copy(alpha = 0.58f))
+        // Life in the blue fibres (they breathe and shimmer with the voice, in place).
+        drawFiberLife(t, energy, c, rb, dim, fibres, richEffects)
 
-        // A soft shadow ring where the iris meets the eye body, so it sits in the eye instead of on it.
-        val sr = ri * 1.28f
-        drawCircle(
-            Brush.radialGradient(
-                0f to Color.Transparent, (ri * 0.88f / sr) to Color.Transparent, (ri / sr) to Color.Black.copy(alpha = 0.55f), 1f to Color.Transparent,
-                center = irisAt, radius = sr,
-            ),
-            sr, irisAt,
-        )
-
-        scale(scaleX = turn, scaleY = 1f, pivot = irisAt) {
-            val d = (2f * ri).toInt().coerceAtLeast(1)
+        scale(scaleX = turn, scaleY = 1f, pivot = coreAt) {
+            val dc = (2f * rc).toInt().coerceAtLeast(1)
             drawImage(
-                texture,
+                core,
                 srcOffset = androidx.compose.ui.unit.IntOffset.Zero,
-                srcSize = androidx.compose.ui.unit.IntSize(texture.width, texture.height),
-                dstOffset = androidx.compose.ui.unit.IntOffset((irisAt.x - ri).toInt(), (irisAt.y - ri).toInt()),
-                dstSize = androidx.compose.ui.unit.IntSize(d, d),
+                srcSize = androidx.compose.ui.unit.IntSize(core.width, core.height),
+                dstOffset = androidx.compose.ui.unit.IntOffset((coreAt.x - rc).toInt(), (coreAt.y - rc).toInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(dc, dc),
                 alpha = dim,
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
             )
 
-            // Life in the outer blue fibres only (the pupil, the hazel collar and the glass highlight stay as drawn).
-            drawFiberLife(t, energy, irisAt, ri, dim, texture, richEffects)
-
-            // Pupil: the texture's own pupil is its resting size; when she listens or speaks it dilates with
-            // the voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at
-            // its edge so it recedes into the eye. It never shrinks below the drawn pupil.
+            // Pupil: the drawn pupil is its resting size; when she listens or speaks it dilates with the
+            // voice — a feathered obsidian ring grows over the hazel collar, with a dark-brown shadow at its
+            // edge so it recedes into the eye. It never shrinks below the drawn pupil.
             val grow = (pupilScale(t, energy, state) / PUPIL_SHARE).coerceAtLeast(1f)
             if (grow > 1.005f) {
-                val pr = ri * TEXTURE_PUPIL_SHARE * grow
-                val feather = 2.5f * density
+                val pr = rb * TEXTURE_PUPIL_SHARE * grow
+                val feather = 3f * density
                 drawCircle(
                     Brush.radialGradient(
                         0f to PUPIL_CORE, (pr / (pr + feather * 2)) to PUPIL_CORE, ((pr + feather) / (pr + feather * 2)) to PUPIL_SHADOW.copy(alpha = 0.7f), 1f to Color.Transparent,
-                        center = pupilAt, radius = pr + feather * 2,
+                        center = coreAt, radius = pr + feather * 2,
                     ),
-                    pr + feather * 2, pupilAt,
+                    pr + feather * 2, coreAt,
                 )
             }
-
-            // A faint rim of the state colour around the iris.
-            drawCircle(accent.copy(alpha = 0.22f * dim), ri * 0.975f, irisAt, style = Stroke(width = 1.2f * density))
         }
 
-        // While she processes, a soft light circles over the blue iris.
+        // While she processes, a soft light circles over the blue fibres around the pupil.
         if (eyeRadarActive(state)) {
             val a = t * 3.8f
-            val glow = Offset(irisAt.x + cos(a) * ri * 0.6f, irisAt.y + sin(a) * ri * 0.6f)
-            drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, ri * 0.25f), ri * 0.25f, glow)
+            val glow = Offset(coreAt.x + cos(a) * rb * 0.62f, coreAt.y + sin(a) * eyeH * 0.3f)
+            drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, rb * 0.2f), rb * 0.2f, glow)
         }
     }
     // No lids, no dark line: only a faint glow of the state colour along the edge.
     drawPath(lids, accent.copy(alpha = 0.30f * dim), style = Stroke(width = 3f * density))
 }
 
-/** The moving iris's radius as a share of the almond's height (a little over half: the lids crop it). */
-const val IRIS_HEIGHT_SHARE = 0.64f
-
-/** The shade over the still fibres of the eye body, so the moving iris stands out from it. */
-private val EYE_BODY_SHADE = Color(0xFF020611)
+/** The moving centre (pupil + hazel collar, soft edge) as a share of the iris image's radius. */
+private const val CORE_SHARE = 0.62f
 
 
 /** The user's human-eye shape: corners at 52 % height, lids as two cubic curves (a little flat). */
