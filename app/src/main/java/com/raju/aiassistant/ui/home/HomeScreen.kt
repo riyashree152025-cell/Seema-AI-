@@ -2,7 +2,7 @@ package com.raju.aiassistant.ui.home
 
 
 
-import com.raju.aiassistant.ui.components.crystalSurface
+import com.raju.aiassistant.ui.components.softGlass
 import android.Manifest
 
 import android.os.SystemClock
@@ -58,7 +58,6 @@ import androidx.compose.foundation.layout.width
 
 import androidx.compose.foundation.shape.CircleShape
 
-import androidx.compose.foundation.shape.CutCornerShape
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 
@@ -406,7 +405,7 @@ fun HomeScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
-                    .crystalSurface(shape = RoundedCornerShape(16.dp), accent = Color(0xFF38C8FF))
+                    .softGlass(shape = RoundedCornerShape(16.dp))
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -447,7 +446,7 @@ fun HomeScreen(
 
                     modifier = Modifier
 
-                        .crystalSurface(shape = RoundedCornerShape(20.dp), accent = if (isMuted) Color(0xFFFF1744) else Color(0xFF00E5FF))
+                        .softGlass(shape = RoundedCornerShape(20.dp))
 
                         .clickable { viewModel.toggleMute() }
 
@@ -778,7 +777,7 @@ fun HomeScreen(
 
                         .padding(top = 2.dp)
 
-                        .crystalSurface(shape = CutCornerShape(8.dp), accent = SciFiCyanGlow)
+                        .softGlass(shape = RoundedCornerShape(18.dp))
 
                         .clickable(
 

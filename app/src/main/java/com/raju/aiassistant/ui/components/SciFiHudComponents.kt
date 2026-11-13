@@ -140,8 +140,8 @@ fun SciFiHomeNavButton(
         modifier = modifier
             .height(104.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            // Crystal glass tile with a neon rim in the tile's own colour; pressed, it dips and glows.
-            .crystalSurface(shape = RoundedCornerShape(22.dp), accent = iconColor, lit = lit)
+            // Soft frosted glass (no neon rim); pressed, it dips and brightens.
+            .softGlass(shape = RoundedCornerShape(22.dp), lit = lit)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -702,8 +702,9 @@ fun SciFiDigitalClock(
     // Plain text, no box (the user's choice): a larger time with the day under it.
     Box(
         modifier = modifier
+            .softGlass(shape = RoundedCornerShape(14.dp))
             .then(if (onClick != null) Modifier.clickable(onClickLabel = "Alarm aur clock kholo", onClick = onClick) else Modifier)
-            .padding(horizontal = 4.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Column {
             Text(
@@ -711,7 +712,7 @@ fun SciFiDigitalClock(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Black,
                     color = Color.White,
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     letterSpacing = 1.2.sp,
                     shadow = androidx.compose.ui.graphics.Shadow(SciFiCyanGlow.copy(alpha = 0.6f), blurRadius = 12f),
                 )
@@ -762,7 +763,7 @@ fun SciFiStateCapsule(
 
     Box(
         modifier = modifier
-            .crystalSurface(shape = RoundedCornerShape(14.dp), accent = statusColor, lit = 0.25f)
+            .softGlass(shape = RoundedCornerShape(14.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
