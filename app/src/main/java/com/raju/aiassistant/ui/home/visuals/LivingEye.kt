@@ -169,6 +169,18 @@ private fun DrawScope.drawLivingEye(
     val eyeAt = Offset(c.x + gx * r * OUTER_PARALLAX, c.y + gy * r * OUTER_PARALLAX)
     val pupilAt = Offset(c.x + gx * r * INNER_PARALLAX, c.y + gy * r * INNER_PARALLAX)
 
+    // The human eye (the user's shape): an almond between two lids. The iris moves inside it; the lids
+    // stay, blink now and then, and are half closed while she sleeps.
+    val eyeW = minOf(r * 3.0f, (area?.width ?: size.width) * 0.96f)
+    val open = eyeOpenness(t, asleep)
+    val eyeH = r * 1.78f * open
+    val lids = almondPath(c.x - eyeW / 2f, c.y - eyeH / 2f, eyeW, eyeH)
+    clipPath(lids) {
+    // The white of the eye: soft, a little blue, darker towards the corners (it is round).
+    drawOval(
+        Brush.radialGradient(listOf(SCLERA.copy(alpha = dim), SCLERA_EDGE.copy(alpha = dim)), c, eyeW * 0.55f),
+        topLeft = Offset(c.x - eyeW / 2f, c.y - eyeH / 2f - r), size = androidx.compose.ui.geometry.Size(eyeW, eyeH + 2f * r),
+    )
     val d = (2f * r).toInt().coerceAtLeast(1)
     drawImage(
         texture,
@@ -205,6 +217,24 @@ private fun DrawScope.drawLivingEye(
         val glow = Offset(eyeAt.x + cos(a) * r * 0.66f, eyeAt.y + sin(a) * r * 0.66f)
         drawCircle(Brush.radialGradient(listOf(CYAN.copy(alpha = 0.35f), Color.Transparent), glow, r * 0.28f), r * 0.28f, glow)
     }
+    // The upper lid's shadow on the eye, and a little under the lower lid.
+    drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.32f to Color.Transparent, 0.85f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.30f), startY = c.y - eyeH / 2f - r * 0.2f, endY = c.y + eyeH / 2f))
+    }
+    // The lid lines: a dark lash line above, a thin one below, with the state colour glowing along them.
+    drawPath(lids, accent.copy(alpha = 0.35f * dim), style = Stroke(width = 6f * density))
+    drawPath(lids, LID_LINE.copy(alpha = dim), style = Stroke(width = 2.4f * density))
+}
+
+private val SCLERA = Color(0xFFE6ECF3)
+private val SCLERA_EDGE = Color(0xFF8E9AAD)
+private val LID_LINE = Color(0xFF07090F)
+
+/** The user's human-eye shape: corners at 52 % height, lids as two cubic curves (a little flat). */
+private fun almondPath(left: Float, top: Float, w: Float, h: Float): Path = Path().apply {
+    moveTo(left, top + h * 0.52f)
+    cubicTo(left + w * 0.25f, top - h * 0.12f, left + w * 0.75f, top - h * 0.12f, left + w, top + h * 0.52f)
+    cubicTo(left + w * 0.75f, top + h * 1.12f, left + w * 0.25f, top + h * 1.12f, left, top + h * 0.52f)
+    close()
 }
 
 private val FIBER_CYAN = Color(0xFF4FF3FF)

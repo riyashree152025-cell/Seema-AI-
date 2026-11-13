@@ -183,3 +183,18 @@ fun waveShape(x: Float, t: Float, layer: Int, energy: Float): Float {
 fun waveLayerCount(richEffects: Boolean): Int = if (richEffects) 4 else 2
 fun wavePointCount(richEffects: Boolean): Int = if (richEffects) 96 else 48
 fun irisLineCount(richEffects: Boolean): Int = if (richEffects) 120 else 60
+
+
+/**
+ * How open the lids are (0..1): a quick blink about every 5.3 s (0.18 s), half closed while asleep.
+ */
+fun eyeOpenness(t: Float, asleep: Boolean): Float {
+    if (asleep) return 0.38f
+    val phase = ((t % BLINK_EVERY_S) + BLINK_EVERY_S) % BLINK_EVERY_S
+    if (phase >= BLINK_S) return 1f
+    val x = phase / BLINK_S // 0 -> 1 over the blink: closes, then opens
+    return (0.08f + 0.92f * kotlin.math.abs(1f - 2f * x)).coerceIn(0.08f, 1f)
+}
+
+const val BLINK_EVERY_S = 5.3f
+const val BLINK_S = 0.18f

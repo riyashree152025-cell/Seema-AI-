@@ -122,4 +122,14 @@ class LivingEyeMathTest {
         assertEquals(120, irisLineCount(true))
         assertEquals(1.5f, SACCADE_EVERY_S, 0f)
     }
+
+    @Test
+    fun theLidsBlinkNowAndThenAndAreHalfClosedAsleep() {
+        assertEquals(1f, eyeOpenness(1f, asleep = false), 0f)
+        assertTrue(eyeOpenness(BLINK_EVERY_S * 2 + BLINK_S / 2, asleep = false) < 0.2f) // mid-blink
+        assertEquals(1f, eyeOpenness(BLINK_EVERY_S * 2 + BLINK_S + 0.01f, asleep = false), 0f)
+        assertEquals(0.38f, eyeOpenness(3f, asleep = true), 0f)
+        val open = (0..1000).count { eyeOpenness(it * 0.0137f, asleep = false) == 1f }
+        assertTrue(open > 950) // open almost all the time
+    }
 }
