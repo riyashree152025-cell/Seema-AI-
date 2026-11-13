@@ -218,6 +218,12 @@ fun SettingsScreen(
                             viewModel = viewModel
                         )
                         VoiceEngineSecretCard(
+                            secretId = SecretId.MISTRAL_API_KEY,
+                            title = "Mistral API Key (backup AI, free plan without a card)",
+                            secretStatus = state.secrets[SecretId.MISTRAL_API_KEY] ?: SecretStatus(),
+                            viewModel = viewModel
+                        )
+                        VoiceEngineSecretCard(
                             secretId = SecretId.DEEPSEEK_API_KEY,
                             title = "DeepSeek API Key (backup AI)",
                             secretStatus = state.secrets[SecretId.DEEPSEEK_API_KEY] ?: SecretStatus(),

@@ -11,6 +11,7 @@ class AiProviderFactory(private val http: OkHttpClient) {
         ProviderId.CEREBRAS -> OpenAiCompatibleProvider(ProviderId.CEREBRAS, http, apiKey, CEREBRAS_BASE_URL)
         ProviderId.OPENROUTER -> OpenAiCompatibleProvider(ProviderId.OPENROUTER, http, apiKey, OPENROUTER_BASE_URL)
         ProviderId.DEEPSEEK -> OpenAiCompatibleProvider(ProviderId.DEEPSEEK, http, apiKey, DEEPSEEK_BASE_URL)
+        ProviderId.MISTRAL -> OpenAiCompatibleProvider(ProviderId.MISTRAL, http, apiKey, MISTRAL_BASE_URL)
         ProviderId.OLLAMA -> {
             val url = normalizeOllamaUrl(apiKey)
             OpenAiCompatibleProvider(ProviderId.OLLAMA, http, "ollama", url)

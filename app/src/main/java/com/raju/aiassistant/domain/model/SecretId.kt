@@ -10,6 +10,7 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     CEREBRAS_API_KEY("cerebras_api_key", "Cerebras API key", "https://cloud.cerebras.ai"),
     OPENROUTER_API_KEY("openrouter_api_key", "OpenRouter API key", "https://openrouter.ai/keys"),
     DEEPSEEK_API_KEY("deepseek_api_key", "DeepSeek API key", "https://platform.deepseek.com/api_keys"),
+    MISTRAL_API_KEY("mistral_api_key", "Mistral API key", "https://console.mistral.ai/api-keys"),
     OLLAMA_ENDPOINT("ollama_endpoint", "Ollama Host (PC Local AI)", ""),
     PC_SYNC_ENDPOINT("pc_sync_endpoint", "PC Companion Sync URL", ""),
     PC_SYNC_TOKEN("pc_sync_token", "PC Companion Auth Token", ""),

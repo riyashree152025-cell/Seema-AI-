@@ -145,4 +145,6 @@ const val GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 const val CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 const val DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+/** Mistral AI: OpenAI-style chat API; its free plan needs no card (phone verification). */
+const val MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
 const val OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434/v1"

@@ -9,6 +9,7 @@ enum class ProviderId(val displayName: String, val shortName: String, val secret
     CEREBRAS("Cerebras", "Cerebras", SecretId.CEREBRAS_API_KEY),
     OPENROUTER("OpenRouter", "OpenRouter", SecretId.OPENROUTER_API_KEY),
     DEEPSEEK("DeepSeek", "DeepSeek", SecretId.DEEPSEEK_API_KEY),
+    MISTRAL("Mistral AI", "Mistral", SecretId.MISTRAL_API_KEY),
     OLLAMA("Ollama (PC Local)", "Ollama", SecretId.OLLAMA_ENDPOINT),
 }
 

@@ -6,7 +6,7 @@ package com.raju.aiassistant.domain.ai
  */
 object ModelAdvice {
     /** Models that are not general chat models (speech, safety classifiers, embeddings, agents). */
-    private val NOT_CHAT = listOf("image", "vision", "embed", "tts", "audio", "whisper", "guard", "playai", "compound", "orpheus")
+    private val NOT_CHAT = listOf("image", "vision", "embed", "tts", "audio", "whisper", "guard", "playai", "compound", "orpheus", "moderation", "ocr", "voxtral")
 
     /** Language-specialised models that are poor at Hindi (e.g. ALLaM is an Arabic–English model with a ~4K context). */
     private val NOT_FOR_HINDI = listOf("allam", "saba")
@@ -17,6 +17,8 @@ object ModelAdvice {
         ProviderId.GROQ to listOf("llama-3.3-70b", "gpt-oss-120b", "llama-4", "qwen3", "llama-3.1-8b", "llama"),
         ProviderId.CEREBRAS to listOf("llama-3.3-70b", "gpt-oss-120b", "qwen-3", "llama"),
         ProviderId.OPENROUTER to listOf("deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct", "google/gemini-2.0-flash-001", "qwen"),
+        // Medium: the best Hindi of its free models at a good speed; Small: the fastest; Large: the deepest.
+        ProviderId.MISTRAL to listOf("mistral-medium-latest", "mistral-small-latest", "mistral-large-latest", "mistral-medium", "mistral-small"),
         ProviderId.DEEPSEEK to listOf("deepseek-chat", "deepseek-reasoner"),
         ProviderId.OLLAMA to listOf("llama3.2", "qwen2.5", "mistral", "gemma2", "llama3"),
     )
