@@ -71,7 +71,7 @@ class SpeechCapture(private val clock: () -> Long = System::currentTimeMillis) {
 }
 
 /** Real time the detector's "no speech" timeout stands for (the same 4.5 s as [EndpointDetector]). */
-const val MIN_NO_SPEECH_WALL_MS = 4_500L
+const val MIN_NO_SPEECH_WALL_MS = com.raju.aiassistant.domain.voice.TurnPacing.NO_SPEECH_MS.toLong()
 
 /** The shared microphone could not be used for this turn (the recorder failed). */
 class SharedMicException(message: String) : Exception(message)
