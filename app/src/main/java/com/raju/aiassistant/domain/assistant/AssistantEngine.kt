@@ -104,15 +104,19 @@ private const val NOT_YET = -1L
 private const val AI_TIMEOUT_MS = 45_000L
 /** The short "which phone task is this" request: if it takes longer, the normal conversation answers. */
 private const val ROUTER_TIMEOUT_MS = 6_000L
+/** Each backup AI after a failure: answer within this or the next one is asked. */
+private const val FALLBACK_TIMEOUT_MS = 15_000L
+/** After the first sentence is ready: if the whole reply follows within this, it is spoken in one go. */
+private const val EARLY_HEAD_GRACE_MS = 1_200L
 /** How long the answer to "WhatsApp par kya likhun?" is waited for. */
 private const val WA_ASK_MS = 60_000L
 /** Exchanges of recent conversation sent with each AI request, and their size limit. */
 private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
-private const val FIRST_TEXT_TIMEOUT_MS = 15_000L
+private const val FIRST_TEXT_TIMEOUT_MS = 8_000L
 /** Careful thinking (deep tier) may take longer before its first words on mobile data: Gemini gets 28 s. */
-private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 28_000L
+private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 20_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /**
@@ -434,7 +438,9 @@ class AssistantEngine(
             if (requestAfterWake.isBlank()) {
                 // The user only called her name ("हे सीमा" / "सीमा" / "Hey Seema") to wake/greet her:
                 // Instantly reply "हाँ जी, बोलिए?" (or Bengali "হ্যাঁ, বলুন?") and keep listening!
-                scope.launch {
+                startWakeSession()
+                cancelWork()
+                job = scope.launch {
                     say(phrase(lang(), "हाँ जी, बोलिए?", "হ্যাঁ, বলুন?"), allowBargeIn = false)
                     _voiceSession.value = true
                     listen()
@@ -666,7 +672,7 @@ class AssistantEngine(
                 }
                 val keepGoing = handsFree && _voiceSession.value && !settings.value.assistantPaused && !err.permissionDenied
                 val held = heldVoiceText
-                if (inBackground && held == null && canSleep() && (err.noSpeech || err.unclear)) {
+                if (inBackground && held == null && canSleep() && (err.noSpeech || err.unclear) && !wakeConversation()) {
                     // Another app is on screen: no open listening to its sound, wait for her name.
                     trace("background: nothing said, back to standby")
                     goToSleep()
@@ -803,6 +809,9 @@ class AssistantEngine(
      * Her name woke her: with "Hey Seema se hi shuru" the conversation now goes on without the name —
      * she listens again after every reply — until she is quiet for the "sleep after" time.
      */
+    /** Woken by name ("wake to start") and still inside the quiet timer: the conversation is on. */
+    private fun wakeConversation(): Boolean = settings.value.wakeToStart && handsFree && !sleepDue()
+
     private fun startWakeSession() {
         if (!settings.value.wakeToStart) return
         handsFree = true
@@ -1196,9 +1205,13 @@ class AssistantEngine(
                     }
                 }
                 headReady.await()?.let { head ->
-                    spokenHead = head
-                    trace("speaking early (${head.length} chars)")
-                    say(head)
+                    // A fast AI has the whole reply a moment later: one say() then (its next chunk is
+                    // prepared while the first plays) is smoother than the head, a gap, and the rest.
+                    if (withTimeoutOrNull(EARLY_HEAD_GRACE_MS) { request.await() } == null) {
+                        spokenHead = head
+                        trace("speaking early (${head.length} chars)")
+                        say(head)
+                    }
                 }
                 request.await()
             }
@@ -1353,7 +1366,8 @@ class AssistantEngine(
             val p = providerFor(id, key)
             val model = (resolveModel(id, key, p) as? AiResult.Success)?.value ?: continue
             trace("ai fallback ${id.shortName}")
-            val r = withTimeoutOrNull(AI_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
+            // A backup answers quickly or not at all: the user is already waiting for the first AI.
+            val r = withTimeoutOrNull(FALLBACK_TIMEOUT_MS) { p.chat(model, system, turns) } ?: continue
             if (r is AiResult.Success && r.value.isNotBlank()) return FallbackReply(id, model, r.value)
             if (r is AiResult.Failure) {
                 providerCooldown[id] = now + cooldownMsFor(r.kind, r.message)
@@ -1801,7 +1815,8 @@ class AssistantEngine(
             // Another app is on screen: listen on only when she just asked something
             // ("किसको भेजना है?"); otherwise wait for "Hey Seema", not for the app's sound.
             val asked = lastSpoken?.trimEnd()?.let { it.endsWith("?") || it.endsWith("？") } == true && clock() - lastSpokeAt < 5_000L
-            if (asked) listen() else goToSleep()
+            // A conversation she was woken into by name goes on (until the quiet timer), even over another app.
+            if (asked || wakeConversation()) listen() else goToSleep()
         } else if (_voiceSession.value && (s.continuousConversation || handsFree) && !s.assistantPaused) {
             listen()
         } else {

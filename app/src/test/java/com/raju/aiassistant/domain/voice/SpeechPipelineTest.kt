@@ -202,6 +202,22 @@ class SpeechPipelineTest {
     }
 
     @Test
+    fun aVoiceServiceThatHangsIsReplacedInsteadOfKeepingHerSilent() = runTest {
+        val sink = FakeSink()
+        val hanging = object : TtsProvider {
+            override val engine = TtsEngine.SARVAM
+            override val label = "Hanging"
+            override suspend fun isAvailable() = true
+            override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> = kotlinx.coroutines.awaitCancellation()
+        }
+        val r = SpeechPipeline(sink, NEVER_SILENT).speak("Namaste.", listOf(hanging, FakeProvider(TtsEngine.ANDROID)), "hi-IN", 1f)
+        assertTrue(r.completed)
+        assertEquals("ANDROID", r.engineLabel)
+        assertEquals(listOf("ANDROID:Namaste."), sink.played)
+        assertTrue(testScheduler.currentTime in synthTimeoutMs("Namaste.")..synthTimeoutMs("Namaste.") + 1_000)
+    }
+
+    @Test
     fun silenceCheckJudgesLengthAndLoudness() {
         val text = "Namaste, kaise ho aap?"
         assertTrue(isSilent(PcmAudio(16000, 1, ByteArray(320)), text)) // 10 ms for a sentence

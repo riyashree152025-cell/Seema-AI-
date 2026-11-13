@@ -2306,7 +2306,11 @@ class AssistantEngineTest {
         val e = engineFor(StreamingProvider(gate))
         e.submit("aaj mausam kaisa hai")
         runCurrent()
-        // The first sentence is already spoken while the AI is still writing.
+        // The whole reply may follow at once: for a moment she waits for it (then one smooth say)…
+        assertEquals(emptyList<String>(), speaker.spoken)
+        advanceTimeBy(1_300)
+        runCurrent()
+        // …but the AI is still writing, so the first sentence is spoken without waiting longer.
         assertEquals(listOf("Aaj Delhi mein dhoop hai."), speaker.spoken)
         gate.complete(Unit)
         settle()
@@ -2338,7 +2342,7 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun aBusyProviderThatStaysSilentIsReplacedAfter15SecondsWhenAnotherAiCanAnswer() = runTest {
+    fun aBusyProviderThatStaysSilentIsReplacedAfter8SecondsWhenAnotherAiCanAnswer() = runTest {
         keys[SecretId.GROQ_API_KEY] = "groq"
         val silentGemini = object : AiProvider {
             override val id = ProviderId.GEMINI
@@ -2355,10 +2359,10 @@ class AssistantEngineTest {
         }
         val e = engineFor(silentGemini, listOf(ProviderId.GEMINI, ProviderId.GROQ)) { id -> if (id == ProviderId.GROQ) groq else silentGemini }
         e.submit("hello")
-        advanceTimeBy(16_000)
+        advanceTimeBy(9_000)
         runCurrent()
         assertEquals("Groq ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
-        assertTrue(e.transcript.value.any { it.text.contains("did not start answering within 15 seconds") })
+        assertTrue(e.transcript.value.any { it.text.contains("did not start answering within 8 seconds") })
         assertNull(e.lastError.value)
         settle()
     }

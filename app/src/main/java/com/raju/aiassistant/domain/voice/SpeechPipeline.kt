@@ -71,6 +71,9 @@ fun languageFor(chunk: String, preferredTag: String): String =
  * dropped for the rest of the utterance and the next provider takes over from the same chunk.
  * Cancelling the calling coroutine stops synthesis and playback immediately.
  */
+/** How long one chunk may take to synthesise before the next voice is tried: 8 s plus 25 ms a letter. */
+fun synthTimeoutMs(chunk: String): Long = 8_000L + chunk.length * 25L
+
 class SpeechPipeline(
     private val sink: PcmSink,
     /** Detects a voice that "succeeded" but produced no real sound (see [isSilent]). */
@@ -101,7 +104,11 @@ class SpeechPipeline(
                     var audio: PcmAudio? = null
                     while (audio == null && usable.isNotEmpty()) {
                         val provider = usable.first()
-                        when (val r = provider.synthesize(chunk, languageFor(chunk, preferredLanguage), rate)) {
+                        // A voice service that hangs must not keep her silent (the HTTP client allows 90 s):
+                        // after a fair wait the next voice takes over from this same chunk.
+                        val r = kotlinx.coroutines.withTimeoutOrNull(synthTimeoutMs(chunk)) { provider.synthesize(chunk, languageFor(chunk, preferredLanguage), rate) }
+                            ?: com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.TIMEOUT, "no audio within ${synthTimeoutMs(chunk) / 1000} s")
+                        when (r) {
                             // A voice that returns (almost) no sound for real words has failed, even if it says OK.
                             is AiResult.Success -> if (silent(r.value, chunk)) {
                                 usable.removeAt(0)
