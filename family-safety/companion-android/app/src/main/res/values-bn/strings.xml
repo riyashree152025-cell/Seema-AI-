@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">সীমা ফ্যামিলি</string>
+    <string name="share_location">পরিবারের সাথে আমার লোকেশন শেয়ার করুন</string>
+    <string name="sharing_on">শেয়ারিং চালু — পরিবার দেখতে পাবে আপনি কোথায় আছেন</string>
+    <string name="sharing_off">শেয়ারিং বন্ধ — কেউ আপনার লোকেশন দেখতে পাবে না</string>
+    <string name="notif_title">পরিবারের সাথে লাইভ লোকেশন শেয়ার হচ্ছে</string>
+    <string name="notif_text">অ্যাপ খুলে যেকোনো সময় বন্ধ করতে পারেন</string>
+    <string name="notif_channel">লোকেশন শেয়ারিং</string>
+    <string name="sos">SOS</string>
+    <string name="sos_confirm_title">SOS পাঠাবেন?</string>
+    <string name="sos_confirm_text">আপনার এখনকার লোকেশন সহ পরিবারের কাছে জরুরি সতর্কতা যাবে।</string>
+    <string name="sos_send">SOS পাঠান</string>
+    <string name="cancel">বাতিল</string>
+    <string name="sos_sent">SOS পরিবারকে পাঠানো হয়েছে</string>
+    <string name="sos_failed">SOS পাঠানো যায়নি — 112 নম্বরে কল করুন</string>
+    <string name="shake_sos">ফোন ৩ বার ঝাঁকালে SOS শুরু হবে</string>
+    <string name="setup">পরিবারে যোগ দিন</string>
+    <string name="server_url">সার্ভারের ঠিকানা (https://…)</string>
+    <string name="user_id">আপনার ID (ফ্যামিলি অ্যাডমিনের কাছ থেকে)</string>
+    <string name="pairing_code">৮ সংখ্যার যোগদান কোড</string>
+    <string name="joined">যোগ দিয়েছেন। কখন শেয়ার করবেন, আপনিই ঠিক করবেন।</string>
+    <string name="join_failed">যোগ দেওয়া যায়নি — ঠিকানা ও কোড দেখুন</string>
+    <string name="need_permission">শেয়ার করতে লোকেশনের অনুমতি লাগবে</string>
+    <string name="leave_family">পরিবার থেকে সরে যান (এই ফোন ভুলে যান)</string>
+</resources>

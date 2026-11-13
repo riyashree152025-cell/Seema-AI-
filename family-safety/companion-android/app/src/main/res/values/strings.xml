@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Seema Family</string>
+    <string name="share_location">Share my location with family</string>
+    <string name="sharing_on">Sharing is ON — your family can see where you are</string>
+    <string name="sharing_off">Sharing is OFF — nobody can see your location</string>
+    <string name="notif_title">Sharing live location with family</string>
+    <string name="notif_text">Open the app and switch it off any time</string>
+    <string name="notif_channel">Location sharing</string>
+    <string name="sos">SOS</string>
+    <string name="sos_confirm_title">Send SOS?</string>
+    <string name="sos_confirm_text">Your family will get an emergency alert with your current location.</string>
+    <string name="sos_send">Send SOS</string>
+    <string name="cancel">Cancel</string>
+    <string name="sos_sent">SOS sent to your family</string>
+    <string name="sos_failed">SOS could not be sent — call 112</string>
+    <string name="shake_sos">Shake phone 3 times to start SOS</string>
+    <string name="setup">Join family</string>
+    <string name="server_url">Server address (https://…)</string>
+    <string name="user_id">Your ID (from the family admin)</string>
+    <string name="pairing_code">8-digit joining code</string>
+    <string name="joined">Joined. You decide when to share.</string>
+    <string name="join_failed">Could not join — check the address and code</string>
+    <string name="need_permission">Location permission is needed to share</string>
+    <string name="leave_family">Leave family (forget this phone)</string>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">सीमा फ़ैमिली</string>
+    <string name="share_location">परिवार के साथ मेरी लोकेशन शेयर करें</string>
+    <string name="sharing_on">शेयरिंग चालू है — परिवार देख सकता है कि आप कहाँ हैं</string>
+    <string name="sharing_off">शेयरिंग बंद है — कोई आपकी लोकेशन नहीं देख सकता</string>
+    <string name="notif_title">परिवार के साथ लाइव लोकेशन शेयर हो रही है</string>
+    <string name="notif_text">ऐप खोलकर कभी भी बंद कर सकते हैं</string>
+    <string name="notif_channel">लोकेशन शेयरिंग</string>
+    <string name="sos">SOS</string>
+    <string name="sos_confirm_title">SOS भेजें?</string>
+    <string name="sos_confirm_text">परिवार को आपकी अभी की लोकेशन के साथ इमरजेंसी अलर्ट जाएगा।</string>
+    <string name="sos_send">SOS भेजें</string>
+    <string name="cancel">रद्द करें</string>
+    <string name="sos_sent">SOS परिवार को भेज दिया गया</string>
+    <string name="sos_failed">SOS नहीं भेजा जा सका — 112 पर कॉल करें</string>
+    <string name="shake_sos">फ़ोन 3 बार हिलाने पर SOS शुरू हो</string>
+    <string name="setup">परिवार से जुड़ें</string>
+    <string name="server_url">सर्वर का पता (https://…)</string>
+    <string name="user_id">आपकी ID (फ़ैमिली एडमिन से)</string>
+    <string name="pairing_code">8 अंकों का जोड़ने वाला कोड</string>
+    <string name="joined">जुड़ गए। शेयर कब करना है, यह आप तय करेंगे।</string>
+    <string name="join_failed">नहीं जुड़ पाए — पता और कोड जाँचें</string>
+    <string name="need_permission">शेयर करने के लिए लोकेशन की अनुमति चाहिए</string>
+    <string name="leave_family">परिवार से हटें (यह फ़ोन भूल जाएँ)</string>
+</resources>
