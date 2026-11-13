@@ -102,6 +102,8 @@ private val BENGALI_SCRIPT = Regex("[\\u0980-\\u09FF]")
 private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
+/** The short "which phone task is this" request: if it takes longer, the normal conversation answers. */
+private const val ROUTER_TIMEOUT_MS = 6_000L
 /** Exchanges of recent conversation sent with each AI request, and their size limit. */
 private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
@@ -999,6 +1001,14 @@ class AssistantEngine(
         }
         var screenQuestion: AssistantAction.ReadScreen? = null
         LocalCommands.parse(text)?.let { action ->
+            // "Anand ka booking aaya hai Pune se Howrah 3A, note karo": the details said with it are read by
+            // the short request (online) instead of starting an empty note that asks for each again.
+            if (action is AssistantAction.BookingNoteStart && s.smartUnderstanding && isOnline() &&
+                text.trim().split(Regex("\\s+")).size > 6
+            ) {
+                trace("booking with details: short request")
+                return@let
+            }
             if (action is AssistantAction.ReadScreen && isOnline()) {
                 // "Screen padho": the screen goes to the AI in one request (no routing request first).
                 trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, one AI request)")
@@ -1069,6 +1079,30 @@ class AssistantEngine(
             if (warnedModels.add(model)) note("⚠️ ${providerId.shortName} model \"$model\": $w")
         }
         _state.value = AssistantState.Thinking
+        // A phone task in other words than the fixed rules know: a short request (only the list of what
+        // the phone can do) decides it; the phone then does it. Chat goes on to the full conversation.
+        if (s.smartUnderstanding && IntentRouter.looksLikeTask(text)) {
+            val routed = withTimeoutOrNull(ROUTER_TIMEOUT_MS) {
+                runCatching { provider.chat(model, IntentRouter.system(today()), listOf(Turn(TurnRole.USER, text))) }.getOrNull()
+            }
+            val action = (routed as? AiResult.Success)?.value?.let { IntentRouter.toAction(it) }
+            trace("intent router: ${action?.label ?: "chat / not a task"}")
+            if (action != null) {
+                val speakIt = fromVoice || s.autoSpeakReplies
+                if (action is AssistantAction.BookingNoteWith) {
+                    bookingDraft = com.raju.aiassistant.domain.booking.BookingDraft()
+                    bookingLastPrompt = null
+                    bookingRepeats = 0
+                    bookingTurn(action.said, speakIt)
+                    return
+                }
+                if (runLocalCommand(action, speakIt)) return
+                execute(action, provider, model, "", speakIt)
+                if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
+                finishTurn()
+                return
+            }
+        }
         val allMemories = if (s.memoryEnabled) runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()) else emptyList()
         // Smart memory: with many memories, the ones related to this message are used.
         val memoryTexts = relevantMemories(allMemories, text, memoryLimitFor(if (s.hybridBrain) tier else BrainTier.DEEP))
@@ -2255,6 +2289,7 @@ class AssistantEngine(
             }
             is AssistantAction.PnrStatus -> pnrStatus(action, speak)
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
+            is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
             is AssistantAction.TatkalReminder -> tatkalReminder(action, speak)

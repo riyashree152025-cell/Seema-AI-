@@ -173,7 +173,7 @@ class AssistantEngineTest {
     // The engine tests were written for tap-to-talk; tests for the other modes set them explicitly.
     // The hybrid brain has its own tests below; the rest test the chosen provider and its fallback.
     // "Hey Seema se hi shuru" (on in the app) has its own tests below; the older tests check the other modes.
-    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK, hybridBrain = false, wakeToStart = false))
+    private val settings = MutableStateFlow(UserSettings(autoSpeakReplies = true, voiceMode = com.raju.aiassistant.domain.model.VoiceMode.PUSH_TO_TALK, hybridBrain = false, wakeToStart = false, smartUnderstanding = false))
     private val store = Store()
     private val speaker = FakeSpeaker()
     private val voice = FakeVoice()
@@ -2610,6 +2610,28 @@ class AssistantEngineTest {
         assertEquals(3, seen!!.first)
         assertTrue(seen!!.second.startsWith("main kaisa lag raha hoon?"))
         assertEquals("Aap muskura rahe hain.", speaker.spoken.last())
+    }
+
+    @Test
+    fun aTaskInOtherWordsIsUnderstoodByTheShortRequestAndDoneOnThePhone() = runTest {
+        settings.value = settings.value.copy(smartUnderstanding = true)
+        val e = engine(AiResult.Success("""{"type":"booking_note","from":"Pune","to":"Howrah","class":"3A","passenger":"Anand Kumar Patel","birth_year":"1986"}"""))
+        e.submit("आनंद का booking आया है पुणे से हावड़ा थ्री ए, note down करके रखो", fromVoice = true)
+        settle()
+        assertEquals(1, provider.calls.size) // only the short request, no chat request
+        assertTrue(provider.systems[0].length < 2_000)
+        // Everything said is in the note; only the date is still asked.
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("तारीख") || speaker.spoken.last().contains("कब"))
+    }
+
+    @Test
+    fun chatStillGoesToTheConversationWhenTheShortRequestSaysChat() = runTest {
+        settings.value = settings.value.copy(smartUnderstanding = true)
+        val e = engine(AiResult.Success("""{"type":"chat"}"""), AiResult.Success("Haan, note kar liya."))
+        e.submit("ye baat note karke rakhna ki main kal busy hoon", fromVoice = true)
+        settle()
+        assertEquals(2, provider.calls.size)
+        assertEquals("Haan, note kar liya.", speaker.spoken.last())
     }
 
     @Test

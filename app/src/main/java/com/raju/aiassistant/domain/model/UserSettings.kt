@@ -121,6 +121,8 @@ data class UserSettings(
     val wakeSensitivity: String = "NORMAL",
     /** Home's look: "EYE" (the Living Eye) or "GLASS" (Liquid Glass sphere). */
     val homeStyle: String = "EYE",
+    /** Phone tasks said in other words are understood by a short AI request (IntentRouter). */
+    val smartUnderstanding: Boolean = true,
     /** Barge-in also on the loudspeaker (stricter detection, her own echo ignored); test on the phone. */
     val bargeInSpeaker: Boolean = false,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */

@@ -203,6 +203,10 @@ sealed interface AssistantAction {
     data object ReminderNeedsTime : AssistantAction {
         override val label get() = "Reminder: when?"
     }
+    /** A booking note with what was already said ("Pune se Howrah 3A kal Anand 1986"); the rest is asked. */
+    data class BookingNoteWith(val said: String) : AssistantAction {
+        override val label get() = "Booking note"
+    }
     /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
     data object TatkalWhen : AssistantAction {
         override val label get() = "Tatkal opening"
