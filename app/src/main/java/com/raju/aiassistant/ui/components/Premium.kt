@@ -156,13 +156,9 @@ fun Modifier.premiumSurface(
 
 
 /**
- * Home's soft glass (the user's choice, like the "आँख | Liquid Glass" switch): a faint frosted fill with
- * no neon rim, a hairline edge and a little light on the top half. [lit] (0..1, pressed) brightens it.
+ * Home's soft glass, exactly like the "आँख | Liquid Glass" switch the user picked: a faint frosted fill,
+ * rounded, with no border or neon rim. [lit] (0..1, pressed) brightens it a little.
  */
 fun Modifier.softGlass(shape: Shape = RoundedCornerShape(18.dp), lit: Float = 0f): Modifier = this
     .clip(shape)
     .background(Color.White.copy(alpha = 0.06f + 0.06f * lit))
-    .drawBehind {
-        drawRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.05f + 0.04f * lit), 0.5f to Color.Transparent))
-    }
-    .border(0.6.dp, Color.White.copy(alpha = 0.07f + 0.10f * lit), shape)
