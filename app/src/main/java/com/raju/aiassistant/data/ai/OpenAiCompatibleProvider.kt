@@ -61,6 +61,8 @@ class OpenAiCompatibleProvider(
         put("max_tokens", 4096)
         // gpt-oss models reason before answering; "low" keeps spoken replies fast (Groq supports it).
         if (model.contains("gpt-oss")) put("reasoning_effort", "low")
+        // Qwen3 thinks silently before every answer (seconds of delay); Groq turns that off with "none".
+        if (model.contains("qwen3", ignoreCase = true) && model !in rejectsReasoningOff) put("reasoning_effort", "none")
         if (stream) put("stream", true)
         putJsonArray("messages") {
             addJsonObject { put("role", "system"); put("content", systemPrompt) }
@@ -79,7 +81,19 @@ class OpenAiCompatibleProvider(
         .post(body.toRequestBody())
         .build()
 
-    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
+    /** Models whose service refused "reasoning_effort: none" (asked once again without it, then never). */
+    private val rejectsReasoningOff = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /** True when a refusal names the reasoning setting: that model is then asked without it. */
+    private fun refusedReasoningOff(model: String, r: AiResult<*>): Boolean =
+        model.contains("qwen3", ignoreCase = true) && model !in rejectsReasoningOff &&
+            r is AiResult.Failure && r.message.contains("reasoning", ignoreCase = true) &&
+            rejectsReasoningOff.add(model)
+
+    override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> =
+        chatOnce(model, systemPrompt, turns).let { if (refusedReasoningOff(model, it)) chatOnce(model, systemPrompt, turns) else it }
+
+    private suspend fun chatOnce(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> = withRetry {
         when (val r = http.fetch(request(payload(model, systemPrompt, turns, stream = false)))) {
             is AiResult.Failure -> r
             is AiResult.Success -> {
@@ -92,6 +106,11 @@ class OpenAiCompatibleProvider(
     override val streams = true
 
     override suspend fun chatStream(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {
+        val first = streamOnce(model, systemPrompt, turns, onDelta)
+        return if (refusedReasoningOff(model, first)) streamOnce(model, systemPrompt, turns, onDelta) else first
+    }
+
+    private suspend fun streamOnce(model: String, systemPrompt: String, turns: List<Turn>, onDelta: (String) -> Unit): AiResult<String> {
         val text = StringBuilder()
         var finish: String? = null
         var cut: AiResult.Failure? = null

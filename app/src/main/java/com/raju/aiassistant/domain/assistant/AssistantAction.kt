@@ -195,6 +195,14 @@ sealed interface AssistantAction {
     data class LiveCamera(val on: Boolean, val front: Boolean = false) : AssistantAction {
         override val label get() = if (on) "Live camera on" else "Live camera off"
     }
+    /** "Anand ka tatkal booking hai yaad dila dena": a reminder 5 minutes before the next opening. */
+    data class TatkalReminder(val name: String?, val sleeper: Boolean) : AssistantAction {
+        override val label get() = "Tatkal reminder" + (name?.let { ": $it" } ?: "")
+    }
+    /** "… yaad dila dena" with no time: Seema asks when, instead of guessing. */
+    data object ReminderNeedsTime : AssistantAction {
+        override val label get() = "Reminder: when?"
+    }
     /** "Tatkal kab khulega": the AC and non-AC opening times with a countdown. */
     data object TatkalWhen : AssistantAction {
         override val label get() = "Tatkal opening"

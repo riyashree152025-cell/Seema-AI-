@@ -122,7 +122,7 @@ data class UserSettings(
     /** Home's look: "EYE" (the Living Eye) or "GLASS" (Liquid Glass sphere). */
     val homeStyle: String = "EYE",
     /** Barge-in also on the loudspeaker (stricter detection, her own echo ignored); test on the phone. */
-    val bargeInSpeaker: Boolean = true,
+    val bargeInSpeaker: Boolean = false,
     /** Hands-free: after this many seconds without the user speaking Seema goes to sleep (0 = never). */
     val sleepAfterSeconds: Int = 60,
     /** While asleep, wake only when called by name ("Seema …"); off = any speech wakes her. */

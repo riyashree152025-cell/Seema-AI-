@@ -213,7 +213,8 @@ class SettingsRepository(private val context: Context) {
         val WAKE_TO_START = booleanPreferencesKey("wake_to_start")
         val WAKE_SENSITIVITY = stringPreferencesKey("wake_sensitivity")
         val HOME_STYLE = stringPreferencesKey("home_style")
-        val BARGE_IN_SPEAKER = booleanPreferencesKey("barge_in_speaker")
+        // v2: the earlier key defaulted to ON and Seema cut herself off on the loudspeaker; the old value is ignored.
+        val BARGE_IN_SPEAKER = booleanPreferencesKey("barge_in_speaker_v2")
         val SLEEP_AFTER = intPreferencesKey("sleep_after_seconds")
         val WAKE_WORD = booleanPreferencesKey("wake_word")
         val MIC_HUB = booleanPreferencesKey("mic_hub")

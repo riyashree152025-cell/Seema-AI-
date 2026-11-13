@@ -920,6 +920,7 @@ class AssistantEngineTest {
 
     @Test
     fun onTheLoudspeakerANewQuestionStopsHerToo() = runTest {
+        settings.value = settings.value.copy(bargeInSpeaker = true) // the loudspeaker test setting (off by default now)
         val e = engineWith(
             InstantBargeIn(), FakeTranscriber("Delhi ka mausam batao"),
             AiResult.Success("Bahut lamba jawab hai."), AiResult.Success("Delhi mein dhoop hai."),
@@ -934,6 +935,7 @@ class AssistantEngineTest {
 
     @Test
     fun onTheLoudspeakerHerOwnWordsComingBackDoNotStopHer() = runTest {
+        settings.value = settings.value.copy(bargeInSpeaker = true) // the loudspeaker test setting (off by default now)
         // The "interruption" was only her own voice ("lamba jawab") in the microphone: she carries on.
         val e = engineWith(
             InstantBargeIn(), FakeTranscriber("lamba jawab"), AiResult.Success("Bahut lamba jawab hai. Aur bhi baatein hain."),
@@ -949,6 +951,7 @@ class AssistantEngineTest {
 
     @Test
     fun onTheLoudspeakerABengaliStopGetsABengaliAnswer() = runTest {
+        settings.value = settings.value.copy(bargeInSpeaker = true) // the loudspeaker test setting (off by default now)
         val e = engineWith(InstantBargeIn(), FakeTranscriber("থামো"), AiResult.Success("Bahut lamba jawab hai."), mode = OnLoudspeaker, headphones = false)
         e.startHandsFree()
         voice.onResult!!("kuch batao")
@@ -2606,6 +2609,26 @@ class AssistantEngineTest {
         assertEquals(3, seen!!.first)
         assertTrue(seen!!.second.startsWith("main kaisa lag raha hoon?"))
         assertEquals("Aap muskura rahe hain.", speaker.spoken.last())
+    }
+
+    @Test
+    fun aTatkalBookingToRememberIsSetOnThePhoneNotSentToTheAi() = runTest {
+        val e = engine()
+        e.submit("anand ka tatkal booking hai yaad diladena", fromVoice = true)
+        settle()
+        assertEquals(1, tools.reminders.size)
+        assertTrue(tools.reminders[0].second, tools.reminders[0].second.startsWith("Anand की AC Tatkal booking"))
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Anand की AC Tatkal booking याद दिलाऊँगी"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aReminderWithoutATimeIsAskedAboutNotGuessed() = runTest {
+        val e = engine()
+        e.submit("Rahul ka paisa lena hai yaad dila dena", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("कब याद दिलाऊँ?"))
+        assertTrue(tools.reminders.isEmpty() && provider.calls.isEmpty())
     }
 
     @Test

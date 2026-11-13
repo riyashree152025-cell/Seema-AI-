@@ -43,6 +43,7 @@ object LocalCommands {
         } }
         com.raju.aiassistant.domain.notify.parseReplyCommand(plain)?.let { return AssistantAction.NotificationReply(it.who, it.text) }
         com.raju.aiassistant.domain.calendar.parseCalendarQuestion(plain)?.let { return AssistantAction.CalendarRead(it) }
+        com.raju.aiassistant.domain.reminder.parseTatkalReminder(plain)?.let { return AssistantAction.TatkalReminder(it.name, it.sleeper) }
         com.raju.aiassistant.domain.reminder.parseReminder(plain, java.time.LocalDateTime.now())?.let { return when (it) {
             is com.raju.aiassistant.domain.reminder.ReminderCommand.Add ->
                 AssistantAction.ReminderAdd(it.at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), it.text)
@@ -50,6 +51,7 @@ object LocalCommands {
             com.raju.aiassistant.domain.reminder.ReminderCommand.CancelLast -> AssistantAction.ReminderCancel(all = false)
             com.raju.aiassistant.domain.reminder.ReminderCommand.CancelAll -> AssistantAction.ReminderCancel(all = true)
         } }
+        if (com.raju.aiassistant.domain.reminder.isReminderWithoutTime(plain)) return AssistantAction.ReminderNeedsTime
         com.raju.aiassistant.domain.tatkal.parsePassengers(plain, java.time.LocalDate.now())?.let { return AssistantAction.PassengerAges(it) }
         com.raju.aiassistant.domain.rail.parseRailCommand(plain, java.time.LocalDate.now())?.let { return when (it) {
             is com.raju.aiassistant.domain.rail.RailCommand.Between -> AssistantAction.TrainsBetween(it.from, it.to, it.date)

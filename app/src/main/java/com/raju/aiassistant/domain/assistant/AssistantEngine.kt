@@ -400,7 +400,9 @@ class AssistantEngine(
      * A voice result. People pause mid-sentence ("Mummy ko call karo aur…"): when the words end in a
      * joining word, the assistant keeps listening a few seconds and answers the whole sentence.
      */
-    private fun onHeard(heard: String) {
+    private fun onHeard(rawHeard: String) {
+        // Hindi written in another Indian script by the recogniser ("గీతా") is read as Devanagari.
+        val heard = com.raju.aiassistant.domain.language.toDevanagari(rawHeard)
         // Switched off: nothing that was heard is acted on or answered.
         if (settings.value.assistantPaused) { trace("off: heard result dropped"); return }
         trace("recognized (${heard.length} chars)")
@@ -1588,6 +1590,14 @@ class AssistantEngine(
                     speak,
                 )
             }
+            is AssistantAction.TatkalReminder -> {
+                trace("offline command: tatkal reminder")
+                tatkalReminder(action, speak)
+            }
+            AssistantAction.ReminderNeedsTime -> {
+                trace("offline command: reminder without a time")
+                informational(action, phrase(lang(), "कब याद दिलाऊँ? समय के साथ बोलिए, जैसे \"कल सुबह 9 बजे याद दिलाना\" या \"2 घंटे बाद याद दिलाना\"।", "কখন মনে করাব? সময় বলুন, যেমন \"কাল সকাল ৯টায় মনে করিও\"।"), speak)
+            }
             AssistantAction.TatkalWhen -> {
                 trace("offline command: tatkal opening")
                 informational(action, com.raju.aiassistant.domain.tatkal.spokenTatkalWindows(Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()), speak)
@@ -2238,6 +2248,8 @@ class AssistantEngine(
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            is AssistantAction.TatkalReminder -> tatkalReminder(action, speak)
+            AssistantAction.ReminderNeedsTime -> report(action, ActionStatus.SUCCESS, "Asked when to remind.")
             is AssistantAction.LiveCamera -> {
                 liveCameraFront = if (action.on) action.front else null
                 liveCameraUntil = if (action.on) clock() + com.raju.aiassistant.domain.vision.LIVE_CAMERA_MS else 0L
@@ -2304,6 +2316,27 @@ class AssistantEngine(
             is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)
         }
         informational(action, text, speak)
+    }
+
+    /** A reminder 5 minutes before the next Tatkal opening (AC 10:00 or Sleeper 11:00), on the phone. */
+    private suspend fun tatkalReminder(action: AssistantAction.TatkalReminder, speak: Boolean) {
+        val z = zone()
+        val now = Instant.ofEpochMilli(clock()).atZone(z).toLocalDateTime()
+        val at = com.raju.aiassistant.domain.reminder.tatkalReminderAt(now, action.sleeper)
+        val cls = if (action.sleeper) "Sleeper" else "AC"
+        val who = action.name?.let { "$it की " } ?: ""
+        val text = "${who}$cls Tatkal booking — ${if (action.sleeper) "11:00" else "10:00"} बजे खुलेगा"
+        when (val outcome = tools.addReminder(at.atZone(z).toInstant().toEpochMilli(), text)) {
+            is ToolOutcome.Done -> {
+                val day = if (at.toLocalDate() == now.toLocalDate()) "आज" else "कल"
+                val time = "%d:%02d".format(at.hour, at.minute)
+                informational(action, "ठीक है, $day सुबह $time बजे ${who}$cls Tatkal booking याद दिलाऊँगी।" + if (!action.sleeper) " Sleeper है तो \"sleeper tatkal\" बोलिए।" else "", speak)
+            }
+            else -> {
+                report(action, outcome)
+                if (speak && outcome is ToolOutcome.Failed) say(outcome.message)
+            }
+        }
     }
 
     /** The SMS since [since], asking for the permission first when needed; null after a refusal (already reported). */
