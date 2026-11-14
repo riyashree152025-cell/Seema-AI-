@@ -2386,7 +2386,18 @@ fun PrivacyScreen(
         // App lock and a plain statement of what leaves the phone.
         com.raju.aiassistant.ui.components.HudPanel(title = "आवाज़ से फ़ोन लॉक") {
             var adminOn by remember { mutableStateOf(com.raju.aiassistant.notifications.DeviceLock.isActive(context)) }
-            androidx.compose.runtime.LaunchedEffect(Unit) { adminOn = com.raju.aiassistant.notifications.DeviceLock.isActive(context) }
+            // Android's own "Activate" screen comes back to Seema: read the real state again then, so the
+            // switch turns ON after the user grants it (it used to be read only once, when the page opened).
+            val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+            androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        adminOn = com.raju.aiassistant.notifications.DeviceLock.isActive(context)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
             ToggleRow("\"screen lock karo\" से फ़ोन लॉक (बैकग्राउंड में भी)", adminOn) { want ->
                 if (want) runCatching { context.startActivity(com.raju.aiassistant.notifications.DeviceLock.requestIntent(context).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 else runCatching {
