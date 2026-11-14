@@ -2410,6 +2410,11 @@ fun PrivacyScreen(
                 "चालू होने पर Seema आपके कहने पर फ़ोन लॉक कर देगी, भले दूसरी app खुली हो। फ़ोन खोलने के लिए आपका अपना fingerprint / PIN / pattern ही चलेगा — Seema उसे कभी सेव या दर्ज नहीं करती, और खोल नहीं सकती।",
                 style = MaterialTheme.typography.bodySmall, color = com.raju.aiassistant.ui.theme.TextSecondary,
             )
+            // Android 13 and later blocks device-admin for apps installed outside the Play Store until the user allows it.
+            Text(
+                "अगर Activate दबाने पर Android लिखे \"Restricted setting\" या स्विच ऑन नहीं होता: Settings → Apps → Seema AI → ⋮ (तीन बिंदु) → \"Allow restricted settings\" दबाइए, फिर यहां वापस आकर स्विच ऑन कीजिए।",
+                style = MaterialTheme.typography.bodySmall, color = com.raju.aiassistant.ui.theme.TextSecondary,
+            )
         }
         com.raju.aiassistant.ui.components.HudPanel(title = "App lock") {
             val secure = remember { (context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isDeviceSecure == true }
