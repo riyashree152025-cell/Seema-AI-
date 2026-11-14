@@ -2018,6 +2018,20 @@ class AssistantEngine(
         listen()
     }
 
+    /**
+     * The ringing call ended (the caller hung up, or the user did): the open "uthao / kaat do" question is
+     * dropped at once — her speech stops and she no longer listens for an answer to a call that is gone.
+     */
+    fun callEnded() {
+        if (!callCommandOpen()) return
+        trace("call: ended while waiting for an answer, question dropped")
+        callCommandUntil = 0
+        ringingNumber = null
+        ringingName = null
+        speaker.stop()
+        stop()
+    }
+
     /** True while she listens for "uthao / kaat do" on a ringing call. */
     fun callCommandOpen(): Boolean = clock() < callCommandUntil
 

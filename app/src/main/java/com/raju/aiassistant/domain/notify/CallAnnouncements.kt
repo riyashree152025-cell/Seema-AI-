@@ -69,6 +69,10 @@ fun callCommand(heard: String): CallCommand? {
 /** What Seema asks after naming the caller, so "haan" / "nahi" can be answered by voice. */
 const val ASK_TO_ANSWER = "Uthau ya kaatu?"
 
+/** Said instead of the question when the caller already hung up while Seema was announcing. */
+fun endedCallText(contactName: String?): String =
+    if (contactName.isNullOrBlank()) "Call aaya tha, ab kat chuka hai." else "$contactName ka call aaya tha, ab kat chuka hai."
+
 // "Bolo" counts only with words after it ("usko bolo main busy hoon"); "haan bolo" alone stays an answer.
 private const val TELL = "(?:bol do|bol de|bolo|bolna|keh do|kah do|keh de|kaho|likh do|bata do|bata dena|message kar do|msg kar do|sms kar do|message bhej do|reply kar do|बोल दो|बोलो|बोलना|कह दो|कहो|लिख दो|बता दो|बता देना|मैसेज कर दो|मैसेज भेज दो|বলে দাও|লিখে দাও)"
 private val TELL_FIRST = Regex("^(?:(?:usko|use|unko|unhe|उसको|उसे|उन्हें|ওকে) )?$TELL (?:ki |कि |যে )?(.{2,140})$", RegexOption.IGNORE_CASE)

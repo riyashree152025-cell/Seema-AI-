@@ -40,9 +40,15 @@ class RajuCallScreeningService : CallScreeningService() {
             val name = number?.let { lookupContactName(it) }
             // "Raju, Mummy ka call aa raha hai. Uthau ya cut karu?" — "utha lo" answers, "cut karo" rejects,
             // "bol do abhi busy hoon" rejects and replies by SMS.
-            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber, s.userName) + " " + ASK_TO_ANSWER)
+            c.speaker.speak(callAnnouncementText(name, number, s.speakCallerNumber, s.userName))
+            // The caller may have hung up while that was read: then no question, only that the call came.
+            if (!c.audioInterruptions.ringing()) {
+                c.speaker.speak(com.raju.aiassistant.domain.notify.endedCallText(name))
+                return@launch
+            }
+            c.speaker.speak(ASK_TO_ANSWER)
             // "Bol do abhi busy hoon" cuts the call and sends those words to this number by SMS.
-            c.engine.listenForCallCommand(number, name)
+            if (c.audioInterruptions.ringing()) c.engine.listenForCallCommand(number, name)
         }
     }
 
