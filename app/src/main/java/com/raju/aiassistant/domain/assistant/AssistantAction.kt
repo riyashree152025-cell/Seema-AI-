@@ -51,6 +51,16 @@ sealed interface AssistantAction {
     data class WhatsApp(val contact: String?, val text: String) : AssistantAction {
         override val label get() = "WhatsApp draft" + (contact?.let { " to $it" } ?: "")
     }
+    /** "आनंद ने क्या भेजा?": open the chat and say what is on screen (counts; no file is opened). */
+    data class WhatsAppPeek(val contact: String) : AssistantAction {
+        override val label get() = "WhatsApp check $contact"
+    }
+
+    /** Plays the latest voice message of a chat on the speaker. */
+    data class WhatsAppPlayVoice(val contact: String) : AssistantAction {
+        override val label get() = "WhatsApp voice $contact"
+    }
+
     /** A document from the phone ("ticket", "invoice pdf"; empty = the newest) sent in [contact]'s WhatsApp chat. */
     data class WhatsAppFile(val contact: String, val file: String) : AssistantAction {
         override val label get() = "Send file on WhatsApp: ${file.ifBlank { "newest" }}"
@@ -387,6 +397,8 @@ private fun parseAction(json: String): AssistantAction? {
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
         "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact") ?: str("name"), it) }
+        "whatsapp_peek", "whatsapp_check", "whatsapp_chat_check" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppPeek(it) }
+        "whatsapp_play_voice", "whatsapp_voice" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppPlayVoice(it) }
         "whatsapp_file", "whatsapp_document", "whatsapp_pdf" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppFile(it, str("file") ?: str("query") ?: "") }
         "whatsapp_call", "wa_call", "whatsapp_audio_call", "whatsapp_voice_call" -> {
             AssistantAction.WhatsAppCall(str("contact") ?: str("name"), str("number"), video = false)

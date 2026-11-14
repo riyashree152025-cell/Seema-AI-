@@ -13,6 +13,7 @@ class ActionContractTest {
         """{"type":"call","contact":"Mom"}""", """{"type":"call","number":"9876543210"}""", """{"type":"end_call"}""", """{"type":"answer_call"}""",
         """{"type":"find_contact","name":"Rahul"}""", """{"type":"last_call"}""", """{"type":"read_notification"}""",
         """{"type":"whatsapp","contact":"Rahul","text":"hi"}""", """{"type":"whatsapp_file","contact":"Rahul","file":"ticket"}""",
+        """{"type":"whatsapp_peek","contact":"Anand"}""", """{"type":"whatsapp_play_voice","contact":"Rizwan"}""",
         """{"type":"whatsapp_call","contact":"Rahul"}""", """{"type":"whatsapp_video_call","contact":"Rahul"}""", """{"type":"sms","contact":"Rahul","text":"hi"}""",
         """{"type":"open_app","name":"Chrome"}""", """{"type":"open_settings","page":"wifi"}""", """{"type":"go_home"}""", """{"type":"open_seema"}""",
         """{"type":"search_web","query":"mausam"}""", """{"type":"play_music","query":"Kishore"}""", """{"type":"media","command":"pause"}""",

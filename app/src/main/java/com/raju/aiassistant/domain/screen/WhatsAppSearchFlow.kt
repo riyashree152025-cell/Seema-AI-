@@ -37,6 +37,12 @@ enum class FlowOutcome {
     INTERRUPTED,
     /** No file matching the name in the document list (the list is left open for the user). */
     FILE_NOT_FOUND,
+    /** The chat was read: [WhatsAppFlowResult.summary] says what is on screen. Nothing was sent. */
+    PEEKED,
+    /** The chat has no voice message on screen. */
+    NO_VOICE,
+    /** The latest voice message on screen was started on the speaker. */
+    VOICE_PLAYED,
     /** More than one file matches ([WhatsAppFlowResult.choices]). Nothing was sent. */
     SEVERAL_FILES,
 }
@@ -48,6 +54,8 @@ data class WhatsAppFlowResult(
     val choices: List<String> = emptyList(),
     /** Step by step, for the diagnostics log. */
     val log: List<String> = emptyList(),
+    /** What a chat shows (only for [FlowOutcome.PEEKED]). */
+    val summary: String? = null,
 )
 
 /**
@@ -139,6 +147,49 @@ class WhatsAppSearchFlow(
     suspend fun send(name: String, text: String): WhatsAppFlowResult = guarded { sendImpl(name, text) }
 
     suspend fun sendDocument(name: String, fileQuery: String): WhatsAppFlowResult = guarded { sendDocumentImpl(name, fileQuery) }
+
+    /** Opens [name]'s chat and says what is on screen in it (counts only; nothing is opened or sent). */
+    suspend fun peek(name: String): WhatsAppFlowResult = guarded { peekImpl(name) }
+
+    /** Opens [name]'s chat and starts its latest voice message on the speaker. */
+    suspend fun playLastVoice(name: String): WhatsAppFlowResult = guarded { playVoiceImpl(name) }
+
+    private suspend fun peekImpl(name: String): WhatsAppFlowResult {
+        if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
+        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        // The messages on screen: a few reads, so a chat that is still drawing is read once it settles.
+        var seen: List<ScreenElement> = emptyList()
+        for (i in 0 until 3) {
+            pause(stepDelay(i))
+            val s = readSafe() ?: continue
+            if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in chat", chat = chat.name)
+            if (WhatsAppScreen.chatEntry(s) == null) continue
+            seen = s.elements
+        }
+        if (seen.isEmpty()) return done(FlowOutcome.STUCK, "the chat's messages were not read", chat = chat.name)
+        step("read the chat")
+        val summary = ChatPeek.summarize(chat.name, seen)
+        log += "PEEKED: $summary"
+        return WhatsAppFlowResult(FlowOutcome.PEEKED, chat.name, log = log.toList(), summary = summary)
+    }
+
+    private suspend fun playVoiceImpl(name: String): WhatsAppFlowResult {
+        if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
+        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        var play: ScreenElement? = null
+        for (i in 0 until 3) {
+            pause(stepDelay(i))
+            val s = readSafe() ?: continue
+            if (s.isUnsafe()) return done(FlowOutcome.UNSAFE_SCREEN, "unsafe screen in chat", chat = chat.name)
+            if (WhatsAppScreen.chatEntry(s) == null) continue
+            play = WhatsAppScreen.lastVoicePlay(s)
+            if (play != null) break
+        }
+        val button = play ?: return done(FlowOutcome.NO_VOICE, "no voice message on screen", chat = chat.name)
+        if (!hands.tap(button)) return done(FlowOutcome.STUCK, "play did not react", chat = chat.name)
+        step("pressed play on the latest voice message")
+        return done(FlowOutcome.VOICE_PLAYED, "voice message started", chat = chat.name)
+    }
 
     private suspend fun guarded(run: suspend () -> WhatsAppFlowResult): WhatsAppFlowResult {
         log.clear()
@@ -360,6 +411,15 @@ object WhatsAppScreen {
     fun attachButton(s: ScreenSnapshot): ScreenElement? =
         s.elements.firstOrNull { it.clickable && it.id.endsWith(":id/input_attach_button") }
             ?: s.elements.firstOrNull { it.clickable && !it.editable && ScreenMatch.normalize(it.text) in ATTACH_WORDS }
+
+    /** The Play button of the newest voice message on screen (the lowest one in the chat). */
+    fun lastVoicePlay(s: ScreenSnapshot): ScreenElement? = s.elements.lastOrNull { e ->
+        if (!e.clickable || e.editable) return@lastOrNull false
+        val t = ScreenMatch.normalize(e.text)
+        e.id.endsWith(":id/voice_note_btn") || e.id.endsWith(":id/audio_play_btn") ||
+            (t.contains("play") || t.contains("चलाएं") || t.contains("चलाएँ") || t.contains("চালান")) &&
+            (t.contains("voice") || t.contains("audio") || t.contains("वॉइस") || t.contains("वॉयस") || t.contains("ভয়েস"))
+    }
 
     fun documentOption(s: ScreenSnapshot): ScreenElement? =
         s.elements.firstOrNull { it.clickable && (it.id.endsWith(":id/pick_document") || it.id.endsWith(":id/pickfiletype_document_holder")) }

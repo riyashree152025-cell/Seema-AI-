@@ -95,6 +95,12 @@ interface DeviceTools {
      */
     suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
         com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+    /** What is on screen in a WhatsApp chat (counts only). */
+    suspend fun whatsAppPeek(chat: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
+        com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+    /** The latest voice message in a WhatsApp chat, played on the speaker. */
+    suspend fun whatsAppPlayVoice(chat: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
+        com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
     /** Like [whatsAppSearchAndSend], with a document from the phone (📎 → Document → the matching file). */
     suspend fun whatsAppSendDocument(chat: String, fileQuery: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
         com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)

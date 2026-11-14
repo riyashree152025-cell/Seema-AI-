@@ -1710,6 +1710,16 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 trainLive(action, speak)
             }
+            is AssistantAction.WhatsAppPeek -> {
+                trace("offline command: whatsapp check")
+                _state.value = AssistantState.Executing
+                whatsAppPeek(action, speak)
+            }
+            is AssistantAction.WhatsAppPlayVoice -> {
+                trace("offline command: whatsapp voice")
+                _state.value = AssistantState.Executing
+                whatsAppPlayVoice(action, speak)
+            }
             is AssistantAction.WhatsAppFile -> {
                 trace("offline command: whatsapp file")
                 _state.value = AssistantState.Executing
@@ -2230,6 +2240,8 @@ class AssistantEngine(
             is AssistantAction.Call -> callContact(action, speak)
             is AssistantAction.WhatsApp -> whatsApp(action, speak)
             is AssistantAction.WhatsAppCall -> whatsAppCall(action, speak)
+            is AssistantAction.WhatsAppPeek -> whatsAppPeek(action, speak)
+            is AssistantAction.WhatsAppPlayVoice -> whatsAppPlayVoice(action, speak)
             is AssistantAction.WhatsAppFile -> whatsAppFile(action, speak)
             is AssistantAction.FindContact -> findContact(action, speak)
             is AssistantAction.LastCall -> checkLastCall(action, speak)
@@ -3598,6 +3610,7 @@ class AssistantEngine(
             FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "WhatsApp में पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई। कुछ नहीं भेजा।", "হোয়াটসঅ্যাপে পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি। কিছু পাঠাইনি।")
             FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp ने समय पर वो नहीं दिखाया जो चाहिए था, इसलिए मैं रुक गई। मैसेज नहीं गया।", "হোয়াটসঅ্যাপ সময়মতো ঠিক স্ক্রিন দেখায়নি, তাই থেমে গেছি। মেসেজ যায়নি।")
             FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है, मैसेज नहीं भेज पाई।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই, মেসেজ পাঠাতে পারিনি।")
+            FlowOutcome.PEEKED, FlowOutcome.NO_VOICE, FlowOutcome.VOICE_PLAYED -> Triple(ActionStatus.FAILED, "मैसेज नहीं भेजा।", "মেসেজ পাঠাইনি।")
             FlowOutcome.INTERRUPTED -> Triple(ActionStatus.FAILED, "WhatsApp के ऊपर बार-बार कोई और संदेश (permission / update / system) आ गया, इसलिए मैं रुक गई और वापस आ गई। कुछ नहीं भेजा — वो संदेश देखकर फिर कहिए।", "হোয়াটসঅ্যাপের উপর বারবার অন্য বার্তা (permission / update) এসেছে, তাই থেমে ফিরে এসেছি। কিছু পাঠাইনি।")
             // Document outcomes never come from a text message.
             FlowOutcome.FILE_NOT_FOUND, FlowOutcome.SEVERAL_FILES -> Triple(ActionStatus.FAILED, "मैसेज नहीं भेज पाई।", "মেসেজ পাঠাতে পারিনি।")
@@ -3614,6 +3627,58 @@ class AssistantEngine(
      * name matches → Send, after a yes. The chat is found by the contact's saved name (or the name as
      * said, for a group); any doubt about the chat or the file means nothing is sent.
      */
+    /** The words of an unreadable or refused WhatsApp step, shared by the chat check and the voice play. */
+    private fun whatsAppStopText(outcome: FlowOutcome, chat: String): String? = when (outcome) {
+        FlowOutcome.CHAT_NOT_FOUND -> phrase(lang(), "WhatsApp में \"$chat\" की चैट नहीं मिली।", "হোয়াটসঅ্যাপে \"$chat\" এর চ্যাট পাইনি।")
+        FlowOutcome.SEVERAL_CHATS -> phrase(lang(), "\"$chat\" नाम की कई चैट हैं। पूरा नाम बोलिए।", "\"$chat\" নামে কয়েকটা চ্যাট আছে। পুরো নাম বলুন।")
+        FlowOutcome.UNSAFE_SCREEN -> phrase(lang(), "पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई।", "পেমেন্ট / পিন স্ক্রিন এসেছে, থেমে গেছি।")
+        FlowOutcome.WRONG_CHAT -> phrase(lang(), "जो चैट खुली उसका नाम पक्का नहीं हुआ, मैं कुछ नहीं बताऊँगी।", "যে চ্যাট খুলেছে তার নাম নিশ্চিত হয়নি।")
+        FlowOutcome.UNAVAILABLE -> phrase(lang(), "WhatsApp या Seema की Accessibility चालू नहीं है।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility চালু নেই।")
+        FlowOutcome.INTERRUPTED -> phrase(lang(), "WhatsApp पर बार-बार कोई और संदेश आ गया, मैं वापस आ गई।", "হোয়াটসঅ্যাপে অন্য বার্তা এসেছে, ফিরে এসেছি।")
+        FlowOutcome.STUCK -> phrase(lang(), "WhatsApp समय पर वो स्क्रीन नहीं दिखा सका, मैं रुक गई।", "হোয়াটসঅ্যাপ সময়মতো স্ক্রিন দেখাতে পারেনি, থেমে গেছি।")
+        else -> null
+    }
+
+    private suspend fun whatsAppPeek(action: AssistantAction.WhatsAppPeek, speak: Boolean) {
+        if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+            val msg = phrase(lang(), "WhatsApp की चैट देखने के लिए Seema की Accessibility चालू करनी होगी।", "হোয়াটসঅ্যাপ চ্যাট দেখতে Seema-র Accessibility চালু করতে হবে।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        // Only reads the chat on screen; nothing is opened inside a file, nothing is sent.
+        val r = tools.whatsAppPeek(action.contact)
+        r.log.forEach { trace("whatsapp check: $it") }
+        val chat = r.chat ?: action.contact
+        val text = when (r.outcome) {
+            FlowOutcome.PEEKED -> r.summary.orEmpty()
+            FlowOutcome.NO_VOICE, FlowOutcome.SENT, FlowOutcome.SEVERAL_FILES, FlowOutcome.FILE_NOT_FOUND, FlowOutcome.TYPED_NOT_SENT, FlowOutcome.VOICE_PLAYED ->
+                phrase(lang(), "\"$chat\" की चैट नहीं पढ़ पाई।", "\"$chat\" এর চ্যাট পড়তে পারিনি।")
+            else -> whatsAppStopText(r.outcome, chat) ?: phrase(lang(), "चैट नहीं पढ़ पाई।", "চ্যাট পড়তে পারিনি।")
+        }
+        report(action, if (r.outcome == FlowOutcome.PEEKED) ActionStatus.SUCCESS else ActionStatus.FAILED, text)
+        if (speak) say(text)
+    }
+
+    private suspend fun whatsAppPlayVoice(action: AssistantAction.WhatsAppPlayVoice, speak: Boolean) {
+        if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
+            val msg = phrase(lang(), "वॉइस मैसेज चलाने के लिए Seema की Accessibility चालू करनी होगी।", "ভয়েস মেসেজ চালাতে Seema-র Accessibility চালু করতে হবে।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val r = tools.whatsAppPlayVoice(action.contact)
+        r.log.forEach { trace("whatsapp voice: $it") }
+        val chat = r.chat ?: action.contact
+        val (status, text) = when (r.outcome) {
+            FlowOutcome.VOICE_PLAYED -> ActionStatus.SUCCESS to phrase(lang(), "ठीक है, \"$chat\" का आखिरी वॉइस मैसेज चला दिया है।", "ঠিক আছে, \"$chat\" এর শেষ ভয়েস মেসেজ চালিয়ে দিয়েছি।")
+            FlowOutcome.NO_VOICE -> ActionStatus.FAILED to phrase(lang(), "\"$chat\" की चैट में अभी कोई वॉइस मैसेज नहीं दिख रहा।", "\"$chat\" এর চ্যাটে এখন কোনো ভয়েস মেসেজ দেখছি না।")
+            else -> ActionStatus.FAILED to (whatsAppStopText(r.outcome, chat) ?: phrase(lang(), "वॉइस मैसेज नहीं चला पाई।", "ভয়েস মেসেজ চালাতে পারিনি।"))
+        }
+        report(action, status, text)
+        if (speak) say(text)
+    }
+
     private suspend fun whatsAppFile(action: AssistantAction.WhatsAppFile, speak: Boolean) {
         if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
             val msg = phrase(lang(), "फाइल भेजने के लिए Seema की Accessibility चालू करनी होगी (Settings → Accessibility → Seema AI)।", "ফাইল পাঠাতে Seema-র Accessibility চালু করতে হবে।")
@@ -3653,6 +3718,7 @@ class AssistantEngine(
             FlowOutcome.UNSAFE_SCREEN -> Triple(ActionStatus.BLOCKED, "पेमेंट / PIN वाली स्क्रीन आई, सुरक्षा के लिए मैं रुक गई।", "পেমেন্ট / পিন স্ক্রিন এসেছে, সুরক্ষার জন্য থেমে গেছি।")
             FlowOutcome.STUCK -> Triple(ActionStatus.FAILED, "WhatsApp में अटैच या फाइल वाला हिस्सा समय पर नहीं दिखा, मैं रुक गई। फाइल नहीं गई।", "হোয়াটসঅ্যাপে অ্যাটাচ বা ফাইলের অংশ সময়মতো দেখা যায়নি, থেমে গেছি। ফাইল যায়নি।")
             FlowOutcome.UNAVAILABLE -> Triple(ActionStatus.FAILED, "WhatsApp या Seema की Accessibility उपलब्ध नहीं है।", "হোয়াটসঅ্যাপ বা Seema-র Accessibility নেই।")
+            FlowOutcome.PEEKED, FlowOutcome.NO_VOICE, FlowOutcome.VOICE_PLAYED -> Triple(ActionStatus.FAILED, "फाइल नहीं भेजी।", "ফাইল পাঠাইনি।")
             FlowOutcome.INTERRUPTED -> Triple(ActionStatus.FAILED, "WhatsApp के ऊपर बार-बार कोई और संदेश (permission / update / system) आ गया, इसलिए मैं रुक गई और वापस आ गई। कुछ नहीं भेजा — वो संदेश देखकर फिर कहिए।", "হোয়াটসঅ্যাপের উপর বারবার অন্য বার্তা (permission / update) এসেছে, তাই থেমে ফিরে এসেছি। কিছু পাঠাইনি।")
         }
         val msg = phrase(lang(), hi, bn)

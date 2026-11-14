@@ -50,6 +50,7 @@ private const val A11Y_ACT_MS = 3_000L
 // Each step may take ~14 s on a slow phone or network; the whole flow still has a hard ceiling.
 private const val WHATSAPP_FLOW_MS = 60_000L
 private const val WHATSAPP_DOCUMENT_FLOW_MS = 90_000L
+private const val WHATSAPP_PEEK_FLOW_MS = 45_000L
 
 private const val YOUTUBE = "com.google.android.youtube"
 
@@ -740,6 +741,12 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     override suspend fun whatsAppSearchAndSend(chat: String, text: String) =
         whatsAppFlow(WHATSAPP_FLOW_MS) { it.send(chat, text) }
+
+    override suspend fun whatsAppPeek(chat: String) =
+        whatsAppFlow(WHATSAPP_PEEK_FLOW_MS) { it.peek(chat) }
+
+    override suspend fun whatsAppPlayVoice(chat: String) =
+        whatsAppFlow(WHATSAPP_PEEK_FLOW_MS) { it.playLastVoice(chat) }
 
     override suspend fun whatsAppSendDocument(chat: String, fileQuery: String) =
         whatsAppFlow(WHATSAPP_DOCUMENT_FLOW_MS) { it.sendDocument(chat, fileQuery) }
