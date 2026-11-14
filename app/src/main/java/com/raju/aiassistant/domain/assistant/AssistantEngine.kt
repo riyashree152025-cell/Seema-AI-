@@ -1746,6 +1746,12 @@ class AssistantEngine(
                 trace("offline command: calendar")
                 calendarRead(action, speak)
             }
+            AssistantAction.DayBriefing -> {
+                // The same briefing as the morning notification, asked of the AI with the day's facts.
+                trace("offline command: day briefing")
+                _state.value = AssistantState.Thinking
+                submit(DAY_BRIEFING_REQUEST, fromVoice = true)
+            }
             AssistantAction.NotificationSummary -> {
                 trace("offline command: notification summary")
                 informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
@@ -2287,6 +2293,7 @@ class AssistantEngine(
             is AssistantAction.LookAtScreen -> lookAtScreen(action, speak)
             is AssistantAction.NotificationReply -> notificationReply(action, speak)
             is AssistantAction.CalendarRead -> calendarRead(action, speak)
+            AssistantAction.DayBriefing -> submit(DAY_BRIEFING_REQUEST, fromVoice = true)
             AssistantAction.NotificationSummary -> informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()

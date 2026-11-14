@@ -128,11 +128,20 @@ object LocalCommands {
 
     private fun readMessage(t: String): AssistantAction? = when {
         MSG_SUMMARY.matches(t) -> AssistantAction.NotificationSummary
+        BRIEFING.matches(t) -> AssistantAction.DayBriefing
         READ_MSG.matches(t) -> AssistantAction.ReadNotification
         else -> null
     }
 
     // "Notification ka saar batao", "kitne message aaye", "kya kya message aaye hain", "sab message batao".
+    private val BRIEFING = Regex(
+        "^(?:subah|aaj|morning) (?:ki|ka|ke) (?:briefing|brifing|hal|haal|summary)(?: (?:batao|bata do|sunao))?$|" +
+            "^(?:aaj ka|aaj ki|din ka) (?:hal|haal|briefing|plan)(?: (?:batao|bata do|sunao))?$|" +
+            "^(?:सुबह|आज) की (?:ब्रीफ़िंग|ब्रीफिंग|हाल|समरी)(?: (?:बताओ|बताइए|सुनाओ))?$|" +
+            "^आज का (?:हाल|हाल-चाल|प्लान)(?: (?:बताओ|बताइए|सुनाओ))?$",
+        RegexOption.IGNORE_CASE,
+    )
+
     private val MSG_SUMMARY = Regex(
         "^$MSG (?:ka|ki|का|की) (?:saar|summary|सार|समरी)(?: (?:batao|bata do|sunao|बताओ|सुनाओ))?$|" +
             "^(?:aaj )?(?:kitne|kitni|कितने|कितनी) $MSG (?:aaye|aaye hain|aayi|aayi hain|aaya|आए|आए हैं|आई|आई हैं)$|" +

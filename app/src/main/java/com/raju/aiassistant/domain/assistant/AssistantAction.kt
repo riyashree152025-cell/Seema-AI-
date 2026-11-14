@@ -23,6 +23,9 @@ import kotlin.math.roundToInt
 enum class SettingsPage { WIFI, BLUETOOTH, DISPLAY, SOUND, APPS, NOTIFICATION_ACCESS, BATTERY, APP_PERMISSIONS, GENERAL }
 
 /** A tool call the AI asked for. Executed only by the app, after any required confirmation. */
+/** What Seema is asked for the day briefing (the morning notification, a tap on it, or a voice request). */
+const val DAY_BRIEFING_REQUEST = "Mujhe aaj ki briefing do: aaj aur kal ki yatraayein, kal ka kharcha, aur aaj ke din ke liye ek chhota sa kaam ka tip."
+
 sealed interface AssistantAction {
     val label: String
 
@@ -276,6 +279,11 @@ sealed interface AssistantAction {
     data class CalendarRead(val dayOffset: Int) : AssistantAction {
         override val label get() = "Calendar (+$dayOffset)"
     }
+    /** "सुबह की ब्रीफ़िंग" / "आज का हाल": the day's journeys, spending, tip — the same briefing as the morning notification, spoken. */
+    data object DayBriefing : AssistantAction {
+        override val label: String get() = "Day briefing"
+    }
+
     data object NotificationSummary : AssistantAction {
         override val label get() = "Notification summary"
     }
@@ -358,6 +366,7 @@ private fun parseAction(json: String): AssistantAction? {
         }
         "last_call", "recent_call", "call_log" -> AssistantAction.LastCall
         "notification_summary", "notifications_summary" -> AssistantAction.NotificationSummary
+        "day_briefing", "briefing", "morning_briefing" -> AssistantAction.DayBriefing
         "notification_reply", "reply_notification" -> str("text")?.let { AssistantAction.NotificationReply(str("who"), it) }
         "calendar_read", "calendar" -> AssistantAction.CalendarRead((int("day_offset") ?: 0).coerceIn(0, 7))
         "read_notification", "read_notifications", "read_message", "read_messages" -> AssistantAction.ReadNotification

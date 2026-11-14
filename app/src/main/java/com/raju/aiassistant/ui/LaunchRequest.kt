@@ -16,7 +16,7 @@ sealed interface LaunchRequest {
         const val ACTION_WEEKLY_REPORT = "com.raju.aiassistant.action.WEEKLY_REPORT"
 
         /** What Seema is asked when the user taps the morning or weekly notification. */
-        const val BRIEFING_REQUEST = "Mujhe aaj ki briefing do: aaj aur kal ki yatraayein, kal ka kharcha, aur aaj ke din ke liye ek chhota sa kaam ka tip."
+        const val BRIEFING_REQUEST = com.raju.aiassistant.domain.assistant.DAY_BRIEFING_REQUEST
         const val WEEKLY_REQUEST = "Is hafte ka kharcha category-wise samjhao aur agle hafte bachat ka ek practical tip do."
 
         fun from(intent: Intent?): LaunchRequest? = when (intent?.action) {
