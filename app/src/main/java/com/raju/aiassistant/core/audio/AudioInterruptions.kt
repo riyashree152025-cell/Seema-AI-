@@ -66,7 +66,12 @@ class AudioInterruptions(
         }
     }
 
-    private fun onMode(mode: Int) = update(callPhaseForMode(mode))
+    private fun onMode(mode: Int) {
+        // Seema's own call-style audio (MODE_IN_COMMUNICATION) during a ringing or active phone call is not
+        // the end of that call: ending it there stopped her listening for "utha lo / kaat do".
+        if (mode == AudioManager.MODE_IN_COMMUNICATION && phase != CallPhase.NONE) return
+        update(callPhaseForMode(mode))
+    }
 
     /** A call is ringing right now (not yet answered or ended). */
     fun ringing(): Boolean = phase == CallPhase.RINGING

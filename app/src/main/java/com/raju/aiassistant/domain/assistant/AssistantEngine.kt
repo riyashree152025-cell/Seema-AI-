@@ -231,6 +231,8 @@ class AssistantEngine(
     private val business: BusinessStore = NoBusinessStore,
     /** Assistant switched OFF: give every microphone lease back at the hardware level (MicHub.releaseAll). */
     private val releaseMic: () -> Unit = {},
+    /** A yes / no for the message question that is waiting ("padh ke sunau?"); true when there was one. */
+    private val answerAnnouncement: (Boolean) -> Boolean = { false },
     /** Switched ON again: the microphone may be used again (MicHub.unmute). */
     private val restoreMic: () -> Unit = {},
     /** PNR status from the user's PNR service; NotConfigured falls back to the official page. */
@@ -432,6 +434,13 @@ class AssistantEngine(
         if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
+        // "Haan sunao" / "nahi" while a message question waits but its own listening was not open:
+        // it is still the answer to that question, never a new request for the AI.
+        if (heard.trim().split(Regex("\\s+")).size <= 4) {
+            com.raju.aiassistant.domain.notify.readReply(heard)?.let { yes ->
+                if (answerAnnouncement(yes)) { trace("read reply: ${if (yes) "yes" else "no"} (waiting question)"); return }
+            }
+        }
         val text = heldVoiceText?.let { "$it $heard" } ?: heard
         _heard.value = text
         heldVoiceText = null
@@ -620,7 +629,7 @@ class AssistantEngine(
      * Call-style audio only serves barge-in, which needs headphones: on the loudspeaker a Samsung
      * phone played her voice from the earpiece in call-style audio, like a normal phone call.
      */
-    private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp() && headphones()
+    private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp() && headphones() && clock() >= callCommandUntil
 
     /** When the microphone is free for speech again after a wake (see [MIC_HANDOFF_MS]); 0 when it always is. */
     private var micFreeAt = 0L
@@ -685,10 +694,12 @@ class AssistantEngine(
                     val unsure = err.heard?.let { callCommand(it) }
                     if (unsure != null && err.heard != null && callReplyText(err.heard) == null) {
                         handleCallCommand(err.heard)
-                    } else if ((err.noSpeech || err.unclear) && clock() < callCommandUntil - 1_500) {
-                        trace("call: nothing clear yet, listening again")
+                    } else if (!err.permissionDenied && clock() < callCommandUntil - 1_500) {
+                        // Silence, noise, the ringtone, a busy microphone or a network hiccup: none of these
+                        // may end the listening while the phone still rings — "utha lo" can come any moment.
+                        trace("call: nothing clear yet (${if (err.noSpeech) "silence" else if (err.unclear) "unclear" else "recogniser error"}), listening again")
                         val g = listenGen
-                        scope.launch { delay(250); if (g == listenGen && clock() < callCommandUntil) listen() }
+                        scope.launch { delay(if (err.noSpeech || err.unclear) 250 else 600); if (g == listenGen && clock() < callCommandUntil) listen() }
                     } else {
                         callCommandUntil = 0
                         trace("call: no answer heard, stop listening")
@@ -2188,7 +2199,10 @@ class AssistantEngine(
      */
     fun listenForReadReply(windowMs: Long = READ_REPLY_WINDOW_MS, onReply: (Boolean?) -> Unit): Boolean {
         if (settings.value.assistantPaused || !voice.isAvailable() || pausedForCall || clock() < callCommandUntil) return false
-        if (_voiceSession.value || job?.isActive == true || _pending.value != null || replyHandler != null) return false
+        if (job?.isActive == true || _pending.value != null || replyHandler != null) return false
+        // Hands-free is already listening: the answer comes through that same listening (her question
+        // interrupted it, so it is started again once the question has finished playing).
+        val alreadyInConversation = _voiceSession.value
         replyHandler = onReply
         // The window counts from when the microphone opens; an answer begun inside it gets time to be
         // transcribed (a hard cap, not a race against Deepgram's reply).
@@ -2209,8 +2223,8 @@ class AssistantEngine(
             // a short pause more keeps the tail of her voice out of the microphone.
             delay(ECHO_SETTLE_MS)
             if (replyHandler == null) return@launch
-            trace("read reply: listening")
-            listen()
+            trace(if (alreadyInConversation) "read reply: listening (in the conversation)" else "read reply: listening")
+            if (!voice.listening.value) listen()
         }
         return true
     }

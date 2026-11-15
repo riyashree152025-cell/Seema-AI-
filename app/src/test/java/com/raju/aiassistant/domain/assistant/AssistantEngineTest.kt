@@ -2403,6 +2403,35 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aRecogniserErrorWhileTheCallRingsKeepsListeningSoUthaLoStillWorks() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        val before = voice.starts
+        // A busy microphone / network hiccup (not silence, not a missing permission) used to end the listening.
+        voice.onError!!(VoiceError("The speech recogniser was busy.", transient = true))
+        advanceTimeBy(1_000); runCurrent()
+        assertTrue("listening again: ${voice.starts} > $before", voice.starts > before)
+        voice.onResult!!("उठा लो")
+        settle()
+        assertEquals(1, tools.answered)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun kaatDoInHindiCutsTheRingingCall() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand("+91 98000 00007", "Mummy")
+        runCurrent()
+        voice.onResult!!("काट दो")
+        settle()
+        assertEquals(1, tools.ended)
+        assertEquals(0, tools.answered)
+    }
+
+    @Test
     fun bolDoAbhiBusyHoonCutsTheCallAndTextsTheCaller() = runTest {
         val e = engine()
         e.onCallRinging()
@@ -2459,6 +2488,22 @@ class AssistantEngineTest {
         voice.onResult!!("रिसीव करो")
         settle()
         assertEquals(1, tools.answered)
+    }
+
+    @Test
+    fun haanSunaoIsHeardEvenWhileHandsFreeIsAlreadyListening() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val e = engine()
+        e.startHandsFree()
+        runCurrent()
+        var got: Boolean? = null
+        // Used to be refused ("a conversation is already listening"), so "haan sunao" went to the AI instead.
+        assertTrue(e.listenForReadReply { got = it })
+        advanceTimeBy(400); runCurrent()
+        voice.onResult!!("हाँ सुनाओ")
+        settle()
+        assertEquals(true, got)
+        assertEquals(0, provider.calls.size)
     }
 
     @Test

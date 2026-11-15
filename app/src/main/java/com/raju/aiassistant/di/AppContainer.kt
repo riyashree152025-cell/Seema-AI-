@@ -452,6 +452,13 @@ class AppContainer(context: Context) {
             },
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
+            answerAnnouncement = { yes ->
+                val p = announcements.pending.value
+                if (p == null) false else {
+                    if (yes) announcements.read(p.id) else { announcements.skip(p.id); speaker.stop() }
+                    true
+                }
+            },
             restoreMic = { micHub.unmute() },
             pnrSource = pnrSource,
             rail = railKit,
