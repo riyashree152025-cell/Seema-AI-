@@ -47,6 +47,15 @@ fun DiagnosePanel(secrets: Map<SecretId, SecretStatus>, wakeWord: Boolean) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     val checks = remember(refresh, secrets, wakeWord) { checksFor(context, secrets, wakeWord) }
+    // Re-check whenever Seema comes back to the front (after a permission page, or after Home's ON switch).
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     HudPanel(title = "Seema ki jaanch (Diagnose)") {
         val missing = checks.count { !it.ok }
@@ -86,6 +95,8 @@ fun DiagnosePanel(secrets: Map<SecretId, SecretStatus>, wakeWord: Boolean) {
 private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>, wakeWord: Boolean): List<Check> {
     fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
     val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+    // Home's ON/OFF switch: while OFF, Seema never listens in the background, whatever the permissions say.
+    val seemaOff = runCatching { (context.applicationContext as com.raju.aiassistant.RajuApp).container.currentSettings.value.assistantPaused }.getOrDefault(false)
     val battery = context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
     val notificationAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
     val accessibility = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
@@ -116,7 +127,17 @@ private fun checksFor(context: Context, secrets: Map<SecretId, SecretStatus>, wa
         ),
         Check("Accessibility (WhatsApp auto-send, doosre app se kaam)", accessibility, "Accessibility mein Seema AI ON karein (pehle App info → ⋮ → Allow restricted settings)", Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
         Check("\"Hey Seema\" se jaagna", wakeWord, "Neeche \"Sirf naam se jaage\" ON karein", null),
-        Check("Doosre app ke upar sunna (notification \"सीमा AI तैयार है\")", com.raju.aiassistant.voice.SeemaWakeService.running, "Seema ON karke app ek baar kholiye (Mic Allow ho)", appDetails),
+        // Background listening runs only while Seema is ON (the Home switch) and the app was opened once with the mic allowed.
+        // The row says which of the two is missing, instead of sending the user to permissions that are already allowed.
+        Check(
+            "Doosre app ke upar sunna (notification \"सीमा AI तैयार है\")",
+            com.raju.aiassistant.voice.SeemaWakeService.running,
+            when {
+                seemaOff -> "Seema OFF hai: Home par SEEMA OFF dabakar ON kijiye, phir app ek baar kholiye"
+                else -> "App ek baar kholiye aur wapas aayiye (app band hone ke baad ye jaanch phir chalegi)"
+            },
+            null,
+        ),
         Check("Battery Unrestricted", battery, "Battery → Unrestricted chunein", appDetails),
         Check("Deepgram key (sunna, \"Hey Seema\")", key(SecretId.DEEPGRAM_API_KEY), "Neeche Deepgram key save karein", null),
         Check("AI key (Gemini ya Groq)", key(SecretId.GEMINI_API_KEY) || key(SecretId.GROQ_API_KEY), "AI & Brain mein key save karein", null),
