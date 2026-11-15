@@ -100,7 +100,19 @@ class CartesiaTtsProvider(
             }.getOrNull()
             ?: VoiceCatalog.defaultCartesiaVoices.first().id
         val language = languageTag.substringBefore('-').lowercase().ifBlank { "hi" }
-        return wavOrFailure(client.synthesize(text, voice, s.cartesiaModel, language, rate, com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood)), "Cartesia")
+        val emotion = com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood)
+        val first = client.synthesize(text, voice, s.cartesiaModel, language, rate, emotion)
+        // The saved voice no longer exists (Cartesia: 404 "voice not found"): choose one from the
+        // account's own list, remember it, and try once more instead of failing every sentence.
+        if (first is AiResult.Failure && VoiceCatalog.isMissingVoice(first.message)) {
+            val replacement = (client.listVoices(maxPages = 2) as? AiResult.Success)?.value
+                ?.let { VoiceCatalog.replacementVoice(it, voice) }
+            if (replacement != null) {
+                rememberVoice(replacement)
+                return wavOrFailure(client.synthesize(text, replacement.id, s.cartesiaModel, language, rate, emotion), "Cartesia")
+            }
+        }
+        return wavOrFailure(first, "Cartesia")
     }
 }
 

@@ -96,12 +96,20 @@ object VoiceCatalog {
         else -> m.takeIf { v -> cartesiaMoods.any { it.first == v } }
     }
 
-    fun mergeCartesiaVoices(available: List<CloudVoice>): List<CloudVoice> {
-        if (available.isEmpty()) return defaultCartesiaVoices
-        val ids = available.map { it.id }.toSet()
-        val extra = defaultCartesiaVoices.filter { it.id !in ids }
-        return sortVoices(available + extra)
-    }
+    /**
+     * The voices to offer: the account's own list when Cartesia gave one (a built-in id that is not in it
+     * no longer exists for this account and would only answer 404), the built-in list only when none came.
+     */
+    fun mergeCartesiaVoices(available: List<CloudVoice>): List<CloudVoice> =
+        if (available.isEmpty()) defaultCartesiaVoices else sortVoices(available)
+
+    /** Cartesia's "The requested voice was not found" (HTTP 404): the saved voice id is gone. */
+    fun isMissingVoice(message: String): Boolean =
+        message.contains("404") && (message.contains("voice", ignoreCase = true) || message.contains("not found", ignoreCase = true))
+
+    /** A replacement for a voice id that no longer exists: the best voice of the account's own list, never [missing] again. */
+    fun replacementVoice(available: List<CloudVoice>, missing: String): CloudVoice? =
+        bestDefault(available.filter { it.id != missing })
 
     // ---------------------------------------------------------------- Sarvam AI
     val sarvamSpeakers = listOf(

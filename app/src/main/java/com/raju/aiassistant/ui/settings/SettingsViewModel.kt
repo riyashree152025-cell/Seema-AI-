@@ -294,13 +294,32 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         val s = c.currentSettings.value
         val voice = s.cartesiaVoiceId ?: VoiceCatalog.bestDefault(_cartesiaVoices.value)?.also { repo.setCartesiaVoice(it.id, it.name) }?.id
             ?: return AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, _voiceListMessage.value ?: "No Cartesia voice found.")
-        return when (val r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)) {
-            is AiResult.Success -> {
-                parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
-                val vName = s.cartesiaVoiceName ?: _cartesiaVoices.value.firstOrNull { it.id == voice }?.name ?: "Cartesia"
-                AiResult.Success("Connected — model ${s.cartesiaModel}, voice $vName, received ${r.value.size / 1024} KB.")
+        var usedVoice = voice
+        var usedName = s.cartesiaVoiceName
+        var r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)
+        // The key works but the saved voice is gone (HTTP 404 "voice not found"): pick one from the
+        // account's own list, save it, and test again — the user sees which voice is now used.
+        var switchedFrom: String? = null
+        if (r is AiResult.Failure && VoiceCatalog.isMissingVoice(r.message)) {
+            val replacement = VoiceCatalog.replacementVoice(_cartesiaVoices.value.filter { it.id != voice }, voice)
+            if (replacement != null) {
+                switchedFrom = s.cartesiaVoiceName ?: "पुरानी आवाज़"
+                repo.setCartesiaVoice(replacement.id, replacement.name)
+                usedVoice = replacement.id
+                usedName = replacement.name
+                r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", replacement.id, s.cartesiaModel, "hi", 1f, s.cartesiaMood)
+            } else {
+                return AiResult.Failure(r.kind, "Key सही है, पर चुनी हुई आवाज़ Cartesia पर अब नहीं है, और आपके account में कोई दूसरी आवाज़ नहीं मिली। \"आवाज़ चुनें\" में से कोई आवाज़ चुनिए।")
             }
-            is AiResult.Failure -> r
+        }
+        return when (val result = r) {
+            is AiResult.Success -> {
+                parseWav(result.value)?.let { c.audioPlayer.play(it) {} }
+                val vName = usedName ?: _cartesiaVoices.value.firstOrNull { it.id == usedVoice }?.name ?: "Cartesia"
+                val note = switchedFrom?.let { " \"$it\" Cartesia पर अब नहीं है, इसलिए \"$vName\" चुन ली।" }.orEmpty()
+                AiResult.Success("Connected — model ${s.cartesiaModel}, voice $vName, received ${result.value.size / 1024} KB.$note")
+            }
+            is AiResult.Failure -> result
         }
     }
 
