@@ -176,6 +176,18 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return start(intent, "Opened $label.", "$label could not be opened.")
     }
 
+    override fun openSetupCheck(): ToolOutcome {
+        if (!canOpenScreens()) return blockedInBackground()
+        return runCatching {
+            context.startActivity(
+                Intent(context, com.raju.aiassistant.MainActivity::class.java)
+                    .setAction(com.raju.aiassistant.domain.tools.ACTION_SETUP_CHECK)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+            )
+            ToolOutcome.Done("Seema's check list is open (Settings → Diagnose).")
+        }.getOrElse { ToolOutcome.Failed("Could not open Seema's settings: ${it.message}") }
+    }
+
     override fun openSettings(page: SettingsPage): ToolOutcome {
         val intent = when (page) {
             SettingsPage.WIFI -> Intent(Settings.ACTION_WIFI_SETTINGS)

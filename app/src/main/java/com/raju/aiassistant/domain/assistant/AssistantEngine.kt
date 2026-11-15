@@ -1602,6 +1602,15 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 checkLastCall(action, speak)
             }
+            AssistantAction.OpenSetupCheck -> {
+                trace("offline command: setup check")
+                val outcome = tools.openSetupCheck()
+                report(action, outcome)
+                if (speak) say(
+                    if (outcome is ToolOutcome.Done) phrase(lang(), "मेरी जांच वाली लिस्ट खोल दी है। जिस लाइन पर लाल निशान है, उसके \"Theek karein\" दबाइए, मैं वहीं ले चलूँगी।", "আমার পরীক্ষার তালিকা খুলে দিয়েছি। যেখানে লাল চিহ্ন আছে, \"Theek karein\" চাপুন।")
+                    else (outcome as? ToolOutcome.Failed)?.message ?: phrase(lang(), "लिस्ट नहीं खुल पाई।", "তালিকা খোলা গেল না।"),
+                )
+            }
             is AssistantAction.OpenSettings -> {
                 trace("offline command: settings ${action.page}")
                 val outcome = tools.openSettings(action.page)
@@ -2304,6 +2313,7 @@ class AssistantEngine(
             is AssistantAction.ScreenType -> screenType(action, speak)
             is AssistantAction.OpenApp -> report(action, tools.openApp(action.name))
             is AssistantAction.OpenSettings -> report(action, tools.openSettings(action.page))
+            AssistantAction.OpenSetupCheck -> report(action, tools.openSetupCheck())
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)

@@ -21,6 +21,7 @@ object LocalCommands {
 
     fun parse(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
+        if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
         sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }
         whatsAppNoText(text)?.let { return it }
@@ -332,6 +333,15 @@ object LocalCommands {
     // "WhatsApp mein Rizwan Travels ko message karo" / "Rizwan ko WhatsApp karo": who, but no words yet.
     private val WA_NO_TEXT = Regex(
         "^(?:whatsapp\\s+(?:me|mein|में|मे|pe|par|पर)\\s+)?(.{2,40}?)\\s+(?:ko|को)\\s+(?:whatsapp\\s+)?(?:pe\\s+|par\\s+|पर\\s+)?(?:(?:ek\\s+|एक\\s+)?(?:message|msg|मैसेज|मेसेज|संदेश)\\s+)?(?:karo|kar do|bhejo|bhej do|करो|कर दो|भेजो|भेज दो)$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "Jo setting baki hai kholo", "permission check karo", "kya kya access baki hai": the missing ones, not phone Settings. */
+    private val SETUP_CHECK = Regex(
+        "(?:jo|जो|kya kya|क्या क्या|kaun sa|कौन सा|kaunsa|कौनसा|sab|सब)\\s+(?:setting|settings|permission|permissions|access|सेटिंग|सेटिंग्स|परमिशन|अनुमति|एक्सेस)\\S*\\s+(?:baki|baaki|बाकी)|" +
+            "(?:setting|settings|permission|permissions|access|सेटिंग|सेटिंग्स|परमिशन|अनुमति|एक्सेस)\\S*\\s+(?:check|jaanch|janch|चेक|जांच|जाँच)\\s*(?:karo|kar do|करो|कर दो)|" +
+            // "jo baki hai uska setting kholo"
+            "(?:baki|baaki|बाकी)\\s+(?:hai|hain|है|हैं)\\s+(?:(?:uska|uski|unka|wo|woh|उसका|उसकी|उनका|वो)\\s+)?(?:setting|settings|permission|सेटिंग|सेटिंग्स|परमिशन)",
         RegexOption.IGNORE_CASE,
     )
 

@@ -77,6 +77,22 @@ class WhatsAppSearchFlow(
     /** The chat is open and confirmed by name: its message box and the name WhatsApp shows. */
     private class OpenChat(val entry: ScreenElement, val name: String)
 
+    /**
+     * Opens [name]'s chat; a name said in Hindi or Bengali ("रिया") that WhatsApp's search does not find is
+     * searched again in Latin letters ("riya"), because most chats are saved in English.
+     */
+    private suspend fun openChatAnyScript(name: String): Any {
+        val first = openChat(name)
+        if (first is WhatsAppFlowResult && first.outcome == FlowOutcome.CHAT_NOT_FOUND && com.raju.aiassistant.domain.tools.Romanize.isIndic(name)) {
+            val latin = com.raju.aiassistant.domain.tools.Romanize.latin(name).trim()
+            if (latin.isNotEmpty() && latin != name) {
+                step("not found as said; searching \"$latin\"")
+                return openChat(latin)
+            }
+        }
+        return first
+    }
+
     /** Opens [name]'s chat (search → one match → title checked), or says why not. */
     private suspend fun openChat(name: String): Any {
         if (!hands.openWhatsApp()) return done(FlowOutcome.UNAVAILABLE, "WhatsApp did not open")
@@ -156,7 +172,7 @@ class WhatsAppSearchFlow(
 
     private suspend fun peekImpl(name: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
-        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        val chat = when (val c = openChatAnyScript(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
         // The messages on screen: a few reads, so a chat that is still drawing is read once it settles.
         var seen: List<ScreenElement> = emptyList()
         for (i in 0 until 3) {
@@ -175,7 +191,7 @@ class WhatsAppSearchFlow(
 
     private suspend fun playVoiceImpl(name: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
-        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        val chat = when (val c = openChatAnyScript(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
         var play: ScreenElement? = null
         for (i in 0 until 3) {
             pause(stepDelay(i))
@@ -203,7 +219,7 @@ class WhatsAppSearchFlow(
 
     private suspend fun sendImpl(name: String, text: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty() || text.isBlank()) return done(FlowOutcome.STUCK, "nothing to send")
-        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        val chat = when (val c = openChatAnyScript(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
         val input = chat.entry
         val result = ScreenElement(chat.name, ElementKind.TEXT)
 
@@ -232,7 +248,7 @@ class WhatsAppSearchFlow(
      */
     private suspend fun sendDocumentImpl(name: String, fileQuery: String): WhatsAppFlowResult {
         if (ScreenMatch.normalize(name).isEmpty()) return done(FlowOutcome.STUCK, "no chat named")
-        val chat = when (val c = openChat(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
+        val chat = when (val c = openChatAnyScript(name)) { is OpenChat -> c; else -> return c as WhatsAppFlowResult }
 
         // What the chat showed before: the file must appear one more time after sending.
         val chatBefore = readSafe()

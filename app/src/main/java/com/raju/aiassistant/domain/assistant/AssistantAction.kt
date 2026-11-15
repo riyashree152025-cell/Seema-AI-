@@ -42,6 +42,10 @@ sealed interface AssistantAction {
     data class PlayMusic(val query: String, val service: MusicService?) : AssistantAction {
         override val label get() = "Play music: $query"
     }
+    /** "Jo setting baki hai kholo": Seema's own check list of missing permissions, each with its fix button. */
+    data object OpenSetupCheck : AssistantAction {
+        override val label get() = "Open setup check"
+    }
     data class OpenSettings(val page: SettingsPage) : AssistantAction {
         override val label get() = "Open settings: ${page.name.lowercase()}"
     }
@@ -409,6 +413,7 @@ private fun parseAction(json: String): AssistantAction? {
             }
             AssistantAction.PlayMusic(q, service)
         }
+        "open_setup", "setup_check", "permission_check" -> AssistantAction.OpenSetupCheck
         "open_settings" -> {
             val page = SettingsPage.entries.firstOrNull { it.name.equals(str("page"), ignoreCase = true) } ?: SettingsPage.GENERAL
             AssistantAction.OpenSettings(page)

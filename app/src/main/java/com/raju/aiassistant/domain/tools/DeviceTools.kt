@@ -31,6 +31,8 @@ interface DeviceTools {
     fun dial(contact: Contact, direct: Boolean): ToolOutcome
     fun openApp(name: String): ToolOutcome
     fun openSettings(page: SettingsPage): ToolOutcome
+    /** Seema's own check list of what is still missing (Settings → Diagnose), with a fix button for each. */
+    fun openSetupCheck(): ToolOutcome = ToolOutcome.Failed("Setup check is not available.")
     fun batteryStatus(): ToolOutcome
     fun playMusic(query: String, service: MusicService): ToolOutcome
     fun openWhatsApp(number: String?, text: String): ToolOutcome
@@ -161,3 +163,6 @@ sealed interface TicketPdf {
     data class Unreadable(val name: String) : TicketPdf
     data class Found(val name: String, val text: String) : TicketPdf
 }
+
+/** The intent action that opens Seema on her own check list (Settings → Diagnose). */
+const val ACTION_SETUP_CHECK = "com.raju.aiassistant.action.SETUP"

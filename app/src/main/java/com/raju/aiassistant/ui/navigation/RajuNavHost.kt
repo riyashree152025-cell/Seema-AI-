@@ -142,6 +142,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                     else micPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
                 LaunchRequest.Chat -> navigateTo(Destination.Chat)
+                LaunchRequest.Setup -> navigateTo(Destination.Settings)
                 is LaunchRequest.Ask -> {
                     navigateTo(Destination.Chat)
                     container.engine.submit(request.text)

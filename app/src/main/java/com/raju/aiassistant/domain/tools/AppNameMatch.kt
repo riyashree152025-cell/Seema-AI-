@@ -18,6 +18,12 @@ object AppNameMatch {
         labels.firstOrNull { it.lowercase() == w }?.let { return it }
         labels.firstOrNull { it.lowercase().startsWith(w) }?.let { return it }
         labels.firstOrNull { it.lowercase().contains(w) }?.let { return it }
+        // The same name in another script, by its sound with vowels: "ज़ोमैटो" → Zomato, "फ़ोनपे" → PhonePe.
+        val ph = Romanize.phonetic(w).replace(" ", "")
+        if (ph.length >= 3) {
+            labels.firstOrNull { Romanize.phonetic(it).replace(" ", "") == ph }?.let { return it }
+            labels.firstOrNull { Romanize.phonetic(it).replace(" ", "").startsWith(ph) }?.let { return it }
+        }
         val sk = ContactMatch.skeleton(w)
         if (sk.length < 2) return null
         labels.firstOrNull { ContactMatch.skeleton(it) == sk }?.let { return it }

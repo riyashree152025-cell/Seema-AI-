@@ -139,10 +139,18 @@ object ContactMatch {
             val qd = digits(query)
             if (sk.length >= 3) contacts.filter { skeleton(it.name).contains(sk) && (qd.isEmpty() || digits(it.name).contains(qd)) } else emptyList()
         }.ifEmpty {
+            // The same name in another script, with its vowels: "रिया" finds "Riya", "Riya" finds "रिया",
+            // "রিয়া" finds "Riya", "झंडू बाम" finds "Zandu Balm". Short names are safe here because the
+            // vowels are compared too ("रिया" is not "Rozy" or "Priya").
+            phoneticMatches(query, contacts, fuzzy = false)
+        }.ifEmpty {
             val qd = digits(query)
             if (qd.length >= 6 && qd.length * 2 >= q.length) contacts.filter { digits(it.number).takeLast(10).let { n -> n.length >= 6 && (n.endsWith(qd.takeLast(10)) || qd.endsWith(n)) } } else emptyList()
         }.ifEmpty {
             if (spelling) similarNames(stripHonorifics(query).ifBlank { query }, contacts) else emptyList()
+        }.ifEmpty {
+            // A small slip in another script ("रिय्या", "Riyah"): close in sound, every word of it.
+            if (spelling) phoneticMatches(stripHonorifics(query).ifBlank { query }, contacts, fuzzy = true) else emptyList()
         }
         return result.distinctBy { normalize(it.name) to digits(it.number).takeLast(10) }
     }
@@ -179,6 +187,28 @@ object ContactMatch {
                 words.any { w -> nameWords.any { n -> similarity(w, n) >= FUZZY_THRESHOLD } }
             }
         }
+    }
+
+    /**
+     * Contacts whose name sounds like [query] in any script ([Romanize.phonetic]): the whole name first,
+     * then names that have every word of it ("रिया" → "Riya Sharma" too). [fuzzy]: words of 4+ letters
+     * may differ a little (Jaro-Winkler ≥ [PHONETIC_FUZZY]). A number in the query must be in the name.
+     */
+    private fun phoneticMatches(query: String, contacts: List<Contact>, fuzzy: Boolean): List<Contact> {
+        val qWords = Romanize.phonetic(query).split(' ').filter { it.isNotEmpty() }
+        if (qWords.isEmpty()) return emptyList()
+        val qd = canonDigits(query)
+        val named = contacts.filter { qd.isEmpty() || canonDigits(it.name).contains(qd) }
+            .map { it to Romanize.phonetic(it.name).split(' ').filter { w -> w.isNotEmpty() } }
+        fun same(a: String, b: String) = a == b || (fuzzy && a.length >= 4 && b.length >= 4 && similarity(a, b) >= PHONETIC_FUZZY)
+        if (!fuzzy) named.filter { it.second == qWords }.takeIf { it.isNotEmpty() }?.let { exact -> return exact.map { it.first } }
+        val all = named.filter { (_, words) -> qWords.all { q -> words.any { same(q, it) } } }
+        if (all.isNotEmpty() || !fuzzy || qWords.size < 2) return all.map { it.first }
+        // Two or more words, one of them the same and the rest only close ("झंडू बाम" → "Zandu Balm":
+        // the l of Balm is not said). A single short word never matches this loosely.
+        return named.filter { (_, words) ->
+            qWords.any { it in words } && qWords.all { q -> words.any { w -> w == q || similarity(q, w) >= PHONETIC_SHORT_FUZZY } }
+        }.map { it.first }
     }
 
     /** How close two words are, 0..1 (Jaro-Winkler: a shared start counts more). */
@@ -298,3 +328,9 @@ object PhoneNumbers {
         return d.size in 10..15
     }
 }
+
+/** How close two words must sound, in another script, to count as the same word. */
+const val PHONETIC_FUZZY = 0.92
+
+/** A short word next to a word that matched exactly may differ this much ("bam" / "balm"). */
+const val PHONETIC_SHORT_FUZZY = 0.85
