@@ -742,6 +742,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override suspend fun whatsAppSearchAndSend(chat: String, text: String) =
         whatsAppFlow(WHATSAPP_FLOW_MS) { it.send(chat, text) }
 
+    override suspend fun latestTicketPdf(): com.raju.aiassistant.domain.tools.TicketPdf = TicketFolder.latest(context)
+
     override suspend fun whatsAppPeek(chat: String) =
         whatsAppFlow(WHATSAPP_PEEK_FLOW_MS) { it.peek(chat) }
 

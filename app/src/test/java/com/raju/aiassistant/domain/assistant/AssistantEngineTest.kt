@@ -619,7 +619,10 @@ class AssistantEngineTest {
         e.submit("PNR 4512345678 ka status", fromVoice = true)
         settle()
         assertEquals(listOf("4512345678"), asked)
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("CNF S4 32, confirm") && speaker.spoken.last().contains("Rajdhani")) // brackets are spoken as a pause
+        val status = speaker.spoken.first { it.contains("CNF S4 32, confirm") }
+        assertTrue(status, status.contains("Rajdhani")) // brackets are spoken as a pause
+        assertTrue(speaker.spoken.toString(), speaker.spoken.indexOf(status) > 0) // "PNR देखना शुरू कर दिया है…" first
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("WhatsApp")) // then "किसी को WhatsApp पर भेज दूँ?"
         assertTrue(provider.calls.isEmpty())
     }
 
@@ -768,7 +771,10 @@ class AssistantEngineTest {
         e.submit("कल कटिहार से दिल्ली की कौन सी ट्रेन है", fromVoice = true)
         settle()
         assertEquals(listOf("stations:katihar", "stations:delhi", "between:KIR:DLI:true"), asked)
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("1 2 2 7 3 HWH NDLS DURONTO") && speaker.spoken.last().contains("18:20"))
+        val trains = speaker.spoken.first { it.contains("1 2 2 7 3 HWH NDLS DURONTO") }
+        assertTrue(trains, trains.contains("18:20"))
+        assertTrue(speaker.spoken.toString(), speaker.spoken.indexOf(trains) > 0) // the plan came first
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("सीट या किराया")) // then a caring question
         assertTrue(provider.calls.isEmpty()) // nothing about the train came from the AI
     }
 
@@ -2613,7 +2619,11 @@ class AssistantEngineTest {
         assertEquals(listOf(true to false), tools.photos) // front camera, not saved to the gallery
         assertEquals(3, seen!!.first)
         assertTrue(seen!!.second.startsWith("main kaisa lag raha hoon?"))
-        assertEquals("Aap muskura rahe hain.", speaker.spoken.last())
+        // Stage 1 (what she is starting) first, then the answer, then one caring question.
+        val answer = speaker.spoken.indexOf("Aap muskura rahe hain.")
+        assertTrue(speaker.spoken.toString(), answer > 0)
+        assertTrue(speaker.spoken.toString(), speaker.spoken.take(answer).any { it.contains("कैमरे") })
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("सही समझा"))
     }
 
     @Test
@@ -2726,7 +2736,9 @@ class AssistantEngineTest {
         settle()
         assertEquals(listOf(false to false), tools.photos) // back camera, not saved
         assertTrue(seen!!.startsWith("back camera chalu karo peeche kya dikh raha hai"))
-        assertEquals("Peeche ek khidki hai.", speaker.spoken.last())
+        val seenAnswer = speaker.spoken.indexOf("Peeche ek khidki hai.")
+        assertTrue(speaker.spoken.toString(), seenAnswer > 0) // after the plan
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("सही समझा"))
         assertTrue(provider.calls.isEmpty())
     }
 

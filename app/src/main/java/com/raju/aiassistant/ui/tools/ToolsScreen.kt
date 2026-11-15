@@ -79,6 +79,31 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
         }
 
         item {
+            // IRCTC tickets: Android lets Seema read downloaded PDFs only from a folder chosen here.
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var folder by remember { mutableStateOf(com.raju.aiassistant.data.tools.TicketFolder.label(context)) }
+            val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+            ) { uri ->
+                if (uri != null) {
+                    com.raju.aiassistant.data.tools.TicketFolder.set(context, uri)
+                    folder = com.raju.aiassistant.data.tools.TicketFolder.label(context)
+                }
+            }
+            HudPanel(title = "टिकट (IRCTC PDF)") {
+                Text(
+                    folder?.let { "टिकट फ़ोल्डर: $it — \"ticket padh ke sunao\" बोलिए, या नीचे दबाइए। \"ye ticket Anand ko WhatsApp par bhej do\" से वही टिकट भेजा जाएगा (भेजने से पहले पूछेगी)।" }
+                        ?: "पहले वह फ़ोल्डर चुनिए जहाँ टिकट डाउनलोड होते हैं (आम तौर पर Download)। Seema सिर्फ़ उसी फ़ोल्डर की PDF पढ़ती है।",
+                    style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(if (folder == null) "टिकट फ़ोल्डर चुनें" else "फ़ोल्डर बदलें") }
+                    if (folder != null) Button(onClick = { viewModel.readLatestTicket(); onOpenChat() }) { Text("सबसे नया टिकट पढ़ो") }
+                }
+            }
+        }
+
+        item {
             HudPanel(title = "Khata (expenses)") {
                 Text(
                     "Bolkar likhwaiye: \"200 ka petrol daala\", \"aaj kitna kharcha hua?\". Stored only on this phone.",

@@ -45,6 +45,18 @@ class TtsManager(
     /** Label of the engine used for the current/last utterance. */
     val activeEngine: StateFlow<String?> = _activeEngine.asStateFlow()
 
+    private val _mood = MutableStateFlow<com.raju.aiassistant.domain.voice.VoiceMood?>(null)
+    override val mood: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> = _mood.asStateFlow()
+    @Volatile private var nextMood: com.raju.aiassistant.domain.voice.VoiceMood? = null
+
+    /** The pitch of the current mood, read by the phone's own voice while it synthesises. */
+    @Volatile var activePitch: Float = 1f
+        private set
+
+    override fun setMood(mood: com.raju.aiassistant.domain.voice.VoiceMood?) {
+        nextMood = mood
+    }
+
     @Volatile private var chunksDone = 0
     override val playedChunks: Int get() = chunksDone
 
@@ -66,11 +78,19 @@ class TtsManager(
                 try {
                     val s = settings.value
                     val ordered = (only?.let { listOf(it) } ?: engineOrder(s)).mapNotNull { e -> providers.firstOrNull { it.engine == e } }
+                    // The AI's mood tag (never read aloud), the mood asked for, or the default for the hour.
+                    val parsed = com.raju.aiassistant.domain.voice.VoiceMoodParser.parse(text)
+                    val mood = parsed.mood ?: nextMood
+                        ?: com.raju.aiassistant.domain.voice.VoiceMood.defaultFor(s.personality, java.time.LocalTime.now().hour)
+                    nextMood = null
+                    _mood.value = mood
+                    activePitch = mood.pitch
                     result = pipeline.speak(
-                        text = text,
+                        text = parsed.text,
                         providers = ordered,
                         preferredLanguage = (SeemaLanguage.fromTag(s.speechLanguage) ?: conversationLanguage.value).tag,
-                        rate = s.speechRate,
+                        rate = s.speechRate * mood.rate,
+                        gain = mood.gain,
                         // Called right before each chunk is played: from here on she is really speaking.
                         onEngine = { _activeEngine.value = it; _playing.value = true },
                         onLevel = { _level.value = it },
@@ -80,6 +100,8 @@ class TtsManager(
                     _speaking.value = false
                     _playing.value = false
                     _level.value = 0f
+                    _mood.value = null
+                    activePitch = 1f
                 }
             }
         }

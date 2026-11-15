@@ -18,7 +18,14 @@ interface Speaker {
     fun stop()
     /** Speech chunks (see chunkForSpeech) of the last utterance that finished playing. */
     val playedChunks: Int get() = 0
+    /** The mood of what she is saying right now (null while silent); Home's eye takes its colour. */
+    val mood: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> get() = NO_MOOD
+    /** The mood for the next thing she says (the AI's [MOOD:…] tag); used once, then the default again. */
+    fun setMood(mood: com.raju.aiassistant.domain.voice.VoiceMood?) {}
 }
+
+private val NO_MOOD: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> =
+    kotlinx.coroutines.flow.MutableStateFlow(null)
 
 interface VoiceInput {
     val listening: StateFlow<Boolean>

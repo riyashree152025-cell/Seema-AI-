@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import kotlinx.coroutines.launch
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
@@ -114,6 +115,21 @@ object TatkalAlarms {
      * The alarm tone on the alarm stream for [ms]: a notification sound is muted by Do Not Disturb and
      * silent mode, the alarm stream is not (Android lets alarms through by default).
      */
+    /**
+     * How long IRCTC's booking site takes to answer right now, in ms (the time to its first response),
+     * or null when it cannot be reached within 4 s. Nothing is sent but a HEAD request.
+     */
+    internal suspend fun measurePing(http: okhttp3.OkHttpClient): Long? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val client = http.newBuilder()
+            .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val request = okhttp3.Request.Builder().url("https://www.irctc.co.in/nget/").head().build()
+        val start = System.nanoTime()
+        runCatching { client.newCall(request).execute().use { (System.nanoTime() - start) / 1_000_000 } }.getOrNull()
+    }
+
     internal fun ring(context: Context, ms: Long, done: () -> Unit) {
         val tone = runCatching {
             RingtoneManager.getRingtone(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))?.apply {
@@ -166,6 +182,15 @@ class TatkalAlarmReceiver : BroadcastReceiver() {
         // A receiver may only run briefly: ring for 8 s, then let Android finish it.
         val pending = goAsync()
         TatkalAlarms.ring(context, 8_000) { pending.finish() }
+        // Then she says how long is left and how fast IRCTC answers right now (measured, in ms).
+        val c = (context.applicationContext as? com.raju.aiassistant.RajuApp)?.container ?: return
+        val s = c.currentSettings.value
+        if (s.assistantPaused) return
+        c.appScope.launch {
+            val ping = TatkalAlarms.measurePing(c.http)
+            kotlinx.coroutines.delay(8_500) // after the ring
+            runCatching { c.speaker.speak(com.raju.aiassistant.domain.tatkal.tatkalReadyLine(label, hour, minute, ping)) }
+        }
     }
 }
 

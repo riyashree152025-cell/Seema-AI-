@@ -76,9 +76,16 @@ class AudioPlayer(context: Context, private val callStyle: () -> Boolean = { fal
         return pcmLevel(audio.data, start, (audio.sampleRate / 50) * bytesPerFrame)
     }
 
+    @Volatile private var gain = 1f
+
+    override fun setGain(gain: Float) {
+        this.gain = gain.coerceIn(0.1f, 1f)
+    }
+
     override suspend fun play(audio: PcmAudio, onLevel: (Float) -> Unit): Unit = withContext(Dispatchers.IO) {
-        // Quiet voices are raised to near full scale (never clipped).
-        val pcm = louder(audio)
+        // Quiet voices are raised to near full scale; then the mood's loudness, and a soft limiter so no
+        // peak ever reaches full scale (a clipped peak crackles on a phone speaker).
+        val pcm = com.raju.aiassistant.domain.voice.PcmLimiter.process(louder(audio), gain)
         val channelMask = if (pcm.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)

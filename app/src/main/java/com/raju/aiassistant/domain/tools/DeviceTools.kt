@@ -95,6 +95,8 @@ interface DeviceTools {
      */
     suspend fun whatsAppSearchAndSend(chat: String, text: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
         com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
+    /** The newest PDF in the folder the user chose for tickets (Apps & Tools), with its text. */
+    suspend fun latestTicketPdf(): TicketPdf = TicketPdf.NoFolder
     /** What is on screen in a WhatsApp chat (counts only). */
     suspend fun whatsAppPeek(chat: String): com.raju.aiassistant.domain.screen.WhatsAppFlowResult =
         com.raju.aiassistant.domain.screen.WhatsAppFlowResult(com.raju.aiassistant.domain.screen.FlowOutcome.UNAVAILABLE)
@@ -151,3 +153,11 @@ const val TATKAL_INEXACT = "(exact alarm off: may ring late)"
 
 /** lockScreen() could not lock yet and has opened Android's one-time "Activate" screen for it. */
 const val LOCK_PERMISSION_ASKED = "फ़ोन लॉक की अनुमति वाली स्क्रीन खोल दी है — एक बार \"Activate\" दबाइए, फिर दोबारा बोलिए \"फ़ोन लॉक करो\"।"
+
+/** What the ticket folder gave: no folder chosen yet, no PDF in it, a PDF without readable text, or its text. */
+sealed interface TicketPdf {
+    data object NoFolder : TicketPdf
+    data object NoPdf : TicketPdf
+    data class Unreadable(val name: String) : TicketPdf
+    data class Found(val name: String, val text: String) : TicketPdf
+}

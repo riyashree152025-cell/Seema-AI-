@@ -21,6 +21,7 @@ object LocalCommands {
 
     fun parse(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
+        sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }
         whatsAppNoText(text)?.let { return it }
         parseAppSearch(withoutLeadingFillers(text))?.let { return AssistantAction.AppSearch(it.app, it.query) }
@@ -44,6 +45,8 @@ object LocalCommands {
             is LedgerCommand.Record -> AssistantAction.LedgerRecord(it.name, it.amountPaise, it.kind)
             is LedgerCommand.Balance -> AssistantAction.LedgerBalance(it.name)
             LedgerCommand.Undo -> AssistantAction.LedgerUndo
+            LedgerCommand.AllPending -> AssistantAction.LedgerPending
+            is LedgerCommand.Settle -> AssistantAction.LedgerSettle(it.name)
         } }
         com.raju.aiassistant.domain.notify.parseReplyCommand(plain)?.let { return AssistantAction.NotificationReply(it.who, it.text) }
         com.raju.aiassistant.domain.calendar.parseCalendarQuestion(plain)?.let { return AssistantAction.CalendarRead(it) }
@@ -129,11 +132,18 @@ object LocalCommands {
     private fun readMessage(t: String): AssistantAction? = when {
         MSG_SUMMARY.matches(t) -> AssistantAction.NotificationSummary
         BRIEFING.matches(t) -> AssistantAction.DayBriefing
+        READ_TICKET.containsMatchIn(t) -> AssistantAction.ReadTicket
         READ_MSG.matches(t) -> AssistantAction.ReadNotification
         else -> null
     }
 
     // "Notification ka saar batao", "kitne message aaye", "kya kya message aaye hain", "sab message batao".
+    /** "ticket padh ke sunao", "जो टिकट डाउनलोड हुआ है पढ़ो" — reading a ticket, never sending one. */
+    private val READ_TICKET = Regex(
+        "^(?!.*(?:bhej|भेज|send|whatsapp|व्हाट्सएप)).*(?:ticket|टिकट|टिकिट)(?![\\p{L}\\p{M}]).*(?:padh|parh|padho|पढ़|पढ|suna|सुना|read)",
+        RegexOption.IGNORE_CASE,
+    )
+
     private val BRIEFING = Regex(
         "^(?:subah|aaj|morning) (?:ki|ka|ke) (?:briefing|brifing|hal|haal|summary)(?: (?:batao|bata do|sunao))?$|" +
             "^(?:aaj ka|aaj ki|din ka) (?:hal|haal|briefing|plan)(?: (?:batao|bata do|sunao))?$|" +
@@ -324,6 +334,18 @@ object LocalCommands {
         "^(?:whatsapp\\s+(?:me|mein|में|मे|pe|par|पर)\\s+)?(.{2,40}?)\\s+(?:ko|को)\\s+(?:whatsapp\\s+)?(?:pe\\s+|par\\s+|पर\\s+)?(?:(?:ek\\s+|एक\\s+)?(?:message|msg|मैसेज|मेसेज|संदेश)\\s+)?(?:karo|kar do|bhejo|bhej do|करो|कर दो|भेजो|भेज दो)$",
         RegexOption.IGNORE_CASE,
     )
+
+    /** "ye ticket Anand ko WhatsApp par bhej do": a document (the ticket just read) to that chat, not a message. */
+    private val SEND_TICKET = Regex(
+        "^(?:(?:ye|yeh|wo|woh|यह|ये|वो) )?(ticket|टिकट|टिकिट|pdf|पीडीएफ)(?: wala| वाला)? (.{2,40}?) (?:ko|को) (?:whatsapp|व्हाट्सएप) (?:par|pe|पर|पे|me|में)? ?(?:bhej|send|भेज)\\S*(?: (?:do|dena|दो|देना))?$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun sendTicket(text: String): AssistantAction? {
+        val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "")
+        val m = SEND_TICKET.matchEntire(t) ?: return null
+        return AssistantAction.WhatsAppFile(contact = m.groupValues[2].trim(), file = m.groupValues[1])
+    }
 
     private fun whatsAppNoText(text: String): AssistantAction? {
         val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "").replace(Regex("^[,\\s]+"), "")

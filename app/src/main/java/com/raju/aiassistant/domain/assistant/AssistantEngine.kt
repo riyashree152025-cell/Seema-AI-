@@ -1237,7 +1237,9 @@ class AssistantEngine(
                     // A fast AI has the whole reply a moment later: one say() then (its next chunk is
                     // prepared while the first plays) is smoother than the head, a gap, and the rest.
                     if (withTimeoutOrNull(EARLY_HEAD_GRACE_MS) { request.await() } == null) {
-                        spokenHead = head
+                        // The head may start with the mood tag: the voice reads and removes it; the
+                        // remainder is matched against the head without it.
+                        spokenHead = com.raju.aiassistant.domain.voice.VoiceMoodParser.parse(head).text
                         trace("speaking early (${head.length} chars)")
                         say(head)
                     }
@@ -1323,6 +1325,8 @@ class AssistantEngine(
             turnActive = true
             try {
                 val rest = spokenHead?.let { remainderAfter(parsed.text, it) } ?: parsed.text
+                // The AI's mood for this answer (or the default for the hour and personality).
+                speaker.setMood(parsed.mood)
                 if (rest.isNotBlank()) say(rest)
             } finally {
                 turnActive = false
@@ -1649,7 +1653,12 @@ class AssistantEngine(
             is AssistantAction.PnrStatus -> {
                 trace("offline command: pnr status")
                 _state.value = AssistantState.Executing
-                pnrStatus(action, speak)
+                narrated(action, speak) { pnrStatus(action, speak) }
+            }
+            AssistantAction.ReadTicket -> {
+                trace("offline command: read ticket")
+                _state.value = AssistantState.Executing
+                narrated(action, speak) { readTicket(AssistantAction.ReadTicket, speak) }
             }
             is AssistantAction.PersonBrief -> {
                 trace("offline command: person brief")
@@ -1667,7 +1676,7 @@ class AssistantEngine(
             }
             is AssistantAction.LookCamera -> {
                 _state.value = AssistantState.Executing
-                camera(action, action.front, question = action.question, speak = speak)
+                narrated(action, speak) { camera(action, action.front, question = action.question, speak = speak) }
             }
             is AssistantAction.LiveCamera -> {
                 trace("offline command: live camera ${if (action.on) "on" else "off"}")
@@ -1723,17 +1732,17 @@ class AssistantEngine(
             is AssistantAction.TrainsBetween -> {
                 trace("offline command: trains between stations")
                 _state.value = AssistantState.Executing
-                trainsBetween(action, speak)
+                narrated(action, speak) { trainsBetween(action, speak) }
             }
             is AssistantAction.TrainLive -> {
                 trace("offline command: train live status")
                 _state.value = AssistantState.Executing
-                trainLive(action, speak)
+                narrated(action, speak) { trainLive(action, speak) }
             }
             is AssistantAction.WhatsAppPeek -> {
                 trace("offline command: whatsapp check")
                 _state.value = AssistantState.Executing
-                whatsAppPeek(action, speak)
+                narrated(action, speak) { whatsAppPeek(action, speak) }
             }
             is AssistantAction.WhatsAppPlayVoice -> {
                 trace("offline command: whatsapp voice")
@@ -1756,6 +1765,7 @@ class AssistantEngine(
                 informational(action, spokenClock(action), speak)
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
+            AssistantAction.LedgerPending, is AssistantAction.LedgerSettle,
             is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.NotificationReply -> {
@@ -2280,7 +2290,7 @@ class AssistantEngine(
             is AssistantAction.Call -> callContact(action, speak)
             is AssistantAction.WhatsApp -> whatsApp(action, speak)
             is AssistantAction.WhatsAppCall -> whatsAppCall(action, speak)
-            is AssistantAction.WhatsAppPeek -> whatsAppPeek(action, speak)
+            is AssistantAction.WhatsAppPeek -> narrated(action, speak) { whatsAppPeek(action, speak) }
             is AssistantAction.WhatsAppPlayVoice -> whatsAppPlayVoice(action, speak)
             is AssistantAction.WhatsAppFile -> whatsAppFile(action, speak)
             is AssistantAction.FindContact -> findContact(action, speak)
@@ -2303,7 +2313,7 @@ class AssistantEngine(
             is AssistantAction.FindPhone -> findPhone(action, speak)
             is AssistantAction.AnswerCall -> report(action, tools.answerCall())
             is AssistantAction.TakePhoto -> camera(action, action.front, question = null, speak = speak)
-            is AssistantAction.LookCamera -> camera(action, action.front, question = action.question, speak = speak)
+            is AssistantAction.LookCamera -> narrated(action, speak) { camera(action, action.front, question = action.question, speak = speak) }
             is AssistantAction.EndCall -> {
                 val outcome = tools.endCall()
                 report(action, outcome)
@@ -2341,6 +2351,7 @@ class AssistantEngine(
                 }
             }
             is AssistantAction.LedgerRecord, is AssistantAction.LedgerBalance, AssistantAction.LedgerUndo,
+            AssistantAction.LedgerPending, is AssistantAction.LedgerSettle,
             is AssistantAction.ReminderAdd, AssistantAction.ReminderList, is AssistantAction.ReminderCancel,
             AssistantAction.TatkalList, is AssistantAction.TatkalCancel, AssistantAction.TatkalCancelAll -> ledgerOrTatkal(action, speak)
             is AssistantAction.Flashlight -> report(action, tools.setFlashlight(action.on))
@@ -2388,7 +2399,8 @@ class AssistantEngine(
                 val ok = runCatching { business.removeJourney(action.pnr) }.getOrDefault(false)
                 report(action, if (ok) ActionStatus.SUCCESS else ActionStatus.FAILED, if (ok) "PNR ${action.pnr} removed from the diary." else "PNR ${action.pnr} is not in the diary.")
             }
-            is AssistantAction.PnrStatus -> pnrStatus(action, speak)
+            is AssistantAction.PnrStatus -> narrated(action, speak) { pnrStatus(action, speak) }
+            AssistantAction.ReadTicket -> narrated(action, speak) { readTicket(AssistantAction.ReadTicket, speak) }
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
@@ -2406,9 +2418,9 @@ class AssistantEngine(
             is AssistantAction.PersonBrief -> { personBrief(action, speak) }
             AssistantAction.HeadsUp -> headsUpNow(action, speak)
             is AssistantAction.PassengerAges -> passengerAges(action, speak)
-            is AssistantAction.TrainsBetween -> trainsBetween(action, speak)
-            is AssistantAction.TrainLive -> trainLive(action, speak)
-            is AssistantAction.TrainFare -> trainFare(action, speak)
+            is AssistantAction.TrainsBetween -> narrated(action, speak) { trainsBetween(action, speak) }
+            is AssistantAction.TrainLive -> narrated(action, speak) { trainLive(action, speak) }
+            is AssistantAction.TrainFare -> narrated(action, speak) { trainFare(action, speak) }
             is AssistantAction.MandiPrice -> {
                 val place = action.place?.let { " $it" }.orEmpty()
                 searchWeb(AssistantAction.SearchWeb("${action.commodity} mandi bhav today$place price per quintal agmarknet"), provider, model, system, speak)
@@ -2687,6 +2699,38 @@ class AssistantEngine(
                 val text = if (balance == null) phrase(lang(), "${action.name} के नाम से कोई हिसाब नहीं मिला।", "${action.name}-এর নামে কোনো হিসাব পাইনি।")
                     else ledgerBalanceText(action.name, balance)
                 report(action, if (balance == null) ActionStatus.FAILED else ActionStatus.SUCCESS, text)
+                if (speak) say(text)
+            }
+            AssistantAction.LedgerPending -> {
+                trace("offline command: ledger pending")
+                val balances = runCatching { business.allBalances() }.getOrDefault(emptyList())
+                informational(action, com.raju.aiassistant.domain.ledger.pendingSummary(balances), speak)
+            }
+            is AssistantAction.LedgerSettle -> {
+                trace("offline command: ledger settle")
+                val balance = runCatching { business.ledgerBalance(action.name) }.getOrNull()
+                val entry = balance?.let { com.raju.aiassistant.domain.ledger.settlingEntry(it) }
+                if (balance == null || entry == null) {
+                    val text = if (balance == null) phrase(lang(), "${action.name} के नाम से कोई हिसाब नहीं मिला।", "${action.name}-এর নামে কোনো হিসাব নেই।")
+                        else phrase(lang(), "${action.name} का हिसाब पहले से बराबर है।", "${action.name}-এর হিসাব আগেই মিটে গেছে।")
+                    report(action, if (balance == null) ActionStatus.FAILED else ActionStatus.SUCCESS, text)
+                    if (speak) say(text)
+                    return
+                }
+                val amount = formatRupees(entry.amountPaise)
+                val what = if (entry.kind == com.raju.aiassistant.domain.ledger.LedgerKind.GOT)
+                    phrase(lang(), "${action.name} से $amount मिल गए", "${action.name} থেকে $amount পেয়ে গেছি")
+                else phrase(lang(), "${action.name} को $amount दे दिए", "${action.name}-কে $amount দিয়ে দিয়েছি")
+                // Money is never written on a guess: the settling entry is said first and needs a yes.
+                if (!confirmScreenAction("Settle udhaar?", phrase(lang(), "$what — हिसाब बराबर कर दूँ?", "$what — হিসাব মিটিয়ে দেব?"), speak)) {
+                    report(action, ActionStatus.CANCELLED, "Udhaar not settled.")
+                    if (speak) say(phrase(lang(), "ठीक है, हिसाब वैसा ही है।", "ঠিক আছে, হিসাব যেমন ছিল।"))
+                    return
+                }
+                val after = runCatching { business.recordLedger(action.name, entry.amountPaise, entry.kind) }.getOrNull()
+                val text = if (after == 0L) phrase(lang(), "हो गया, ${action.name} का हिसाब बराबर हो गया।", "হয়ে গেছে, ${action.name}-এর হিসাব মিটে গেছে।")
+                    else phrase(lang(), "हिसाब बराबर नहीं हो पाया, खाता खोलकर देख लीजिए।", "হিসাব মেটানো গেল না, খাতা খুলে দেখুন।")
+                report(action, if (after == 0L) ActionStatus.SUCCESS else ActionStatus.FAILED, text)
                 if (speak) say(text)
             }
             AssistantAction.LedgerUndo -> {
@@ -3737,7 +3781,12 @@ class AssistantEngine(
             )?.name ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp file cancelled."); return }
             else -> action.contact
         }
-        val what = action.file.ifBlank { phrase(lang(), "सबसे नई", "সবচেয়ে নতুন") }
+        // "ye ticket … ko bhej do" right after a ticket was read: that very file, by its name.
+        val fileQuery = lastTicketFile
+            ?.takeIf { Regex("ticket|टिकट|टिकिट", RegexOption.IGNORE_CASE).containsMatchIn(action.file) }
+            ?.substringBeforeLast('.')
+            ?: action.file
+        val what = fileQuery.ifBlank { phrase(lang(), "सबसे नई", "সবচেয়ে নতুন") }
         val question = phrase(lang(), "WhatsApp पर \"$chat\" को \"$what\" वाली फाइल भेज दूँ?", "হোয়াটসঅ্যাপে \"$chat\" কে \"$what\" ফাইল পাঠাব?")
         if (!confirmScreenAction("Send file on WhatsApp?", question, speak)) {
             report(action, ActionStatus.CANCELLED, "WhatsApp file cancelled.")
@@ -3745,7 +3794,7 @@ class AssistantEngine(
             return
         }
         _state.value = AssistantState.Executing
-        val r = tools.whatsAppSendDocument(chat, action.file)
+        val r = tools.whatsAppSendDocument(chat, fileQuery)
         r.log.forEach { trace("whatsapp file: $it") }
         val to = r.chat ?: chat
         val (status, hi, bn) = when (r.outcome) {
@@ -3928,7 +3977,67 @@ class AssistantEngine(
         }
     }
 
+    /** The status of the last reported action (the check-in question follows only a success). */
+    private var lastReportStatus: ActionStatus? = null
+
+    /**
+     * A task that takes a moment, told like a person on a call: what she is starting (stage 1), the
+     * task and its own result (stage 2), then one caring question after a success (stage 3).
+     */
+    private suspend fun narrated(action: AssistantAction, speak: Boolean, run: suspend () -> Unit) {
+        // Live camera is a quick back-and-forth: each question gets only its answer.
+        if (action is AssistantAction.LookCamera && clock() < liveCameraUntil) return run()
+        val personality = settings.value.personality
+        if (speak) TwoStageNarration.plan(action, personality)?.let { say(phrase(lang(), it.hindi, it.bengali)) }
+        lastReportStatus = null
+        run()
+        if (speak && lastReportStatus == ActionStatus.SUCCESS) {
+            TwoStageNarration.checkIn(action, personality)?.let {
+                val q = phrase(lang(), it.hindi, it.bengali)
+                // In the conversation too, so "haan" is understood as the answer to this question.
+                record(ChatRole.ASSISTANT, q)
+                say(q)
+            }
+        }
+    }
+
+    /** The file name of the ticket read last ("ye ticket … ko bhej do" sends this one). */
+    private var lastTicketFile: String? = null
+
+    private suspend fun readTicket(action: AssistantAction.ReadTicket, speak: Boolean) {
+        val msg: String
+        val status: ActionStatus
+        when (val f = tools.latestTicketPdf()) {
+            com.raju.aiassistant.domain.tools.TicketPdf.NoFolder -> {
+                status = ActionStatus.FAILED
+                msg = phrase(lang(), "टिकट वाला फ़ोल्डर अभी चुना नहीं है। Apps & Tools में \"टिकट फ़ोल्डर चुनें\" दबाकर Download फ़ोल्डर चुन दीजिए, फिर मैं सबसे नया टिकट पढ़ लूँगी।", "টিকিটের ফোল্ডার এখনও বাছা হয়নি। Apps & Tools-এ \"টিকিট ফোল্ডার\" বেছে Download দিন।")
+            }
+            com.raju.aiassistant.domain.tools.TicketPdf.NoPdf -> {
+                status = ActionStatus.FAILED
+                msg = phrase(lang(), "चुने हुए फ़ोल्डर में कोई PDF टिकट नहीं मिला।", "বাছা ফোল্ডারে কোনো PDF টিকিট পাইনি।")
+            }
+            is com.raju.aiassistant.domain.tools.TicketPdf.Unreadable -> {
+                status = ActionStatus.FAILED
+                msg = phrase(lang(), "\"${f.name}\" खुला, पर उसका लिखा पढ़ा नहीं जा सका — शायद स्कैन की हुई फ़ोटो है।", "\"${f.name}\" খুলেছি, কিন্তু লেখা পড়া গেল না।")
+            }
+            is com.raju.aiassistant.domain.tools.TicketPdf.Found -> {
+                val ticket = com.raju.aiassistant.domain.rail.IrctcTicketParser.parse(f.text)
+                if (ticket == null) {
+                    status = ActionStatus.FAILED
+                    msg = phrase(lang(), "सबसे नई PDF \"${f.name}\" रेलवे टिकट नहीं लगती।", "সবচেয়ে নতুন PDF \"${f.name}\" রেলের টিকিট মনে হচ্ছে না।")
+                } else {
+                    status = ActionStatus.SUCCESS
+                    lastTicketFile = f.name
+                    msg = com.raju.aiassistant.domain.rail.spokenTicket(ticket)
+                }
+            }
+        }
+        report(action, status, msg)
+        if (speak) say(msg)
+    }
+
     private suspend fun report(action: AssistantAction, status: ActionStatus, message: String) {
+        lastReportStatus = status
         val icon = when (status) {
             ActionStatus.SUCCESS -> "✅"
             ActionStatus.FAILED -> "❌"

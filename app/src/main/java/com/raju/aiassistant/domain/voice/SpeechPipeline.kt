@@ -25,6 +25,8 @@ interface PcmSink {
     fun requestFocus()
     fun abandonFocus()
     suspend fun play(audio: PcmAudio, onLevel: (Float) -> Unit)
+    /** Loudness for what follows (a whisper is quieter); the real speaker then applies its limiter. */
+    fun setGain(gain: Float) {}
 }
 
 /**
@@ -79,6 +81,15 @@ class SpeechPipeline(
     /** Detects a voice that "succeeded" but produced no real sound (see [isSilent]). */
     private val silent: (PcmAudio, String) -> Boolean = ::isSilent,
 ) {
+    /**
+     * Short phrases she says often ("हाँ जी, बोलिए?", "एक सेकंड…") keep their audio, so the second time
+     * they play at once instead of waiting for the voice service. Keyed by words, language and speed.
+     */
+    private val phraseCache = object : LinkedHashMap<String, Pair<String, PcmAudio>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<String, PcmAudio>>?) = size > PHRASE_CACHE_SIZE
+    }
+
+    private fun cacheKey(voice: String, chunk: String, language: String, rate: Float) = "$voice|$language|$rate|${chunk.trim()}"
 
     suspend fun speak(
         text: String,
@@ -88,6 +99,8 @@ class SpeechPipeline(
         onEngine: (String) -> Unit = {},
         onLevel: (Float) -> Unit = {},
         onChunkPlayed: () -> Unit = {},
+        /** Loudness of this utterance (a whisper is quieter); the limiter then keeps every peak clean. */
+        gain: Float = 1f,
     ): SpeakResult {
         val chunks = chunkForSpeech(text)
         if (chunks.isEmpty()) return SpeakResult(true, "none")
@@ -102,6 +115,13 @@ class SpeechPipeline(
             val producer = launch {
                 for (chunk in chunks) {
                     var audio: PcmAudio? = null
+                    // The voice in use is part of the key: switching voices never replays an old voice.
+                    val key = cacheKey(usable.firstOrNull()?.label.orEmpty(), chunk, preferredLanguage, rate)
+                    val cached = if (chunk.length <= PHRASE_CACHE_MAX_CHARS) synchronized(phraseCache) { phraseCache[key] } else null
+                    if (cached != null) {
+                        ready.send(Result.success(cached))
+                        continue
+                    }
                     while (audio == null && usable.isNotEmpty()) {
                         val provider = usable.first()
                         // A voice service that hangs must not keep her silent (the HTTP client allows 90 s):
@@ -125,11 +145,14 @@ class SpeechPipeline(
                         ready.send(Result.failure(IllegalStateException(fallbackNote ?: "Speech synthesis failed.")))
                         break
                     }
-                    ready.send(Result.success(usable.first().label to audio))
+                    val made = usable.first().label to audio
+                    if (chunk.length <= PHRASE_CACHE_MAX_CHARS) synchronized(phraseCache) { phraseCache[key] = made }
+                    ready.send(Result.success(made))
                 }
                 ready.close()
             }
 
+            sink.setGain(gain)
             sink.requestFocus()
             try {
                 for (item in ready) {
@@ -155,3 +178,7 @@ class SpeechPipeline(
         }
     }
 }
+
+/** Phrases up to this length are kept (acknowledgements, short answers), at most [PHRASE_CACHE_SIZE] of them. */
+const val PHRASE_CACHE_MAX_CHARS = 48
+const val PHRASE_CACHE_SIZE = 24

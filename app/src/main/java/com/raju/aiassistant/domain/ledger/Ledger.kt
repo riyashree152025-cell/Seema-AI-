@@ -14,6 +14,10 @@ sealed interface LedgerCommand {
     data class Balance(val name: String) : LedgerCommand
     /** "Aakhri entry hatao": remove the newest entry (after a confirm). */
     data object Undo : LedgerCommand
+    /** "Aaj kiska-kiska hisab baki hai?": everyone with money pending, and the grand total. */
+    data object AllPending : LedgerCommand
+    /** "Mohan ka hisab clear kar do": one entry that brings the balance to zero (after a confirm). */
+    data class Settle(val name: String) : LedgerCommand
 }
 
 /** One saved entry, for the undo question and the screen. */
@@ -51,10 +55,30 @@ fun parseAmountPaise(number: String, multiplier: String?): Long? {
 }
 
 /** A udhaar-book sentence, or null: an amount is needed ("itna" is not one) and the name must be a name. */
+/** "Yaad rakhna, …" / "Seema, …" in front of a money sentence: the sentence itself is what counts. */
+private val MEMO_PREFIX = Regex("^(?:(?:seema|सीमा),? )?(?:yaad rakhna|yaad rakho|yad rakhna|याद रखना|याद रखो),? ", RegexOption.IGNORE_CASE)
+private val ALL_PENDING = Regex(
+    "^(?:aaj )?(?:kiska kiska|kis kis ka|kiska|sabka|sab ka|किसका किसका|किस किस का|किसका|सबका|सब का) (?:hisab|hisaab|हिसाब) (?:baki|baaki|बाकी|batao|बताओ)(?: (?:hai|hain|है|हैं|batao|बताओ))?$|" +
+        "^(?:aaj )?(?:आज )?(?:kitna|कितना) (?:hisab|hisaab|हिसाब|paisa|पैसा) (?:baki|baaki|बाकी) (?:hai|है)$",
+    RegexOption.IGNORE_CASE,
+)
+private val SETTLE = Regex(
+    "^(.+?) (?:ka|ki|का|की) (?:hisab|hisaab|udhaar|udhar|हिसाब|उधार) (?:clear|saaf|khatam|barabar|क्लियर|साफ़|साफ|ख़त्म|खत्म|बराबर) (?:kar do|karo|kardo|कर दो|करो)$",
+    RegexOption.IGNORE_CASE,
+)
+/** "Mohan bhai se 1500 rupaye lene baki hain": they owe me (as if I gave it). */
+private val OWED_TO_ME = Regex("^(.+?) (?:se|से) $AMOUNT\\s*$RUPEE_WORD\\s*(?:lene|लेने|lena|लेना) (?:baki|baaki|बाकी|hain|hai|है|हैं)(?: (?:hai|hain|है|हैं))?$", RegexOption.IGNORE_CASE)
+/** "Mohan ko 500 rupaye dene baki hain": I owe them (as if they gave it to me). */
+private val I_OWE = Regex("^(.+?) (?:ko|को) $AMOUNT\\s*$RUPEE_WORD\\s*(?:dene|देने|dena|देना) (?:baki|baaki|बाकी|hain|hai|है|हैं)(?: (?:hai|hain|है|हैं))?$", RegexOption.IGNORE_CASE)
+
 fun parseLedger(text: String): LedgerCommand? {
-    val t = text.trim().replace(Regex("\\s+"), " ").trimEnd('.', '!', '?', '।')
+    val t = text.trim().replace(Regex("\\s+"), " ").trimEnd('.', '!', '?', '।').replace(MEMO_PREFIX, "")
     if (t.length > 120) return null
     if (UNDO.matches(t)) return LedgerCommand.Undo
+    if (ALL_PENDING.matches(t)) return LedgerCommand.AllPending
+    SETTLE.matchEntire(t)?.let { m -> val name = m.groupValues[1].trim(); return if (isName(name)) LedgerCommand.Settle(name) else null }
+    OWED_TO_ME.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE) }
+    I_OWE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT) }
     BALANCE.matchEntire(t)?.let { m ->
         val name = (m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()
         return if (isName(name)) LedgerCommand.Balance(name) else null
@@ -107,4 +131,34 @@ fun ledgerStatement(name: String, entries: List<LedgerEntryInfo>, zone: java.tim
             else -> "हिसाब बराबर है।"
         },
     )
+}
+
+/**
+ * Everyone with money pending, said like a person: who owes how much, who is owed, and the total.
+ * Settled names (balance 0) are left out; at most [shown] names are read, the rest are counted.
+ */
+fun pendingSummary(balances: List<ClientBalance>, shown: Int = 8): String {
+    val open = balances.filter { it.balancePaise != 0L }.sortedByDescending { kotlin.math.abs(it.balancePaise) }
+    if (open.isEmpty()) return "किसी का कोई हिसाब बाकी नहीं है, सब बराबर है।"
+    val toGet = open.filter { it.balancePaise > 0 }.sumOf { it.balancePaise }
+    val toGive = open.filter { it.balancePaise < 0 }.sumOf { -it.balancePaise }
+    return buildString {
+        append("${open.size} लोगों का हिसाब बाकी है। ")
+        open.take(shown).forEach { b ->
+            val amount = com.raju.aiassistant.domain.business.formatRupees(kotlin.math.abs(b.balancePaise))
+            append(if (b.balancePaise > 0) "${b.name} से $amount लेने हैं" else "${b.name} को $amount देने हैं")
+            append("। ")
+        }
+        if (open.size > shown) append("और ${open.size - shown} लोग भी हैं। ")
+        append("कुल मिलाकर ${com.raju.aiassistant.domain.business.formatRupees(toGet)} लेने हैं")
+        if (toGive > 0) append(" और ${com.raju.aiassistant.domain.business.formatRupees(toGive)} देने हैं")
+        append("।")
+    }
+}
+
+/** The one entry that settles [balancePaise] (they owe me → they paid; I owe them → I paid), or null when already settled. */
+fun settlingEntry(balancePaise: Long): LedgerLine? = when {
+    balancePaise > 0 -> LedgerLine(LedgerKind.GOT, balancePaise)
+    balancePaise < 0 -> LedgerLine(LedgerKind.GAVE, -balancePaise)
+    else -> null
 }

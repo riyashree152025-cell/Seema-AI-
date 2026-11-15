@@ -54,6 +54,11 @@ sealed interface AssistantAction {
     data class WhatsApp(val contact: String?, val text: String) : AssistantAction {
         override val label get() = "WhatsApp draft" + (contact?.let { " to $it" } ?: "")
     }
+    /** "जो टिकट डाउनलोड हुआ है पढ़ के सुनाओ": the newest PDF in the chosen ticket folder, read aloud. */
+    data object ReadTicket : AssistantAction {
+        override val label get() = "Read ticket"
+    }
+
     /** "आनंद ने क्या भेजा?": open the chat and say what is on screen (counts; no file is opened). */
     data class WhatsAppPeek(val contact: String) : AssistantAction {
         override val label get() = "WhatsApp check $contact"
@@ -107,6 +112,14 @@ sealed interface AssistantAction {
     }
     data class LedgerBalance(val name: String) : AssistantAction {
         override val label get() = "Ledger balance: $name"
+    }
+    /** "Aaj kiska-kiska hisab baki hai?" */
+    data object LedgerPending : AssistantAction {
+        override val label get() = "Pending udhaar"
+    }
+    /** "Mohan ka hisab clear kar do" (after a confirm). */
+    data class LedgerSettle(val name: String) : AssistantAction {
+        override val label get() = "Settle udhaar: $name"
     }
     data object LedgerUndo : AssistantAction {
         override val label get() = "Ledger: remove the newest entry"
@@ -327,7 +340,12 @@ enum class EventRepeat(val rrule: String) {
     WEEKLY("FREQ=WEEKLY"),
 }
 
-data class ParsedReply(val text: String, val actions: List<AssistantAction>)
+data class ParsedReply(
+    val text: String,
+    val actions: List<AssistantAction>,
+    /** The mood the AI chose with a leading [MOOD:…] tag (never shown or spoken), or null. */
+    val mood: com.raju.aiassistant.domain.voice.VoiceMood? = null,
+)
 
 // Some models (e.g. gpt-oss) JSON-escape the slash: <\/action>. Both forms are accepted.
 private val ACTION_TAG = Regex("<action>(.*?)<\\\\?/action>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
@@ -344,8 +362,9 @@ fun parseReply(raw: String): ParsedReply {
         .mapNotNull { parseAction(it.groupValues[1].trim()) }
         .take(MAX_ACTIONS_PER_REPLY)
         .toList()
-    val text = raw.replace(ACTION_TAG, "").replace(UNCLOSED_ACTION, "").replace(STRAY_TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
-    return ParsedReply(text, actions)
+    val stripped = raw.replace(ACTION_TAG, "").replace(UNCLOSED_ACTION, "").replace(STRAY_TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
+    val moodTagged = com.raju.aiassistant.domain.voice.VoiceMoodParser.parse(stripped)
+    return ParsedReply(moodTagged.text, actions, moodTagged.mood)
 }
 
 private fun parseAction(json: String): AssistantAction? {
@@ -406,6 +425,7 @@ private fun parseAction(json: String): AssistantAction? {
         "open_seema", "seema_screen", "apna_screen", "apni_screen" -> AssistantAction.OpenSeema
         "remember" -> str("text")?.let { AssistantAction.Remember(it) }
         "whatsapp" -> str("text")?.let { AssistantAction.WhatsApp(str("contact") ?: str("name"), it) }
+        "read_ticket", "ticket_read" -> AssistantAction.ReadTicket
         "whatsapp_peek", "whatsapp_check", "whatsapp_chat_check" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppPeek(it) }
         "whatsapp_play_voice", "whatsapp_voice" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppPlayVoice(it) }
         "whatsapp_file", "whatsapp_document", "whatsapp_pdf" -> (str("contact") ?: str("name"))?.let { AssistantAction.WhatsAppFile(it, str("file") ?: str("query") ?: "") }

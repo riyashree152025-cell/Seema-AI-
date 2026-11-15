@@ -75,6 +75,9 @@ class ToolsViewModel(private val c: AppContainer) : ViewModel() {
     /** Web research goes through the assistant so results are summarised with sources in Chat. */
     fun askWeb(query: String) = c.engine.submit("Search the web and answer with sources: $query")
 
+    /** Reads the newest ticket in the chosen folder aloud (the same as saying "ticket padh ke sunao"). */
+    fun readLatestTicket() = c.engine.submit("ticket padh ke sunao", fromVoice = true)
+
     private fun runTool(label: String, block: () -> ToolOutcome) {
         if (c.currentSettings.value.safetyMode && !label.startsWith("Battery")) {
             _message.value = "Safety Mode is on — phone actions are paused."

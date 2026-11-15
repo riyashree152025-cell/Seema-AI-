@@ -127,6 +127,26 @@ fun VoiceControlScreen(
 
         Spacer(Modifier.height(10.dp))
 
+        // Her three voice moods: each button speaks a short line in that mood (pitch, pace and loudness),
+        // the same way her answers sound when the AI chooses that mood.
+        val moodSamples = listOf(
+            com.raju.aiassistant.domain.voice.VoiceMood.WARM to ("Warm" to "जान, आज का दिन कैसा रहा? मैं यहीं हूँ, बताओ…"),
+            com.raju.aiassistant.domain.voice.VoiceMood.CONTROLLED_UPSET to ("Calm upset" to "सुनो, ये ठीक नहीं है… आराम से बात करते हैं, पर ऐसा दोबारा मत करना।"),
+            com.raju.aiassistant.domain.voice.VoiceMood.WHISPER to ("Whisper" to "बहुत रात हो गई है… अब सो जाओ, कल बात करेंगे।"),
+        )
+        Text("आवाज़ का मूड (सुनकर देखिए)", color = Color.White, style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            moodSamples.forEach { (mood, labelAndLine) ->
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        container.speaker.setMood(mood)
+                        scope.launch { container.speaker.speak(labelAndLine.second) }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text(labelAndLine.first, maxLines = 1) }
+            }
+        }
+
         // Center Voice Orb with Horizontal Visualizer Waves
         Box(
             Modifier

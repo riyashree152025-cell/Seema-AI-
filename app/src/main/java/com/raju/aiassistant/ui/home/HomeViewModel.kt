@@ -77,6 +77,8 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     }
     /** What the shared microphone hears, 0..1 (stays 0 when the Shared Mic Engine is off). */
     val micLevel: StateFlow<Float> = c.micHub.level
+    /** The mood of what she is saying now: the eye takes its colour while she speaks. */
+    val voiceMood: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> = c.speaker.mood
 
     private val engineView = combine(engine.state, engine.listening, engine.partialTranscript, engine.transcript, engine.handsFreeActive) { s, l, p, t, h ->
         EngineView(s, l, p, t.lastOrNull { it.role == ChatRole.ASSISTANT }?.text, h)

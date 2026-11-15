@@ -260,7 +260,7 @@ class AppContainer(context: Context) {
                 settingsRepository.setCartesiaVoice(v.id, v.name)
             },
             DeepgramTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }),
-            AndroidTtsProvider(androidTts, { currentSettings.value.androidVoice }) { currentSettings.value.speechPitch },
+            AndroidTtsProvider(androidTts, { currentSettings.value.androidVoice }) { currentSettings.value.speechPitch * speaker.activePitch },
         )
         TtsManager(
             appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.local.MeasuredTtsProvider(it, voiceEngineStats) },

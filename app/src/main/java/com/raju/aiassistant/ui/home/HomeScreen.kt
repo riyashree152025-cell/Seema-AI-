@@ -187,6 +187,8 @@ fun HomeScreen(
 
     val speechLevel by viewModel.speechLevel.collectAsStateWithLifecycle(initialValue = 0f)
     val micLevel by viewModel.micLevel.collectAsStateWithLifecycle(initialValue = 0f)
+    // Changes once per sentence at most (never per frame), so reading it here costs nothing.
+    val voiceMood by viewModel.voiceMood.collectAsStateWithLifecycle()
 
 
 
@@ -285,11 +287,14 @@ fun HomeScreen(
                     .onGloballyPositioned { canvasOrigin.value = it.positionInRoot() },
                 richEffects = profile.richEffects,
                 waveCenterY = 0.42f,
-                // Tapori mode keeps its tone colours while she speaks (orange roast, pink joke).
-                accentArgb = if (state.tapori && assistantState == com.raju.aiassistant.domain.model.AssistantState.Speaking) {
-                    com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
-                } else {
-                    com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
+                // While she speaks the eye takes the colour of her voice's mood (warm cyan, grounded crimson,
+                // whisper blue); Tapori keeps its tone colours (orange roast, pink joke) unless she is upset.
+                // The eye fades between colours by itself (animateColorAsState), so a change is never a jump.
+                accentArgb = when {
+                    assistantState != com.raju.aiassistant.domain.model.AssistantState.Speaking -> com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
+                    voiceMood == com.raju.aiassistant.domain.voice.VoiceMood.CONTROLLED_UPSET || voiceMood == com.raju.aiassistant.domain.voice.VoiceMood.WHISPER -> voiceMood!!.eyeArgb
+                    state.tapori -> com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
+                    else -> voiceMood?.eyeArgb ?: com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
                 },
                 eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
                 lastTouch = { eyeTouch.value },
