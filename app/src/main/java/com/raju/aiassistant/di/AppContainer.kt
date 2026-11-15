@@ -248,7 +248,7 @@ class AppContainer(context: Context) {
         return com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, installed, voiceEngineStats.stats.value)
     }
 
-    val speaker by lazy {
+    val speaker: TtsManager by lazy {
         val providers = listOf(
             com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.KOKORO, sherpaHost, voiceModels) { currentSettings.value },
             com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.PIPER, sherpaHost, voiceModels) { currentSettings.value },
