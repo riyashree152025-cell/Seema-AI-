@@ -192,6 +192,13 @@ sealed interface AssistantAction {
     data class ExpenseSummary(val period: Period) : AssistantAction {
         override val label get() = "Expense summary: ${period.english}"
     }
+    /**
+     * "PNR note karo / track karte rehna": [digits] heard so far (0–10+). Ten digits are tracked; fewer are
+     * kept and the rest is asked for, so a PNR said in pieces ("8 3 5 3 …") still arrives whole.
+     */
+    data class PnrTrack(val digits: String) : AssistantAction {
+        override val label get() = "Track PNR"
+    }
     data class JourneySave(val journey: Journey) : AssistantAction {
         override val label get() = "Save journey: PNR ${journey.pnr}"
     }
@@ -550,6 +557,7 @@ private fun parseAction(json: String): AssistantAction? {
             if (pnr == null || date == null) null
             else AssistantAction.JourneySave(Journey(pnr = pnr, train = str("train"), date = date, route = str("route"), passenger = str("passenger"), phone = str("phone"), note = str("note")))
         }
+        "pnr_track", "track_pnr" -> AssistantAction.PnrTrack(com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.digits(str("pnr").orEmpty()))
         "pnr_list", "journey_list" -> AssistantAction.JourneyList
         "pnr_remove", "journey_remove" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.JourneyRemove(it) }
         "pnr_status" -> str("pnr")?.let { normalizePnr(it) }?.let { AssistantAction.PnrStatus(it) }

@@ -20,11 +20,27 @@ object VoiceNumberSanitizer {
         "eight" to '8', "aath" to '8', "आठ" to '8', "আট" to '8',
         "nine" to '9', "nau" to '9', "नौ" to '9', "নয়" to '9',
     )
+    /** Words that are digits only between other digits: "kar do", "ek PNR bata raha hoon" are not numbers. */
+    private val AMBIGUOUS = setOf("do", "दो", "ek", "एक", "char", "tin")
+
     private val REPEAT = mapOf("double" to 2, "dabal" to 2, "डबल" to 2, "ডাবল" to 2, "triple" to 3, "tripal" to 3, "ट्रिपल" to 3, "ট্রিপল" to 3)
 
     /** Every spoken or written digit form as ASCII digits, in order. Other characters are dropped. */
     fun digits(spoken: String): String {
         val tokens = spoken.lowercase().split(Regex("[\\s,\\-–—/.]+")).filter { it.isNotEmpty() }
+        // "do" / "ek" count as digits only inside a run of digits ("एक दो तीन", "4 do 7"), never alone
+        // ("kar do", "ek PNR"): a run grows from the plain digits to the ambiguous words next to them.
+        val numeric = BooleanArray(tokens.size) { isDigitish(tokens[it]) }
+        var grew = true
+        while (grew) {
+            grew = false
+            for (k in tokens.indices) {
+                if (!numeric[k] && tokens[k] in AMBIGUOUS && (numeric.getOrElse(k - 1) { false } || numeric.getOrElse(k + 1) { false })) {
+                    numeric[k] = true
+                    grew = true
+                }
+            }
+        }
         val out = StringBuilder()
         var i = 0
         while (i < tokens.size) {
@@ -40,7 +56,7 @@ object VoiceNumberSanitizer {
                     continue
                 }
             }
-            val wordDigit = DIGIT_WORDS[t]
+            val wordDigit = DIGIT_WORDS[t]?.takeIf { t !in AMBIGUOUS || numeric[i] }
             if (wordDigit != null) out.append(wordDigit)
             else for (ch in t) {
                 // Devanagari digits (०–९) and plain ASCII digits; any other character is ignored.
@@ -55,6 +71,9 @@ object VoiceNumberSanitizer {
         }
         return out.toString()
     }
+
+    private fun isDigitish(token: String?): Boolean =
+        token != null && (token.any { it in '0'..'9' || it in '\u0966'..'\u096F' } || (DIGIT_WORDS.containsKey(token) && token !in AMBIGUOUS) || REPEAT.containsKey(token))
 
     private fun digitOf(token: String): Char? = DIGIT_WORDS[token] ?: token.singleOrNull()?.takeIf { it in '0'..'9' || it in '०'..'९' }?.let {
         if (it in '०'..'९') '0' + (it - '०') else it

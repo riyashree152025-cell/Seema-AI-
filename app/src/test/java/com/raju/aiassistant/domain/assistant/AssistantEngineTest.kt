@@ -599,6 +599,44 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aPnrSaidInPiecesIsCollectedThenTrackedWithItsStatus() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val khata = FakeBusiness()
+        val asked = mutableListOf<String>()
+        val source = com.raju.aiassistant.domain.business.PnrSource { pnr ->
+            asked += pnr
+            com.raju.aiassistant.domain.business.PnrFetch.Ok(
+                com.raju.aiassistant.domain.business.PnrSnapshot(pnr, "12301", "Rajdhani", "2026-11-20",
+                    passengers = listOf(com.raju.aiassistant.domain.business.PassengerStatus("WL 12", "WL 5"))),
+            )
+        }
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            pnrSource = source, business = khata,
+        )
+        // The user's own words from the phone log.
+        e.submit("अरे एक PNR बता रहा हूं उसको note करो और track करते रहना", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("10 अंकों"))
+        e.submit("हां note करो 8 3 5 3", fromVoice = true)
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("बाकी 6 अंक"))
+        e.submit("आठ तीन पांच तीन", fromVoice = true) // the same digits again: 8 so far
+        settle()
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("बाकी 2 अंक"))
+        e.submit("4 2", fromVoice = true)
+        settle()
+        assertEquals(listOf("8353835342"), asked)
+        assertEquals("8353835342", khata.journeys.single().pnr)
+        assertEquals(java.time.LocalDate.of(2026, 11, 20), khata.journeys.single().date)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("ट्रैकिंग में डाल दिया") && speaker.spoken.last().contains("बता दूँगी"))
+        assertEquals(0, provider.calls.size) // never sent to the AI (no "PNR is 7 digits")
+    }
+
+    @Test
     fun pnrStatusIsReadOutFromThePnrServiceWithoutTheAi() = runTest {
         provider = FakeProvider(ArrayDeque())
         val asked = mutableListOf<String>()

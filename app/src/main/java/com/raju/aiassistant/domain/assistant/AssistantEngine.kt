@@ -103,7 +103,7 @@ private const val NOT_YET = -1L
 /** The longest Seema waits for an AI reply before showing a timeout (she never hangs in "Thinking"). */
 private const val AI_TIMEOUT_MS = 45_000L
 /** The short "which phone task is this" request: if it takes longer, the normal conversation answers. */
-private const val ROUTER_TIMEOUT_MS = 6_000L
+private const val ROUTER_TIMEOUT_MS = 2_500L
 /** Each backup AI after a failure: answer within this or the next one is asked. */
 private const val FALLBACK_TIMEOUT_MS = 15_000L
 /** After the first sentence is ready: if the whole reply follows within this, it is spoken in one go. */
@@ -120,8 +120,10 @@ private const val FIRST_TEXT_TIMEOUT_MS = 4_000L
  * only once it is free: a short safety gap, so the first words are not lost to a busy microphone.
  */
 private const val MIC_HANDOFF_MS = 180L
+/** How long the pieces of a PNR said in parts are collected. */
+private const val PNR_COLLECT_MS = 90_000L
 /** Careful thinking (deep tier) may take longer before its first words on mobile data: Gemini gets 28 s. */
-private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 20_000L
+private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 9_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /**
@@ -1042,6 +1044,22 @@ class AssistantEngine(
                 if (runLocalCommand(AssistantAction.WhatsApp(who, text.trim()), speak = fromVoice || s.autoSpeakReplies)) return
             }
         }
+        // A PNR said in pieces ("8 3 5 3", then "2 1 9 …"): digits keep being added until all 10 are there.
+        if (clock() < pnrCollectUntil && text.isNotBlank()) {
+            val more = com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.digits(text)
+            val other = LocalCommands.parse(text)
+            when {
+                Regex("(?i)rehne do|rahne do|chhodo|cancel|रहने दो|छोड़ो|कैंसल").containsMatchIn(text) -> {
+                    pnrCollectUntil = 0
+                    pnrDigits = ""
+                    trace("pnr: collecting cancelled")
+                }
+                more.isNotEmpty() && (other == null || other is AssistantAction.PnrTrack) -> {
+                    trace("pnr: +${more.length} digits")
+                    if (runLocalCommand(AssistantAction.PnrTrack(pnrDigits + more), speak = fromVoice || s.autoSpeakReplies)) return
+                }
+            }
+        }
         // Live camera on: a question that is not a phone command is answered from a fresh photo.
         liveCameraFront?.let { front ->
             if (clock() >= liveCameraUntil) {
@@ -1674,6 +1692,11 @@ class AssistantEngine(
                 trace("offline command: pnr status")
                 _state.value = AssistantState.Executing
                 narrated(action, speak) { pnrStatus(action, speak) }
+            }
+            is AssistantAction.PnrTrack -> {
+                trace("offline command: track pnr (${action.digits.length} digits)")
+                _state.value = AssistantState.Executing
+                trackPnr(action, speak)
             }
             AssistantAction.ReadTicket -> {
                 trace("offline command: read ticket")
@@ -2364,7 +2387,7 @@ class AssistantEngine(
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "राजू, यूट्यूब पर आपके लिए गाना बजा दिया है, सुनिए!", "রাজু, ইউটিউবে গান চালিয়ে দিয়েছি, শুনুন!"))
             }
-            is AssistantAction.Remember -> remember(action)
+            is AssistantAction.Remember -> remember(action, speak)
             is AssistantAction.SetTimer -> report(action, tools.setTimer(action.seconds, action.note))
             is AssistantAction.SetAlarm -> report(action, tools.setAlarm(action.hour, action.minute, action.note))
             is AssistantAction.SetTatkalAlarm -> {
@@ -2425,6 +2448,7 @@ class AssistantEngine(
             }
             is AssistantAction.PnrStatus -> narrated(action, speak) { pnrStatus(action, speak) }
             AssistantAction.ReadTicket -> narrated(action, speak) { readTicket(AssistantAction.ReadTicket, speak) }
+            is AssistantAction.PnrTrack -> trackPnr(action, speak)
             is AssistantAction.BookingNoteStart -> startBooking(action, speak)
             is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
@@ -3665,8 +3689,12 @@ class AssistantEngine(
             }
         }
         if (target == null && !com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
-            val ok = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "Open WhatsApp?", "Open WhatsApp with this message? You choose the chat and tap send yourself.\n\n\"${action.text}\""))
-            if (ok !is Decision.Approve) { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+            val ok = confirmScreenAction(
+                "Open WhatsApp?",
+                phrase(lang(), "WhatsApp में यह मैसेज लिखकर खोल दूँ? चैट आप चुनकर Send दबाइएगा: \"${action.text}\"", "হোয়াটসঅ্যাপে মেসেজটা লিখে খুলে দেব? চ্যাট বেছে Send চাপবেন: \"${action.text}\""),
+                speak,
+            )
+            if (!ok) { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
         }
         val outcome = tools.openWhatsApp(target?.number, action.text)
         report(action, outcome)
@@ -3917,15 +3945,16 @@ class AssistantEngine(
         }
     }
 
-    private suspend fun remember(action: AssistantAction.Remember) {
+    private suspend fun remember(action: AssistantAction.Remember, speak: Boolean = false) {
         val s = settings.value
         when {
             !s.memoryEnabled -> report(action, ActionStatus.BLOCKED, "Memory is turned off in Settings, so nothing was saved.")
             else -> when (val check = validateMemory(action.text, runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()))) {
                 is MemoryCheck.Rejected -> report(action, ActionStatus.BLOCKED, check.reason)
                 is MemoryCheck.Ok -> {
-                    val d = ask(PendingRequest(PendingRequest.Kind.CONFIRM, "Remember this?", check.text))
-                    if (d !is Decision.Approve) report(action, ActionStatus.CANCELLED, "Not saved.")
+                    // Asked out loud in a voice turn (an unseen on-screen question was answered "no" by the next sentence).
+                    val ok = confirmScreenAction("Remember this?", phrase(lang(), "ये याद रख लूँ: \"${check.text}\"?", "এটা মনে রাখব: \"${check.text}\"?"), speak)
+                    if (!ok) report(action, ActionStatus.CANCELLED, "Not saved.")
                     else {
                         val saved = runCatching { memories.add(check.text) }.isSuccess
                         report(action, if (saved) ActionStatus.SUCCESS else ActionStatus.FAILED, if (saved) "Saved to memory: \"${check.text}\"" else "Could not save the memory.")
@@ -3999,6 +4028,67 @@ class AssistantEngine(
             is ToolOutcome.Failed -> report(action, ActionStatus.FAILED, outcome.message)
             is ToolOutcome.NeedsPermission -> report(action, ActionStatus.FAILED, outcome.reason)
         }
+    }
+
+    /** Digits of a PNR heard so far, and until when more pieces are taken (see [trackPnr]). */
+    private var pnrDigits = ""
+    private var pnrCollectUntil = 0L
+
+    /**
+     * "PNR note karo, track karte rehna": ten digits → saved in the PNR diary (its train and date from the rail
+     * service when it answers), so the background check tells when it is confirmed or the chart is ready.
+     * Fewer digits → kept, and the rest is asked for; more → said plainly, and asked again.
+     */
+    private suspend fun trackPnr(action: AssistantAction.PnrTrack, speak: Boolean) {
+        val digits = action.digits
+        val spaced = digits.chunked(3).joinToString(" ")
+        if (digits.length != 10) {
+            pnrDigits = if (digits.length > 10) "" else digits
+            pnrCollectUntil = clock() + PNR_COLLECT_MS
+            val msg = when {
+                digits.isEmpty() -> phrase(lang(), "PNR बोलिए — यह 10 अंकों का होता है, टुकड़ों में भी बोल सकते हैं।", "PNR বলুন — এটা ১০ অঙ্কের, ভাগে ভাগেও বলতে পারেন।")
+                digits.length > 10 -> phrase(lang(), "PNR 10 अंकों का होता है, मुझे ${digits.length} अंक सुनाई दिए। पूरा PNR फिर से बोलिए।", "PNR ১০ অঙ্কের হয়, আমি ${digits.length}টা শুনলাম। আবার পুরোটা বলুন।")
+                else -> phrase(lang(), "अब तक ${digits.length} अंक मिले: $spaced। बाकी ${10 - digits.length} अंक बोलिए।", "এখন পর্যন্ত ${digits.length}টা অঙ্ক: $spaced। বাকি ${10 - digits.length}টা বলুন।")
+            }
+            report(action, ActionStatus.SUCCESS, msg)
+            if (speak) say(msg)
+            return
+        }
+        pnrDigits = ""
+        pnrCollectUntil = 0
+        if (speak) say(phrase(lang(), "PNR $spaced नोट कर रही हूँ… अभी का स्टेटस भी देख लेती हूँ।", "PNR $spaced লিখে নিচ্ছি… এখনকার অবস্থাও দেখছি।"))
+        val fetch = runCatching { pnrSource.status(digits) }.getOrNull()
+        val snap = (fetch as? com.raju.aiassistant.domain.business.PnrFetch.Ok)?.snapshot
+        val date = snap?.date?.let { journeyDate(it) }
+        val journey = com.raju.aiassistant.domain.business.Journey(pnr = digits, train = snap?.trainNumber, date = date ?: today(), note = if (date == null) "date unknown" else null)
+        val saved = runCatching { business.saveJourney(journey) }.isSuccess
+        if (!saved) {
+            val msg = phrase(lang(), "PNR डायरी में सेव नहीं हो पाया।", "PNR ডায়েরিতে সেভ হলো না।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val now = when (fetch) {
+            is com.raju.aiassistant.domain.business.PnrFetch.Ok -> com.raju.aiassistant.domain.business.spokenPnrStatus(fetch.snapshot) +
+                phrase(lang(), " स्टेटस बदलते ही, या कन्फर्म होते ही, बता दूँगी।", " অবস্থা বদলালেই বা কনফার্ম হলেই জানাব।")
+            com.raju.aiassistant.domain.business.PnrFetch.NotConfigured -> phrase(lang(), "पर RailKit key नहीं है, इसलिए स्टेटस अपने आप नहीं देख पाऊँगी — Settings में RailKit key डाल दीजिए।", "কিন্তু RailKit key নেই, তাই নিজে অবস্থা দেখতে পারব না।")
+            is com.raju.aiassistant.domain.business.PnrFetch.Failed -> phrase(lang(), "अभी स्टेटस नहीं मिला (${fetch.message}), थोड़ी देर में फिर देखूँगी।", "এখন অবস্থা পাইনি (${fetch.message}), পরে আবার দেখব।")
+            null -> phrase(lang(), "अभी स्टेटस नहीं मिला, थोड़ी देर में फिर देखूँगी।", "এখন অবস্থা পাইনি, পরে আবার দেখব।")
+        }
+        val dateNote = if (date == null) phrase(lang(), " यात्रा की तारीख नहीं मिली, आज-कल नज़र रखूँगी।", " যাত্রার তারিখ পাইনি।") else ""
+        val msg = phrase(lang(), "PNR $spaced ट्रैकिंग में डाल दिया। ", "PNR $spaced ট্র্যাকিংয়ে রাখলাম। ") + now + dateNote
+        report(action, ActionStatus.SUCCESS, msg)
+        if (speak) say(msg)
+    }
+
+    /** A journey date as the rail service writes it ("2026-11-15", "15-11-2026", "15/11/2026", "15-Nov-2026"). */
+    private fun journeyDate(text: String): java.time.LocalDate? {
+        val t = text.trim()
+        val patterns = listOf("yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy", "d-MMM-yyyy", "dd-MMM-yyyy", "d MMM yyyy")
+        for (p in patterns) {
+            runCatching { return java.time.LocalDate.parse(t, java.time.format.DateTimeFormatter.ofPattern(p, java.util.Locale.ENGLISH)) }
+        }
+        return null
     }
 
     /** The status of the last reported action (the check-in question follows only a success). */

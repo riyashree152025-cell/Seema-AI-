@@ -22,6 +22,7 @@ object LocalCommands {
     fun parse(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
+        pnrTrack(text)?.let { return it }
         sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }
         whatsAppNoText(text)?.let { return it }
@@ -335,6 +336,19 @@ object LocalCommands {
         "^(?:whatsapp\\s+(?:me|mein|में|मे|pe|par|पर)\\s+)?(.{2,40}?)\\s+(?:ko|को)\\s+(?:whatsapp\\s+)?(?:pe\\s+|par\\s+|पर\\s+)?(?:(?:ek\\s+|एक\\s+)?(?:message|msg|मैसेज|मेसेज|संदेश)\\s+)?(?:karo|kar do|bhejo|bhej do|करो|कर दो|भेजो|भेज दो)$",
         RegexOption.IGNORE_CASE,
     )
+
+    private val PNR_WORD = Regex("(?<![\\p{L}])(?:pnr|पीएनआर|पी\\s?एन\\s?आर|p\\s?n\\s?r)(?![\\p{L}])", RegexOption.IGNORE_CASE)
+    private val TRACK_WORD = Regex(
+        "(?<![\\p{L}])(?:note|track|tracking|add|save|daal|dal|jod|likh|yaad|nazar|watch|नोट|ट्रैक|ट्रैकिंग|सेव|डाल|जोड़|जोड|लिख|याद|नज़र|नजर)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "PNR note karo, track karte rehna", "PNR 8353… daal do": digits said with it are kept (may be partial). */
+    private fun pnrTrack(text: String): AssistantAction? {
+        if (!PNR_WORD.containsMatchIn(text) || !TRACK_WORD.containsMatchIn(text)) return null
+        if (Regex("status|स्टेटस|kya hai|क्या है", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+        return AssistantAction.PnrTrack(com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.digits(PNR_WORD.replace(text, " ")))
+    }
 
     /** "Jo setting baki hai kholo", "permission check karo", "kya kya access baki hai": the missing ones, not phone Settings. */
     private val SETUP_CHECK = Regex(
