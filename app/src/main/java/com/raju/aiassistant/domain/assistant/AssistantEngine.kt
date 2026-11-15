@@ -114,7 +114,12 @@ private const val WA_ASK_MS = 60_000L
 private const val RECENT_EXCHANGES = 6
 private const val HISTORY_CHARS_PER_REQUEST = 4_000
 /** A streaming AI that has not written a single word by now is given up on when another AI can answer. */
-private const val FIRST_TEXT_TIMEOUT_MS = 8_000L
+private const val FIRST_TEXT_TIMEOUT_MS = 4_000L
+/**
+ * After "Hey Seema" the wake-word recorder lets go of the microphone and the speech recogniser starts
+ * only once it is free: a short safety gap, so the first words are not lost to a busy microphone.
+ */
+private const val MIC_HANDOFF_MS = 180L
 /** Careful thinking (deep tier) may take longer before its first words on mobile data: Gemini gets 28 s. */
 private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 20_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
@@ -617,7 +622,10 @@ class AssistantEngine(
      */
     private fun callStyleAllowed() = settings.value.bargeIn && voice.capturesInApp() && headphones()
 
-    private fun listen() {
+    /** When the microphone is free for speech again after a wake (see [MIC_HANDOFF_MS]); 0 when it always is. */
+    private var micFreeAt = 0L
+
+    private fun listen(afterHandoff: Boolean = false) {
         if (paused()) {
             // Switched OFF: never open the microphone, whatever asked for it.
             voice.stop()
@@ -625,6 +633,15 @@ class AssistantEngine(
             _state.value = AssistantState.Idle
             return
         }
+        val gap = micFreeAt - clock()
+        if (!afterHandoff && gap > 0) {
+            // Still handing the microphone over: start the recogniser once the gap has passed (never before).
+            trace("[SeemaVoice] waiting ${gap} ms for the microphone")
+            _state.value = AssistantState.Listening
+            scope.launch { delay(gap); listen(afterHandoff = true) }
+            return
+        }
+        trace("[SeemaVoice] listening, microphone free")
         val gen = ++listenGen
         // A ringing call or a "haan / nahi" question: a short answer, cut quickly.
         com.raju.aiassistant.domain.voice.TurnPacing.quick = clock() < callCommandUntil || voiceConfirmOpen()
@@ -964,6 +981,9 @@ class AssistantEngine(
         if (!asleep) return
         asleep = false
         wakeListener.stop()
+        // The wake-word recorder has been told to stop: the recogniser waits for the handoff gap below.
+        micFreeAt = clock() + MIC_HANDOFF_MS
+        trace("[SeemaWake] wake-word microphone released; speech starts in $MIC_HANDOFF_MS ms")
     }
 
     fun resolve(d: Decision) {

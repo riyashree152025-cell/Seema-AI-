@@ -59,7 +59,12 @@ class RailKitClient(private val http: OkHttpClient, private val keys: SecureKeyS
         }.getOrElse { RailResult.Failed("रेल सेवा तक नहीं पहुँच पाई — इंटरनेट देखिए।") }
     }
 
-    suspend fun pnr(pnr: String): RailResult<RailPnr> = get(url("v1", "pnr", pnr)) { parseRailPnr(pnr, it) }
+    /** A PNR as heard ("6211 9126 38", "double one …") is cleaned first; a wrong count is said, not sent. */
+    suspend fun pnr(pnr: String): RailResult<RailPnr> {
+        val clean = com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.pnr(pnr)
+            .getOrElse { return RailResult.Failed(it.message ?: "PNR गलत है।") }
+        return get(url("v1", "pnr", clean)) { parseRailPnr(clean, it) }
+    }
 
     override suspend fun stations(name: String): RailResult<List<Station>> =
         get(url("v1", "stations", "search", query = "name" to name), ::parseStations)
@@ -67,14 +72,28 @@ class RailKitClient(private val http: OkHttpClient, private val keys: SecureKeyS
     override suspend fun trainsBetween(from: String, to: String, date: LocalDate?): RailResult<List<TrainBetween>> =
         get(url("v1", "trains", "between", from, to, query = date?.let { "date" to railDate(it) }), ::parseTrainsBetween)
 
-    override suspend fun live(train: String, date: LocalDate): RailResult<LiveStatus> =
-        get(url("v1", "trains", train, "live", railDate(date)), ::parseLive)
+    override suspend fun live(train: String, date: LocalDate): RailResult<LiveStatus> {
+        val no = trainNumberOrFailure(train) ?: return trainFailure(train)
+        return get(url("v1", "trains", no, "live", railDate(date)), ::parseLive)
+    }
 
-    override suspend fun fare(train: String, from: String, to: String, date: LocalDate, travelClass: String, quota: String): RailResult<Fare> =
-        get(url("v1", "fare", train, railDate(date), from, to, travelClass, quota), ::parseFare)
+    override suspend fun fare(train: String, from: String, to: String, date: LocalDate, travelClass: String, quota: String): RailResult<Fare> {
+        val no = trainNumberOrFailure(train) ?: return trainFailure(train)
+        return get(url("v1", "fare", no, railDate(date), from, to, travelClass, quota), ::parseFare)
+    }
 
-    override suspend fun seats(train: String, from: String, to: String, date: LocalDate, travelClass: String, quota: String): RailResult<SeatAvailability> =
-        get(url("v1", "seats", train, from, to, railDate(date), travelClass, quota), ::parseSeats)
+    override suspend fun seats(train: String, from: String, to: String, date: LocalDate, travelClass: String, quota: String): RailResult<SeatAvailability> {
+        val no = trainNumberOrFailure(train) ?: return trainFailure(train)
+        return get(url("v1", "seats", no, from, to, railDate(date), travelClass, quota), ::parseSeats)
+    }
+
+    /** The 5-digit train number as RailKit needs it, or null when the spoken digits are not five. */
+    private fun trainNumberOrFailure(train: String): String? =
+        com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.trainNumber(train).getOrNull()
+
+    private fun trainFailure(train: String): RailResult<Nothing> = RailResult.Failed(
+        com.raju.aiassistant.domain.rail.VoiceNumberSanitizer.trainNumber(train).exceptionOrNull()?.message ?: "ट्रेन नंबर गलत है।",
+    )
 
     private companion object {
         const val HOST = "api.railkit.in"
@@ -92,6 +111,7 @@ class RailPnrSource(
 ) : PnrSource {
     override suspend fun status(pnr: String): PnrFetch {
         if (!rail.configured()) return fallback.status(pnr)
+        // Validated inside RailKitClient.pnr: a spoken number that is not 10 digits is said as an error.
         return when (val r = rail.pnr(pnr)) {
             is RailResult.Ok -> {
                 runCatching { onRailPnr(r.value) }

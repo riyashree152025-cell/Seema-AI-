@@ -152,7 +152,7 @@ class AppContainer(context: Context) {
         dir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
-    val providerFactory by lazy { AiProviderFactory(http) }
+    val providerFactory by lazy { AiProviderFactory(com.raju.aiassistant.data.ai.aiHttpClient(http)) }
     val pcSyncClient by lazy { com.raju.aiassistant.data.sync.PcSyncClient(http, secureKeyStore) }
     val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */

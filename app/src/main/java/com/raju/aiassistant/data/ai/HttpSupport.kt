@@ -51,6 +51,13 @@ class CleartextGuard : okhttp3.Interceptor {
 }
 
 /** Shared HTTPS client: sane timeouts, no logging of bodies or headers (keys stay out of logs). */
+/**
+ * The client for the AI providers: a connection that cannot be opened in 3 seconds is a failure, so the
+ * next AI in the fallback chain answers at once instead of after a long silence. Replies keep the normal
+ * read and call limits, so a long answer that is still arriving is never cut off.
+ */
+fun aiHttpClient(base: OkHttpClient): OkHttpClient = base.newBuilder().connectTimeout(3, TimeUnit.SECONDS).build()
+
 fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
     // Application interceptor: refused before DNS or a connection; network interceptor: redirects too.
     .addInterceptor(CleartextGuard())

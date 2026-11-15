@@ -2342,7 +2342,7 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun aBusyProviderThatStaysSilentIsReplacedAfter8SecondsWhenAnotherAiCanAnswer() = runTest {
+    fun aBusyProviderThatStaysSilentIsReplacedAfter4SecondsWhenAnotherAiCanAnswer() = runTest {
         keys[SecretId.GROQ_API_KEY] = "groq"
         val silentGemini = object : AiProvider {
             override val id = ProviderId.GEMINI
@@ -2362,7 +2362,7 @@ class AssistantEngineTest {
         advanceTimeBy(9_000)
         runCurrent()
         assertEquals("Groq ka jawab", e.transcript.value.last { it.role == ChatRole.ASSISTANT }.text)
-        assertTrue(e.transcript.value.any { it.text.contains("did not start answering within 8 seconds") })
+        assertTrue(e.transcript.value.any { it.text.contains("did not start answering within 4 seconds") })
         assertNull(e.lastError.value)
         settle()
     }
