@@ -47,6 +47,19 @@ class DayAccountTest {
     }
 
     @Test
+    fun yesterdayAsTheRecogniserWritesIt() {
+        listOf(
+            "कल का एसएमएस ट्रैक करके कितना डेबिट हुआ कितना क्रेडिट हुआ बोलने बोल रहा हूँ",
+            "कलका एसएमएस देखो कितना डेबिट हुआ",
+            "काल का मैसेज देखो कितना क्रेडिट हुआ",
+            "कॉल का SMS चेक करो कितना डेबिट हुआ",
+            "call ka sms check karo kitna debit hua",
+            "पिछले दिन का बैंक मैसेज देखो",
+        ).forEach { assertEquals(it, InboxPeriod.YESTERDAY, parseInboxQuestion(it, today)?.period) }
+        assertEquals(InboxPeriod.WEEK, parseInboxQuestion("बैंक के मैसेज देखो कितना डेबिट हुआ", today)?.period)
+    }
+
+    @Test
     fun daysAreReadAsDates() {
         assertEquals(LocalDate.of(2026, 11, 15), namedDay("15 तारीख का", today))
         assertEquals(LocalDate.of(2026, 11, 15), namedDay("15th ka", today))

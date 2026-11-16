@@ -98,12 +98,23 @@ fun parseInboxQuestion(text: String, today: LocalDate = LocalDate.now()): InboxQ
     }
     val period = when {
         Regex("\\b(aaj|today)\\b|${hindiWord("आज")}").containsMatchIn(l) -> InboxPeriod.TODAY
-        Regex("\\b(kal|yesterday)\\b|${hindiWord("कल")}").containsMatchIn(l) -> InboxPeriod.YESTERDAY
+        YESTERDAY_SAID.containsMatchIn(l) -> InboxPeriod.YESTERDAY
         Regex("mahin|month|महीन").containsMatchIn(l) -> InboxPeriod.MONTH
         else -> InboxPeriod.WEEK
     }
     return InboxQuery(period, kind)
 }
+
+/**
+ * "Yesterday" as the recogniser writes it: "कल", joined to the next word ("कलका", "कलके"), "काल का" /
+ * "कॉल का" / "call ka" (a short "kal" heard long, only when "का/के/की" follows), "kal", "बीते कल",
+ * "पिछले दिन", Bengali "গতকাল" / "কাল".
+ */
+private val YESTERDAY_SAID = Regex(
+    "\\b(kal|kall|yesterday)\\b|\\b(kaal|call)\\s+(ka|ke|ki)\\b|${hindiWord("कल")}|${hindiWord("कल्ह")}|" +
+        "(?<![\\p{L}\\p{M}])कल(?:का|के|की)(?![\\p{L}\\p{M}])|(?<![\\p{L}\\p{M}])(?:काल|कॉल|कोल)\\s+(?:का|के|की)(?![\\p{L}\\p{M}])|" +
+        "पिछले\\s+दिन|${hindiWord("গতকাল")}|${hindiWord("কাল")}|${hindiWord("কালকের")}",
+)
 
 /** A whole Devanagari word: Java's \\b does not see Hindi letters, and "कल" is inside "निकला". */
 private fun hindiWord(w: String) = "(?<![\\p{L}\\p{M}])$w(?![\\p{L}\\p{M}])"

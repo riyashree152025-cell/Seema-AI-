@@ -2008,7 +2008,9 @@ class AssistantEngine(
             onInterrupted(spoken, capture, utterance, depth, onSpeaker)
             return
         }
-        trace("spoke: ${result.engineLabel}, ${if (result.completed) "complete" else "NOT complete"}${result.error?.let { " — $it" } ?: ""}")
+        trace("spoke: ${result.engineLabel}, ${if (result.completed) "complete" else "NOT complete"}${result.error?.let { " — $it" } ?: ""}" +
+            // Cut off with no error: something stopped her — the log names what (code names only, no words).
+            if (!result.completed && result.error == null) " — stopped by ${speaker.lastStopBy ?: "?"}" else "")
         when {
             // Nothing (or not all) was heard: always tell the user, never fail silently.
             !result.completed && result.error != null -> note("🔇 Voice failed: ${result.error}")

@@ -69,7 +69,10 @@ class TtsManager(
     suspend fun preview(engine: com.raju.aiassistant.domain.model.TtsEngine, text: String): SpeakResult = speak(text, only = engine)
 
     private suspend fun speak(text: String, only: com.raju.aiassistant.domain.model.TtsEngine?): SpeakResult {
-        stop()
+        // A new utterance replaces the old one: that stop is noted as "new speech", not as an outside stop.
+        val by = "new speech from ${stopCaller(null) ?: "?"}"
+        halt()
+        lastStopBy = by
         chunksDone = 0
         var result = SpeakResult(false, "none")
         val job = scope.launch {
@@ -115,7 +118,21 @@ class TtsManager(
         return if (job.isCancelled) result.copy(completed = false) else result
     }
 
+    @Volatile override var lastStopBy: String? = null
+        private set
+
     override fun stop() {
+        lastStopBy = stopCaller(null)
+        halt()
+    }
+
+    /** The first caller outside this class, e.g. "AppContainer.stopEverything" (no words, only code names). */
+    private fun stopCaller(fallback: String?): String? =
+        fallback ?: Throwable().stackTrace.asSequence()
+            .firstOrNull { !it.className.startsWith(TtsManager::class.java.name) }
+            ?.let { "${it.className.substringAfterLast('.').substringBefore('$')}.${it.methodName}" }
+
+    private fun halt() {
         current?.cancel()
         current = null
         androidTts.stop()

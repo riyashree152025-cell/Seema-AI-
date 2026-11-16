@@ -22,6 +22,8 @@ interface Speaker {
     val mood: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> get() = NO_MOOD
     /** The mood for the next thing she says (the AI's [MOOD:…] tag); used once, then the default again. */
     fun setMood(mood: com.raju.aiassistant.domain.voice.VoiceMood?) {}
+    /** Which part of the app last stopped her voice (a class and method name, never words); for the voice log. */
+    val lastStopBy: String? get() = null
 }
 
 private val NO_MOOD: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> =
