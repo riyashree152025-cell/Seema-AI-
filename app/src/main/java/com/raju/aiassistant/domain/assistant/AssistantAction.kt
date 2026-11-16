@@ -42,6 +42,19 @@ sealed interface AssistantAction {
     data class PlayMusic(val query: String, val service: MusicService?) : AssistantAction {
         override val label get() = "Play music: $query"
     }
+    /**
+     * "Bangla mein baat karo" / "Hindi mein bolo" / "dono bhasha": the conversation language, kept until changed
+     * ([tag] "bn-IN", "hi-IN" or "auto"). Listening, the AI's answer and her voice all follow it.
+     */
+    data class SetLanguage(val tag: String) : AssistantAction {
+        override val label get() = "Language: $tag"
+    }
+
+    /** "So jao": she stops listening and waits for "Hey Seema" (or for the microphone button). */
+    data object GoToSleep : AssistantAction {
+        override val label get() = "Sleep"
+    }
+
     /** "Jo setting baki hai kholo": Seema's own check list of missing permissions, each with its fix button. */
     data object OpenSetupCheck : AssistantAction {
         override val label get() = "Open setup check"
@@ -421,6 +434,13 @@ private fun parseAction(json: String): AssistantAction? {
             AssistantAction.PlayMusic(q, service)
         }
         "open_setup", "setup_check", "permission_check" -> AssistantAction.OpenSetupCheck
+        "set_language", "language" -> when (str("language")?.lowercase()?.take(2)) {
+            "bn", "be", "ba" -> AssistantAction.SetLanguage("bn-IN")
+            "hi" -> AssistantAction.SetLanguage("hi-IN")
+            "au", "bo", "mi" -> AssistantAction.SetLanguage("auto")
+            else -> null
+        }
+        "sleep", "go_to_sleep" -> AssistantAction.GoToSleep
         "open_settings" -> {
             val page = SettingsPage.entries.firstOrNull { it.name.equals(str("page"), ignoreCase = true) } ?: SettingsPage.GENERAL
             AssistantAction.OpenSettings(page)

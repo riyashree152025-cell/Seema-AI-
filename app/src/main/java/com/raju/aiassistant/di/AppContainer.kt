@@ -452,6 +452,7 @@ class AppContainer(context: Context) {
             },
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
+            setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {

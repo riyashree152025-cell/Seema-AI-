@@ -47,7 +47,7 @@ fun spokenSymbols(text: String): String {
  * Splits long text into chunks of at most [maxChars], preferring sentence boundaries (incl. Hindi "।").
  * The first chunk is kept to one short sentence group ([firstMaxChars]) so speech starts quickly.
  */
-fun chunkForSpeech(text: String, maxChars: Int = 400, firstMaxChars: Int = 160): List<String> {
+fun chunkForSpeech(text: String, maxChars: Int = 400, firstMaxChars: Int = FIRST_SPEECH_CHUNK): List<String> {
     val sentences = Regex("""(?<=[.!?।\n])\s+""").split(text).map { it.trim() }.filter { it.isNotEmpty() }
     val chunks = mutableListOf<String>()
     val current = StringBuilder()
@@ -59,7 +59,10 @@ fun chunkForSpeech(text: String, maxChars: Int = 400, firstMaxChars: Int = 160):
         var sentence = s
         while (sentence.length > limit()) { // very long sentence: hard split on a space
             flush()
-            val cut = sentence.lastIndexOf(' ', limit()).takeIf { it > 0 } ?: limit()
+            // The first piece ends at a natural pause (comma, "…", dash) when there is one, so the voice
+            // starts after a short phrase and still sounds whole; otherwise at a space.
+            val pause = if (chunks.isEmpty()) Regex("[,，、…;—–]").findAll(sentence.take(limit())).lastOrNull()?.range?.last?.plus(1)?.takeIf { it >= MIN_FIRST_PIECE } else null
+            val cut = pause ?: sentence.lastIndexOf(' ', limit()).takeIf { it > 0 } ?: limit()
             chunks += sentence.substring(0, cut).trim()
             sentence = sentence.substring(cut).trim()
         }
@@ -90,3 +93,12 @@ private val SECRET_PATTERNS = listOf(
 
 /** True if text looks like it contains a secret that must never be stored as a memory. */
 fun looksSensitive(text: String): Boolean = SECRET_PATTERNS.any { it.containsMatchIn(text) }
+
+/**
+ * Characters in the first spoken piece. A cloud voice (Sarvam) needs 3–5 s for 160 characters before the
+ * first sound; a short first phrase starts in about a second and the rest is made while it plays.
+ */
+const val FIRST_SPEECH_CHUNK = 70
+
+/** A first piece shorter than this is not cut at a comma (it would sound clipped). */
+private const val MIN_FIRST_PIECE = 15

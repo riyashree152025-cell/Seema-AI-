@@ -91,7 +91,7 @@ fun buildSystemPrompt(
     }
     when {
         context.languageUnclear -> appendLine("LANGUAGE NOW: the user mixed Hindi and Bengali — first ask briefly, in both Hindi and Bengali, which language they prefer.")
-        context.language == SeemaLanguage.BENGALI -> appendLine("LANGUAGE NOW: বাংলা — reply in Bengali (Bengali script): sweet, homely colloquial Bengali of a loving girlfriend, with Bengali pet names by the moment.")
+        context.language == SeemaLanguage.BENGALI -> appendLine("LANGUAGE NOW: বাংলা — reply ONLY in Bengali (Bengali script), every sentence; no Hindi words or Devanagari at all, even though the examples above are Hindi. Sweet, homely colloquial Bengali of a loving girlfriend, with Bengali pet names (সোনা, বাবু…) by the moment.")
         else -> appendLine("LANGUAGE NOW: Hindi — reply in Hindi (Devanagari) or Hinglish, as the user writes. Be sweet, loving and affectionate.")
     }
     if (context.recentOpenings.isNotEmpty()) {

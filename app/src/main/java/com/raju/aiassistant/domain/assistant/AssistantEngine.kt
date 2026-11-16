@@ -233,6 +233,8 @@ class AssistantEngine(
     private val business: BusinessStore = NoBusinessStore,
     /** Assistant switched OFF: give every microphone lease back at the hardware level (MicHub.releaseAll). */
     private val releaseMic: () -> Unit = {},
+    /** Saves the conversation language chosen by voice ("bn-IN", "hi-IN" or "auto"), so it stays after a restart. */
+    private val setSpeechLanguage: suspend (String) -> Unit = {},
     /** A yes / no for the message question that is waiting ("padh ke sunau?"); true when there was one. */
     private val answerAnnouncement: (Boolean) -> Boolean = { false },
     /** Switched ON again: the microphone may be used again (MicHub.unmute). */
@@ -1631,6 +1633,14 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 checkLastCall(action, speak)
             }
+            is AssistantAction.SetLanguage -> {
+                trace("offline command: language ${action.tag}")
+                switchLanguage(action, speak)
+            }
+            AssistantAction.GoToSleep -> {
+                trace("offline command: sleep")
+                sleepNow(action, speak)
+            }
             AssistantAction.OpenSetupCheck -> {
                 trace("offline command: setup check")
                 val outcome = tools.openSetupCheck()
@@ -2351,6 +2361,8 @@ class AssistantEngine(
             is AssistantAction.OpenApp -> report(action, tools.openApp(action.name))
             is AssistantAction.OpenSettings -> report(action, tools.openSettings(action.page))
             AssistantAction.OpenSetupCheck -> report(action, tools.openSetupCheck())
+            is AssistantAction.SetLanguage -> switchLanguage(action, speak)
+            AssistantAction.GoToSleep -> sleepNow(action, speak)
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)
@@ -4028,6 +4040,33 @@ class AssistantEngine(
             is ToolOutcome.Failed -> report(action, ActionStatus.FAILED, outcome.message)
             is ToolOutcome.NeedsPermission -> report(action, ActionStatus.FAILED, outcome.reason)
         }
+    }
+
+    /**
+     * "Bangla mein baat karo": the language is kept (saved in Settings), so listening switches to Bengali,
+     * the AI is told to answer only in Bengali and her voice speaks Bengali — no more Hindi mixed in because
+     * a Bengali sentence was written by a Hindi recogniser. "Hindi mein bolo" / "dono bhasha" switch back.
+     */
+    private suspend fun switchLanguage(action: AssistantAction.SetLanguage, speak: Boolean) {
+        runCatching { setSpeechLanguage(action.tag) }
+        val lang = SeemaLanguage.fromTag(action.tag)
+        if (lang != null) conversationLanguage.value = lang
+        val msg = when (lang) {
+            SeemaLanguage.BENGALI -> "ঠিক আছে, এখন থেকে বাংলায় কথা বলব। হিন্দিতে ফিরতে বলো \"হিন্দিতে কথা বলো\"।"
+            SeemaLanguage.HINDI -> "ठीक है, अब से हिंदी में बात करूँगी।"
+            else -> "ठीक है, आप जिस भाषा में बोलेंगे, उसी में जवाब दूँगी। / ঠিক আছে, যে ভাষায় বলবে সেই ভাষায় উত্তর দেব।"
+        }
+        report(action, ActionStatus.SUCCESS, msg)
+        if (speak) say(msg)
+    }
+
+    /** "So jao": a short goodnight, then she waits for "Hey Seema" (or, without the wake word, simply stops listening). */
+    private suspend fun sleepNow(action: AssistantAction, speak: Boolean) {
+        val msg = if (canSleep()) phrase(lang(), "ठीक है, सो रही हूँ। \"हे सीमा\" बोलकर जगा लेना।", "ঠিক আছে, ঘুমোচ্ছি। \"হে সীমা\" বলে জাগিয়ে নিও।")
+            else phrase(lang(), "ठीक है, चुप हो रही हूँ। बात करनी हो तो माइक दबाइए।", "ঠিক আছে, চুপ করছি। কথা বলতে মাইক চাপুন।")
+        report(action, ActionStatus.SUCCESS, msg)
+        if (speak) say(msg)
+        if (canSleep()) goToSleep() else endSession()
     }
 
     /** Digits of a PNR heard so far, and until when more pieces are taken (see [trackPnr]). */

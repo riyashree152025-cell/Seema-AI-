@@ -22,6 +22,8 @@ object LocalCommands {
     fun parse(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
+        languageSwitch(text)?.let { return it }
+        if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep
         pnrTrack(text)?.let { return it }
         sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }
@@ -334,6 +336,29 @@ object LocalCommands {
     // "WhatsApp mein Rizwan Travels ko message karo" / "Rizwan ko WhatsApp karo": who, but no words yet.
     private val WA_NO_TEXT = Regex(
         "^(?:whatsapp\\s+(?:me|mein|में|मे|pe|par|पर)\\s+)?(.{2,40}?)\\s+(?:ko|को)\\s+(?:whatsapp\\s+)?(?:pe\\s+|par\\s+|पर\\s+)?(?:(?:ek\\s+|एक\\s+)?(?:message|msg|मैसेज|मेसेज|संदेश)\\s+)?(?:karo|kar do|bhejo|bhej do|करो|कर दो|भेजो|भेज दो)$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private const val SPEAK_VERB = "(?:baat|bat|bol|bolo|bolna|kaho|jawab|reply|speak|talk|बात|बोल|बोलो|बोलना|कहो|जवाब|কথা|বলো|বল|বলবে|উত্তর)"
+
+    /** "Bangla mein baat karo", "बंगाली में बोलो", "বাংলায় কথা বলো" / "Hindi mein bolo" / "dono bhasha mein". */
+    private val TO_BENGALI = Regex("(?:bangla|bengali|bangali|bengla|बांग्ला|बंगला|बंगाली|बांगला|বাংলা|বাংলায়|বাঙালি)\\S*\\s+(?:(?:me|mein|mai|में|তে|ভাষায়)\\s+)?(?:.{0,12}?)$SPEAK_VERB", RegexOption.IGNORE_CASE)
+    private val TO_HINDI = Regex("(?:hindi|हिंदी|हिन्दी|হিন্দি|হিন্দিতে)\\S*\\s+(?:(?:me|mein|mai|में|তে|ভাষায়)\\s+)?(?:.{0,12}?)$SPEAK_VERB", RegexOption.IGNORE_CASE)
+    private val TO_AUTO = Regex("(?:dono|donon|दोनों|দুটো|দুই)\\s+(?:bhasha|bhashao|भाषा|भाषाओं|ভাষা|ভাষায়)", RegexOption.IGNORE_CASE)
+
+    private fun languageSwitch(text: String): AssistantAction? = when {
+        text.length > 80 -> null
+        TO_BENGALI.containsMatchIn(text) -> AssistantAction.SetLanguage("bn-IN")
+        TO_HINDI.containsMatchIn(text) -> AssistantAction.SetLanguage("hi-IN")
+        TO_AUTO.containsMatchIn(text) -> AssistantAction.SetLanguage("auto")
+        else -> null
+    }
+
+    /** "So jao", "ab so jao", "सो जाओ", "ঘুমিয়ে পড়ো", "ঘুমাও", "go to sleep". */
+    private val SLEEP = Regex(
+        "^(?:(?:ab|achha|acha|thik hai|ok|chalo|अब|अच्छा|ठीक है|चलो|এবার|আচ্ছা|ঠিক আছে)[,\\s]+)?" +
+            "(?:so jao|so ja|soja|sojao|so jaiye|so jaao|सो जाओ|सो जा|सो जाइए|सो जाइये|ঘুমিয়ে পড়ো|ঘুমিয়ে পড়|ঘুমাও|ঘুমাও এবার|ঘুমোও|go to sleep|sleep mode)" +
+            "(?:\\s+(?:ab|abhi|अब|अभी|এবার|এখন))?$",
         RegexOption.IGNORE_CASE,
     )
 
