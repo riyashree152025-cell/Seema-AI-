@@ -2555,6 +2555,14 @@ fun AutomationScreen(
                     }
                     Switch(checked = s.announceCalls, onCheckedChange = viewModel::setAnnounceCalls)
                 }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Announce money received", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
+                        Text("बैंक SMS / PhonePe / GPay में पैसा आते ही बोले (Notification access चाहिए)", color = Color.White.copy(alpha = 0.65f), fontSize = 14.5.sp)
+                    }
+                    Switch(checked = s.announceMoneyIn, onCheckedChange = viewModel::setAnnounceMoneyIn)
+                }
             }
         }
     }

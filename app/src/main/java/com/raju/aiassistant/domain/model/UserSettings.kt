@@ -161,6 +161,8 @@ data class UserSettings(
     val speakCallerNumber: Boolean = true,
     /** Best effort: announce WhatsApp/Telegram calls from their call notifications. */
     val announceAppCalls: Boolean = true,
+    /** "Raju, aapke khate mein abhi 500 rupaye aaye hain": a bank SMS or UPI notification of money coming in is said aloud. */
+    val announceMoneyIn: Boolean = true,
     val directCalling: Boolean = false,
     val musicService: MusicService = MusicService.YOUTUBE_MUSIC,
     val memoryEnabled: Boolean = true,

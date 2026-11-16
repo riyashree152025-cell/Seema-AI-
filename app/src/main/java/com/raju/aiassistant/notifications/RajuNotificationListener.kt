@@ -19,6 +19,11 @@ import kotlinx.coroutines.launch
  */
 class RajuNotificationListener : NotificationListenerService() {
 
+    private companion object {
+        /** One payment = one line, however many apps post it. */
+        val moneyDeduper = com.raju.aiassistant.domain.sms.MoneyAlertDeduper()
+    }
+
     private val container get() = (applicationContext as? RajuApp)?.container
 
     override fun onListenerConnected() {
@@ -32,6 +37,7 @@ class RajuNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val c = container ?: return
         val settings = c.currentSettings.value
+        announceMoneyIn(c, sbn)
         if (!settings.announcementsActive) return
         if (sbn.packageName !in settings.announceApps) return
         val n = sbn.notification ?: return
@@ -67,6 +73,33 @@ class RajuNotificationListener : NotificationListenerService() {
             if (settings.announceAppCalls) c.appScope.launch { c.speaker.speak(voipCallText(item, settings.userName)) }
         } else {
             c.announcements.onMessage(item)
+        }
+    }
+
+    /**
+     * Money came in (a bank SMS, PhonePe, GPay…): "राजू, आपके खाते में अभी 500 रुपये आए हैं". Independent of the
+     * message announcements; never while Seema is OFF, in safety mode or during a phone call. Said after
+     * whatever she is saying now, once per payment. Nothing is logged.
+     */
+    private fun announceMoneyIn(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
+        val s = c.currentSettings.value
+        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode) return
+        if (!com.raju.aiassistant.domain.sms.isMoneyApp(sbn.packageName)) return
+        val n = sbn.notification ?: return
+        if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
+        val extras = n.extras ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()
+        val money = com.raju.aiassistant.domain.sms.moneyCreditIn(title, text) ?: return
+        if (!moneyDeduper.shouldSay(money.paise, System.currentTimeMillis())) return
+        val audio = getSystemService(android.media.AudioManager::class.java)
+        if (audio?.mode == android.media.AudioManager.MODE_IN_CALL || audio?.mode == android.media.AudioManager.MODE_IN_COMMUNICATION) return
+        val language = com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(s.speechLanguage) ?: c.conversationLanguage.value
+        val line = com.raju.aiassistant.domain.sms.spokenMoneyIn(money, s.userName, language)
+        c.appScope.launch {
+            // After her current sentence, not over it.
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { while (c.speaker.speaking.value) kotlinx.coroutines.delay(300) }
+            c.speaker.speak(line)
         }
     }
 
