@@ -60,7 +60,7 @@ class InboxCheckTest {
         val q = InboxQuery(InboxPeriod.TODAY, InboxKind.ALL)
         val said = spokenInboxAnswer(q, summarizeInbox(inbox, q, today, zone), zone)
         assertTrue(said, said.startsWith("आज कुल 4 SMS आए।"))
-        assertTrue(said, said.contains("जमा (credit): 1 संदेश, कुल ₹1,200") && said.contains("कटे (debit): 1 संदेश, कुल ₹500"))
+        assertTrue(said, said.contains("जमा (credit): 1 बार, कुल ₹1,200 — ₹1,200 (VM-HDFCBK)") && said.contains("कटे (debit): 1 बार, कुल ₹500 — ₹500 (VM-HDFCBK)"))
         val none = InboxQuery(InboxPeriod.YESTERDAY, InboxKind.DEBIT)
         assertEquals("कल पैसे कटने (debit) का कोई बैंक संदेश नहीं मिला। कुल 1 SMS देखे।", spokenInboxAnswer(none, summarizeInbox(inbox, none, today, zone), zone))
     }

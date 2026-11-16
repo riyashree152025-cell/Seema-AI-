@@ -353,6 +353,15 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun theAisOwnMemoryIdeaInAChatIsNeitherSavedNorAsked() = runTest {
+        val e = engine(AiResult.Success("""Kesariya achha gaana hai! <action>{"type":"remember","text":"Favourite song is Kesariya"}</action>"""))
+        e.submit("aaj Kesariya suna, bahut achha laga")
+        settle()
+        assertNull(e.pending.value) // no "ये याद रख लूँ?" after a chat answer
+        assertTrue(store.mems.isEmpty())
+    }
+
+    @Test
     fun webSearchSummaryIncludesSources() = runTest {
         val e = engine(
             AiResult.Success("""Dekhti hoon. <action>{"type":"search_web","query":"Delhi weather"}</action>"""),

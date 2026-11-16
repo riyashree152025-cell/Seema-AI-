@@ -39,8 +39,11 @@ object LocalCommands {
                 com.raju.aiassistant.domain.vision.LiveCameraCommand.Stop -> AssistantAction.LiveCamera(on = false)
             }
         }
+        // The day's account first: "15 तारीख का कितना डेबिट कितना क्रेडिट" names no amount to look for.
+        com.raju.aiassistant.domain.sms.parseInboxQuestion(withoutLeadingFillers(text), java.time.LocalDate.now())
+            ?.takeIf { it.date != null }?.let { return AssistantAction.InboxCheck(it.period, it.kind, it.date) }
         com.raju.aiassistant.domain.sms.parsePaymentQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.PaymentCheck(it.amountPaise) }
-        com.raju.aiassistant.domain.sms.parseInboxQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.InboxCheck(it.period, it.kind) }
+        com.raju.aiassistant.domain.sms.parseInboxQuestion(withoutLeadingFillers(text), java.time.LocalDate.now())?.let { return AssistantAction.InboxCheck(it.period, it.kind, it.date) }
         if (com.raju.aiassistant.domain.memory.isHeadsUpQuestion(withoutLeadingFillers(text))) return AssistantAction.HeadsUp
         com.raju.aiassistant.domain.memory.parsePersonQuestion(withoutLeadingFillers(text))?.let { return AssistantAction.PersonBrief(it) }
         // "Hey Seema, Rahul se 500 mile": the name and polite words in front are not part of the client's name.

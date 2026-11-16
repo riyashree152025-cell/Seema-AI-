@@ -29,3 +29,11 @@ fun relevantMemories(memories: List<String>, query: String, limit: Int = 12): Li
     val relevant = scored.filter { it.third > 0 }.sortedWith(compareByDescending<Triple<Int, String, Int>> { it.third }.thenBy { it.first }).map { it.second }
     return (relevant + memories).distinct().take(limit)
 }
+
+/** The user's own words ask to keep something: "yaad rakhna", "याद रख लो", "note kar lo", "মনে রেখো", "remember". */
+fun asksToRemember(text: String): Boolean = REMEMBER_ASK.containsMatchIn(text)
+
+private val REMEMBER_ASK = Regex(
+    "yaad\\s*rakh|yad\\s*rakh|याद\\s*रख|याद\\s*रखना|note\\s*kar|नोट\\s*कर|remember|মনে\\s*রাখ|মনে\\s*রেখ|save\\s*kar|सेव\\s*कर|likh\\s*lo|लिख\\s*लो",
+    RegexOption.IGNORE_CASE,
+)

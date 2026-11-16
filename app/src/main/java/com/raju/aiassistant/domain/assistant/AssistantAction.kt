@@ -238,7 +238,12 @@ sealed interface AssistantAction {
         override val label get() = "Payment check: ₹${com.raju.aiassistant.domain.sms.rupees(amountPaise)}"
     }
     /** "Inbox check karo, credit wale kitne message aaye": the phone's SMS counted, with bank totals. */
-    data class InboxCheck(val period: com.raju.aiassistant.domain.sms.InboxPeriod, val kind: com.raju.aiassistant.domain.sms.InboxKind) : AssistantAction {
+    data class InboxCheck(
+        val period: com.raju.aiassistant.domain.sms.InboxPeriod,
+        val kind: com.raju.aiassistant.domain.sms.InboxKind,
+        /** The one day asked for ("15 तारीख का"), with period DAY. */
+        val date: java.time.LocalDate? = null,
+    ) : AssistantAction {
         override val label get() = "SMS inbox"
     }
     /** "Live camera chalu karo" / "camera band karo": questions answered from a fresh photo for a while. */

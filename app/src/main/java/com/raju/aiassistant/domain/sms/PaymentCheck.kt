@@ -43,10 +43,19 @@ private val AMOUNT_IN_QUESTION = Regex("(?:rs\\.?|inr|₹|रु\\.?|रुप�
 fun parsePaymentQuestion(text: String): PaymentQuery? {
     val t = asciiDigits(text).trim()
     if (t.length > 120 || !ASKS_REFUND.containsMatchIn(t)) return null
-    val amounts = AMOUNT_IN_QUESTION.findAll(t).mapNotNull { toPaise(it.groupValues[1]) }.filter { it >= 100 }.toList()
+    // "15 तारीख का कितना डेबिट, कितना क्रेडिट हुआ" asks for a day's account, not for one amount: both sides
+    // named, or "kitna kitna", is the inbox summary.
+    if (BOTH_SIDES.containsMatchIn(t) && SOME_DEBIT.containsMatchIn(t)) return null
+    if (HOW_MUCH_EACH.containsMatchIn(t)) return null
+    // A date is not an amount: "15 तारीख का 3750 रिफंड" has one amount, 3750.
+    val amounts = AMOUNT_IN_QUESTION.findAll(withoutNamedDates(t)).mapNotNull { toPaise(it.groupValues[1]) }.filter { it >= 100 }.toList()
     // One amount only: "10 baje 3750 ka refund" has two numbers and is not clear enough.
     return amounts.singleOrNull()?.let { PaymentQuery(it) }
 }
+
+private val BOTH_SIDES = Regex("credit|क्रेडिट|jama|जमा|জমা", RegexOption.IGNORE_CASE)
+private val SOME_DEBIT = Regex("debit|डेबिट|kata|kate|कटा|कटे|kharch|खर्च|ডেবিট", RegexOption.IGNORE_CASE)
+private val HOW_MUCH_EACH = Regex("kitna\\s+kitna|kitne\\s+kitne|कितना\\s+कितना|कितने\\s+कितने|কত\\s+কত", RegexOption.IGNORE_CASE)
 
 private fun toPaise(raw: String): Long? {
     val clean = raw.replace(",", "")

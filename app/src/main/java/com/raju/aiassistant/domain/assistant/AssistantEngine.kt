@@ -1161,8 +1161,11 @@ class AssistantEngine(
         // A phone task in other words than the fixed rules know: a short request (only the list of what
         // the phone can do) decides it; the phone then does it. Chat goes on to the full conversation.
         if (s.smartUnderstanding && IntentRouter.looksLikeTask(text)) {
+            // The router asks one short question: the fastest AI answers it (Groq, ~0.4 s), even when the
+            // reply itself goes to Gemini for careful thinking — on Gemini the router alone took 3 s.
+            val (routerProvider, routerModel) = fastRouter() ?: (provider to model)
             val routed = withTimeoutOrNull(ROUTER_TIMEOUT_MS) {
-                runCatching { provider.chat(model, IntentRouter.system(today()), listOf(Turn(TurnRole.USER, text))) }.getOrNull()
+                runCatching { routerProvider.chat(routerModel, IntentRouter.system(today()), listOf(Turn(TurnRole.USER, text))) }.getOrNull()
             }
             val action = (routed as? AiResult.Success)?.value?.let { IntentRouter.toAction(it) }
             trace("intent router: ${action?.label ?: "chat / not a task"}")
@@ -1368,6 +1371,7 @@ class AssistantEngine(
         var hadActions = false
         for (action in parsed.actions) {
             hadActions = true
+            trace("ai action: ${action::class.simpleName}")
             val activeProvider = if (answeredBy == providerId) provider else keyFor(answeredBy)?.let { providerFor(answeredBy, it) } ?: provider
             execute(action, activeProvider, answeredModel, system, speak)
         }
@@ -1457,6 +1461,16 @@ class AssistantEngine(
     }
 
     /** The chosen model, or the best one the provider lists for this key (fetched once per key, not per request). */
+    /** Groq for the intent router when its key is saved and it is not resting after a limit; null otherwise. */
+    private suspend fun fastRouter(): Pair<AiProvider, String>? {
+        val id = ProviderId.GROQ
+        if ((providerCooldown[id] ?: 0L) > clock()) return null
+        val key = keyFor(id)?.takeIf { it.isNotBlank() } ?: return null
+        val p = providerFor(id, key)
+        val m = (withTimeoutOrNull(1_500L) { resolveModel(id, key, p) } as? AiResult.Success)?.value ?: return null
+        return p to m
+    }
+
     private suspend fun resolveModel(id: ProviderId, key: String, provider: AiProvider): AiResult<String> {
         settings.value.modelFor(id)?.takeIf { (id to it) !in goneModels }?.let { return AiResult.Success(it) }
         val cacheKey = id to key.hashCode()
@@ -2573,11 +2587,11 @@ class AssistantEngine(
     private suspend fun inboxCheck(action: AssistantAction.InboxCheck, speak: Boolean) {
         val z = zone()
         val today = today()
-        val since = com.raju.aiassistant.domain.sms.inboxSince(action.period, today, z)
+        val since = com.raju.aiassistant.domain.sms.inboxSince(action.period, today, z, action.date)
         val inbox = readSmsInbox(action, since) ?: return
         val text = when (inbox) {
             is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
-                val q = com.raju.aiassistant.domain.sms.InboxQuery(action.period, action.kind)
+                val q = com.raju.aiassistant.domain.sms.InboxQuery(action.period, action.kind, action.date)
                 trace("inbox check: ${inbox.list.size} SMS scanned")
                 com.raju.aiassistant.domain.sms.spokenInboxAnswer(q, com.raju.aiassistant.domain.sms.summarizeInbox(inbox.list, q, today, z), z)
             }
@@ -3964,7 +3978,14 @@ class AssistantEngine(
             else -> when (val check = validateMemory(action.text, runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()))) {
                 is MemoryCheck.Rejected -> report(action, ActionStatus.BLOCKED, check.reason)
                 is MemoryCheck.Ok -> {
-                    // Asked out loud in a voice turn (an unseen on-screen question was answered "no" by the next sentence).
+                    // The AI's own idea in a chat (nobody said "yaad rakhna"): nothing is saved and nothing is
+                    // asked — a "ये याद रख लूँ?" after chat answers cost ~5 s and a yes/no each time.
+                    if (!asksToRemember(lastUserText.orEmpty())) {
+                        trace("remember: skipped (not asked)")
+                        report(action, ActionStatus.CANCELLED, "Not saved: the user did not ask to remember this.")
+                        return
+                    }
+                    // Asked: confirmed out loud in a voice turn, then saved.
                     val ok = confirmScreenAction("Remember this?", phrase(lang(), "ये याद रख लूँ: \"${check.text}\"?", "এটা মনে রাখব: \"${check.text}\"?"), speak)
                     if (!ok) report(action, ActionStatus.CANCELLED, "Not saved.")
                     else {
