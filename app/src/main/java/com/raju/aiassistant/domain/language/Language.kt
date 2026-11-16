@@ -112,10 +112,34 @@ fun isLikelyEnglish(text: String): Boolean {
 fun nextConversationLanguage(setting: String, current: SeemaLanguage, text: String): SeemaLanguage =
     SeemaLanguage.fromTag(setting) ?: when (detectScript(text)) {
         Detection.BENGALI -> SeemaLanguage.BENGALI
-        Detection.HINDI -> SeemaLanguage.HINDI
+        // Bengali spoken to a Hindi recogniser (Deepgram) comes back in Hindi letters: "आमि भालो आछि".
+        Detection.HINDI -> if (isBengaliInDevanagari(text)) SeemaLanguage.BENGALI else SeemaLanguage.HINDI
         Detection.LATIN -> detectLatinLanguage(text) ?: current
         else -> current
     }
+
+/**
+ * Bengali words written in Hindi letters, as a Hindi-only recogniser writes Bengali speech: "तुमि केमोन आछो",
+ * "आमि एखन बाड़ी जाबो". Two Bengali-only words, and more than the Hindi-only ones ("है", "नहीं", "क्या").
+ */
+fun isBengaliInDevanagari(text: String): Boolean {
+    val words = text.split(Regex("[^\\p{L}\\p{M}]+")).filter { it.isNotBlank() }
+    val bengali = words.count { it in BENGALI_WORDS_IN_DEVANAGARI }
+    val hindi = words.count { it in HINDI_ONLY_WORDS }
+    return bengali >= 2 && bengali > hindi
+}
+
+private val BENGALI_WORDS_IN_DEVANAGARI = setOf(
+    "आमि", "आमार", "आमाके", "आमरा", "तुमि", "तोमार", "तोमाके", "तोमरा", "आपनि", "आपनार", 
+    "कोरो", "कोरछो", "कोरछि", "कोरबो", "कोरबे", "कोरेछि", "कोरेछो", "कोरे", "कोरते", "भालो", "आछे", "आछो", "आछि",
+    "नेई", "होबे", "होये", "होलो", "कोथाय", "केमोन", "केनो", "एखन", "एखोन", "एकटु", "दाओ", "जाबो", 
+    "खाबो", "खेये", "पारबो", "पारि", "पारो", "बोलछि", "बोलछो", "बोलबे", "कोथा", "शुनो", "शोनो", "बुझते", "बुझलाम",
+    "किछु", "सोब", "शोब", "ताहोले", "आजके", "कालके", "एबार", "बाड़ी", "बाड़ि", 
+)
+private val HINDI_ONLY_WORDS = setOf(
+    "है", "हैं", "हूँ", "हूं", "था", "थी", "नहीं", "क्या", "करो", "करना", "रहा", "रही", "रहे", "मुझे", "मेरा", "मेरी",
+    "तुम्हारा", "आप", "का", "की", "के", "को", "में", "से", "और", "लेकिन", "क्यों", "कैसे", "बताओ",
+)
 
 /** Extra languages the speech recogniser may accept in the same sentence. */
 fun additionalSpeechLanguages(primaryTag: String): Array<String> = when (SeemaLanguage.fromTag(primaryTag)) {

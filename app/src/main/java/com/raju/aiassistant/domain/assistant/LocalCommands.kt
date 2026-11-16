@@ -357,7 +357,7 @@ object LocalCommands {
     private val TO_AUTO = Regex("(?:dono|donon|दोनों|দুটো|দুই)\\s+(?:bhasha|bhashao|भाषा|भाषाओं|ভাষা|ভাষায়)", RegexOption.IGNORE_CASE)
 
     private fun languageSwitch(text: String): AssistantAction? = when {
-        text.length > 80 -> null
+        text.length > 240 -> null
         TO_BENGALI.containsMatchIn(text) -> AssistantAction.SetLanguage("bn-IN")
         TO_HINDI.containsMatchIn(text) -> AssistantAction.SetLanguage("hi-IN")
         TO_AUTO.containsMatchIn(text) -> AssistantAction.SetLanguage("auto")
