@@ -1090,14 +1090,14 @@ class AssistantEngine(
             }
             if (action is AssistantAction.ReadScreen && isOnline()) {
                 // "Screen padho": the screen goes to the AI in one request (no routing request first).
-                trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, one AI request)")
+                trace("fast route: ${action::class.simpleName} (matched in ${clock() - turnStartedAt} ms, one AI request)")
                 screenQuestion = action
                 return@let
             }
             // Fast route: a plain phone command is done on the phone, with no AI request at all.
-            trace("fast route: ${action.label} (matched in ${clock() - turnStartedAt} ms, no AI)")
+            trace("fast route: ${action::class.simpleName} (matched in ${clock() - turnStartedAt} ms, no AI)")
             if (runLocalCommand(action, speak = fromVoice || s.autoSpeakReplies)) return
-            trace("fast route declined: ${action.label}; asking the AI")
+            trace("fast route declined: ${action::class.simpleName}; asking the AI")
         }
         // "Torch on karo aur volume 50 karo": several phone commands in one sentence, done one by one on
         // the phone. Only when every part is such a command; anything else is one question for the AI.
@@ -1168,7 +1168,7 @@ class AssistantEngine(
                 runCatching { routerProvider.chat(routerModel, IntentRouter.system(today()), listOf(Turn(TurnRole.USER, text))) }.getOrNull()
             }
             val action = (routed as? AiResult.Success)?.value?.let { IntentRouter.toAction(it) }
-            trace("intent router: ${action?.label ?: "chat / not a task"}")
+            trace("intent router: ${action?.let { it::class.simpleName } ?: "chat / not a task"}")
             if (action != null) {
                 val speakIt = fromVoice || s.autoSpeakReplies
                 if (action is AssistantAction.BookingNoteWith) {
@@ -2833,6 +2833,13 @@ class AssistantEngine(
             }
             is AssistantAction.ReminderAdd -> {
                 trace("offline command: reminder")
+                // Already set (by a command a moment ago, and now again by the AI's chat answer): not a second alarm.
+                com.raju.aiassistant.domain.reminder.duplicateReminder(runCatching { tools.listReminders() }.getOrDefault(emptyList()), action.atMillis, action.text)?.let {
+                    trace("reminder: already set, not added again")
+                    report(action, ActionStatus.SUCCESS, "Already set.")
+                    if (speak && !replySpoken) say(phrase(lang(), "ये reminder पहले से लगा है।", "এই reminder আগেই দেওয়া আছে।"))
+                    return
+                }
                 val outcome = tools.addReminder(action.atMillis, action.text)
                 val now = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(clock()), zone())
                 val at = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(action.atMillis), zone())

@@ -95,3 +95,27 @@ fun spokenReminderTime(at: LocalDateTime, now: LocalDateTime): String {
     val h12 = (at.hour % 12).let { if (it == 0) 12 else it }
     return "$day $part $h12:${at.minute.toString().padStart(2, '0')} बजे"
 }
+
+/**
+ * A reminder already set for about the same time and the same thing: "20 तारीख को बुकिंग करनी है" set by a
+ * command, then set again by the AI in the next chat answer, is one reminder, not two alarms.
+ */
+fun duplicateReminder(existing: List<Reminder>, atMillis: Long, text: String): Reminder? {
+    val words = reminderWords(text)
+    return existing.firstOrNull { r ->
+        kotlin.math.abs(r.atMillis - atMillis) <= SAME_REMINDER_WINDOW_MS && run {
+            val other = reminderWords(r.text)
+            if (words.isEmpty() || other.isEmpty()) true
+            else words.intersect(other).size * 2 >= minOf(words.size, other.size)
+        }
+    }
+}
+
+private fun reminderWords(text: String): Set<String> =
+    com.raju.aiassistant.domain.tools.Romanize.phonetic(text).split(' ')
+        .filter { it.length >= 3 && it !in REMINDER_FILLERS }.toSet()
+
+private val REMINDER_FILLERS = setOf("hai", "karni", "karna", "kar", "dena", "yad", "dila", "dilana", "mujhe", "muje", "ki", "ko", "ka", "ke", "remind", "reminder", "tarik", "tarikh")
+
+/** Two reminders within this time of each other can be the same one. */
+const val SAME_REMINDER_WINDOW_MS = 2 * 3_600_000L

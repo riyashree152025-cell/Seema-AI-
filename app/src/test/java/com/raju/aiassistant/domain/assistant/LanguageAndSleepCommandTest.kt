@@ -12,6 +12,14 @@ class LanguageAndSleepCommandTest {
     }
 
     @Test
+    fun bengaliSaidInBengaliAndWrittenByAHindiRecogniserStillSwitches() {
+        // Deepgram (Hindi) writes Bengali speech in Hindi letters.
+        listOf("बांग्लाय कथा बोलो", "बांग्लाय कोथा बोलो", "बंगाली में बात करो ना", "bangla te kotha bolo", "बंगला में बोलो")
+            .forEach { assertEquals(it, AssistantAction.SetLanguage("bn-IN"), LocalCommands.parse(it)) }
+        assertNotEquals(AssistantAction.SetLanguage("bn-IN"), LocalCommands.parse("बंगाल की खाड़ी पर बात करो"))
+    }
+
+    @Test
     fun hindiAndBothLanguagesSwitchBack() {
         assertEquals(AssistantAction.SetLanguage("hi-IN"), LocalCommands.parse("हिंदी में बात करो"))
         assertEquals(AssistantAction.SetLanguage("hi-IN"), LocalCommands.parse("হিন্দিতে কথা বলো"))

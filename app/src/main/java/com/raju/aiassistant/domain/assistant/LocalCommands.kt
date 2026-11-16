@@ -342,10 +342,17 @@ object LocalCommands {
         RegexOption.IGNORE_CASE,
     )
 
-    private const val SPEAK_VERB = "(?:baat|bat|bol|bolo|bolna|kaho|jawab|reply|speak|talk|बात|बोल|बोलो|बोलना|कहो|जवाब|কথা|বলো|বল|বলবে|উত্তর)"
+    private const val SPEAK_VERB = "(?:baat|bat|bol|bolo|bolna|kaho|jawab|reply|speak|talk|katha|kotha|बात|बोल|बोलो|बोलना|कहो|जवाब|कथा|कोथा|कौथा|কথা|বলো|বল|বলবে|উত্তর)"
 
     /** "Bangla mein baat karo", "बंगाली में बोलो", "বাংলায় কথা বলো" / "Hindi mein bolo" / "dono bhasha mein". */
-    private val TO_BENGALI = Regex("(?:bangla|bengali|bangali|bengla|बांग्ला|बंगला|बंगाली|बांगला|বাংলা|বাংলায়|বাঙালি)\\S*\\s+(?:(?:me|mein|mai|में|তে|ভাষায়)\\s+)?(?:.{0,12}?)$SPEAK_VERB", RegexOption.IGNORE_CASE)
+    // The language word in any spelling a recogniser writes ("बांग्लाय", "बंगाल", "Bangla-te"), then "में" or a
+    // Bengali/Hindi "in" ending (বাংলায়, बांग्लाय), then the speaking verb: "बंगाल की खाड़ी पर बात करो" is not a switch.
+    private const val BENGALI_STEM = "(?:bangl|bengal|bangal|bengl|bongl|बांग्ल|बंगल|बंगाल|बांगल|बाँग्ल|बोंगल|বাংলা|বাঙাল)"
+    private val TO_BENGALI = Regex(
+        "$BENGALI_STEM\\S*\\s+(?:me|mein|mai|te|में|ते|মে|তে|ভাষায়|भाषा)\\s+(?:.{0,12}?)$SPEAK_VERB|" +
+            "$BENGALI_STEM\\S*(?:য়|য|ाय|ायं|य|te|e)\\s+(?:.{0,12}?)$SPEAK_VERB",
+        RegexOption.IGNORE_CASE,
+    )
     private val TO_HINDI = Regex("(?:hindi|हिंदी|हिन्दी|হিন্দি|হিন্দিতে)\\S*\\s+(?:(?:me|mein|mai|में|তে|ভাষায়)\\s+)?(?:.{0,12}?)$SPEAK_VERB", RegexOption.IGNORE_CASE)
     private val TO_AUTO = Regex("(?:dono|donon|दोनों|দুটো|দুই)\\s+(?:bhasha|bhashao|भाषा|भाषाओं|ভাষা|ভাষায়)", RegexOption.IGNORE_CASE)
 
