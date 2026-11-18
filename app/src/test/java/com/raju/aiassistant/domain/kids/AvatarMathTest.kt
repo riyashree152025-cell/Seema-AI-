@@ -95,6 +95,55 @@ class AvatarMathTest {
     @Test
     fun theGiggleIsBengaliAndNotTooOften() {
         assertTrue(AvatarMath.GIGGLES.all { line -> line.any { it in 'ঀ'..'৿' } })
-        assertTrue(AvatarMath.GIGGLE_GAP_MS >= 3_000)
+        assertTrue(AvatarMath.GIGGLE_GAP_MS >= 4_500)
+    }
+
+    @Test
+    fun aCheekTapWinksThatEyeAndKeepsTheOtherOpen() {
+        assertEquals(WinkSide.LEFT, AvatarMath.winkSide(FaceZone.CHEEK, x = 300f, cx = 500f))
+        assertEquals(WinkSide.RIGHT, AvatarMath.winkSide(FaceZone.CHEEK, x = 700f, cx = 500f))
+        assertEquals(WinkSide.NONE, AvatarMath.winkSide(FaceZone.FACE, x = 300f, cx = 500f))
+        assertEquals(1f, AvatarMath.squint(AvatarMood.TICKLED, WinkSide.LEFT, leftEye = true), 0f)
+        assertEquals(0f, AvatarMath.squint(AvatarMood.TICKLED, WinkSide.LEFT, leftEye = false), 0f) // the other stays wide open
+        assertEquals(1f, AvatarMath.squint(AvatarMood.TICKLED, WinkSide.NONE, leftEye = false), 0f) // ^ ^ both
+        assertEquals(0f, AvatarMath.squint(AvatarMood.IDLE, WinkSide.LEFT, leftEye = true), 0f)
+    }
+
+    @Test
+    fun ripplesGrowFadeAndAreKeptFew() {
+        val r = Ripple(10f, 10f, bornAt = 1_000)
+        val (size0, alpha0) = AvatarMath.ripple(r, 1_000)!!
+        val (size1, alpha1) = AvatarMath.ripple(r, 1_000 + AvatarMath.RIPPLE_MS / 2)!!
+        assertTrue(size1 > size0 && alpha1 < alpha0)
+        assertNull(AvatarMath.ripple(r, 1_000 + AvatarMath.RIPPLE_MS))
+        val many = List(20) { Ripple(0f, 0f, bornAt = 5_000L + it) }
+        assertEquals(AvatarMath.MAX_RIPPLES, AvatarMath.liveRipples(many, 5_100).size)
+        assertTrue(AvatarMath.liveRipples(many, 9_000).isEmpty())
+    }
+
+    @Test
+    fun tenRapidTapsPlayFewSoundsAndNeverOverHerVoiceOrListening() {
+        val gate = TapAudioGate()
+        // 10 taps in 2 seconds: at most one chime every 600 ms.
+        val chimes = (0 until 10).count { gate.sound(now = it * 200L, busy = false) }
+        assertEquals(4, chimes) // at 0, 600, 1200, 1800 ms
+        // The laugh line at most every 4.5 s.
+        val g = TapAudioGate()
+        assertTrue(g.giggle(0, busy = false))
+        assertTrue(!g.giggle(3_000, busy = false))
+        assertTrue(g.giggle(4_600, busy = false))
+        // Never while Seema listens or speaks (the faces still react: that is drawn, not gated).
+        val busy = TapAudioGate()
+        assertTrue(!busy.sound(0, busy = AvatarMath.audioBusy(AssistantState.Listening)))
+        assertTrue(!busy.giggle(0, busy = AvatarMath.audioBusy(AssistantState.Speaking)))
+        assertTrue(busy.sound(0, busy = AvatarMath.audioBusy(AssistantState.Idle)))
+    }
+
+    @Test
+    fun riyaModeListensAgainCalmlyAfterSilence() {
+        val p = com.raju.aiassistant.domain.voice.TurnPacing
+        assertEquals(400L, p.toddlerRelistenMs(0))
+        assertEquals(400L, p.toddlerRelistenMs(p.TODDLER_FAST_FAILS - 1))
+        assertTrue(p.toddlerRelistenMs(p.TODDLER_FAST_FAILS) >= 2_000L) // instant failures again and again: back off
     }
 }

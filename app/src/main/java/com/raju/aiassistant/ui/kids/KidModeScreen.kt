@@ -8,6 +8,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -50,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.raju.aiassistant.RajuApp
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.ChatRole
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -69,23 +72,51 @@ fun KidModeScreen() {
     var asking by remember { mutableStateOf(false) }
 
     // Pinned to this app while Riya plays (Android asks once); unpinned when a parent leaves the mode.
+    // The screen stays on (no auto-lock mid-play) and the system bars hide (a swipe shows them briefly).
     DisposableEffect(Unit) {
         runCatching { activity?.startLockTask() }
-        onDispose { }
+        val window = activity?.window
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val insets = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+        insets?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insets?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            insets?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
     }
     BackHandler(enabled = true) { /* Riya cannot leave with Back */ }
 
+    // Hands-free: the microphone opens by itself when the mode starts and whenever the screen comes back
+    // (she will not press a button first). After each answer the engine listens again on its own.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { delay(START_LISTEN_DELAY_MS); engine.startKidListening() }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val level by container.speaker.level.collectAsStateWithLifecycle()
     val lastLine = transcript.lastOrNull { it.role == ChatRole.ASSISTANT }?.text ?: "রিয়া সোনা, কথা বলো!"
+    val cyan = Color(0xFF4DF0FF)
+    val gold = Color(0xFFFFD27D)
 
-    Box(Modifier.fillMaxSize()) {
-        // The whole screen is her friend's face on a night sky: tap the cheeks, boop the nose, pop the bubbles.
+    Box(Modifier.fillMaxSize().background(Color(0xFF081018))) {
         RiyaAvatarFace(
             state = state,
             level = level,
             onGiggle = { line -> scope.launch { runCatching { container.speaker.speak(line) } } },
             modifier = Modifier.fillMaxSize(),
         )
+
+        // "RIYA AI" glass badge, top left.
+        Box(
+            Modifier.align(Alignment.TopStart).padding(16.dp).clip(RoundedCornerShape(12.dp))
+                .background(Color(0x33121F2C)).border(1.dp, cyan.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) { Text("RIYA AI", color = cyan, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 2.sp) }
 
         // The lock: a parent holds it for 3 seconds.
         Box(
@@ -106,31 +137,29 @@ fun KidModeScreen() {
             contentAlignment = Alignment.Center,
         ) { Text("🔒", fontSize = 20.sp) }
 
-        Text(
-            "রিয়ার সীমা দিদি", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 22.dp),
-        )
-
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                lastLine, fontSize = 21.sp, lineHeight = 29.sp, textAlign = TextAlign.Center, color = Color(0xFF4A2F4D),
-                maxLines = 3, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xB3FFFFFF)).padding(12.dp),
+                lastLine, fontSize = 19.sp, lineHeight = 26.sp, textAlign = TextAlign.Center, color = Color(0xFFE6FDFF),
+                maxLines = 3, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x66101C28)).padding(10.dp),
             )
-            // The one button: talk (or stop her talking). It glows while she listens.
+            // The dark-glass dock: mic (also an instant tap override) and what Seema is doing.
+            val listening = state == AssistantState.Listening
             val glow = rememberInfiniteTransition(label = "mic")
-            val ring by glow.animateFloat(1f, 1.18f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "ring")
-            Box(contentAlignment = Alignment.Center) {
+            val ring by glow.animateFloat(1f, 1.15f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "ring")
+            Row(
+                Modifier.clip(RoundedCornerShape(40.dp)).background(Color(0xCC0B1622))
+                    .border(1.dp, (if (listening) cyan else gold).copy(alpha = 0.5f), RoundedCornerShape(40.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 Box(
-                    Modifier.size(130.dp).scale(if (state == AssistantState.Listening) ring else 1f).clip(CircleShape)
-                        .background(Color(if (state == AssistantState.Listening) 0x5551CF66 else 0x44FF6B9A)),
-                )
-                Box(
-                    Modifier.size(112.dp).clip(CircleShape)
-                        .background(Brush.radialGradient(listOf(if (state == AssistantState.Listening) Color(0xFF8CE99A) else Color(0xFFFF8FB1), if (state == AssistantState.Listening) Color(0xFF2F9E44) else Color(0xFFE64980))))
+                    Modifier.size(64.dp).scale(if (listening) ring else 1f).clip(CircleShape)
+                        .background(Brush.radialGradient(listOf((if (listening) cyan else gold).copy(alpha = 0.9f), Color(0xFF0B1622))))
                         .clickable {
                             when (state) {
                                 AssistantState.Speaking -> engine.interrupt()
@@ -139,7 +168,17 @@ fun KidModeScreen() {
                             }
                         },
                     contentAlignment = Alignment.Center,
-                ) { Text("🎤", fontSize = 50.sp) }
+                ) { Text("🎤", fontSize = 28.sp) }
+                Text(
+                    when (state) {
+                        AssistantState.Listening -> "শুনছি…"
+                        AssistantState.Thinking, AssistantState.Executing -> "ভাবছি…"
+                        AssistantState.Speaking -> "বলছি…"
+                        else -> "ছুঁয়ে দেখো!"
+                    },
+                    color = Color(0xFFE6FDFF), fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(end = 14.dp),
+                )
             }
         }
     }
@@ -184,3 +223,5 @@ fun KidModeScreen() {
 }
 
 private const val HOLD_TO_EXIT_MS = 3_000L
+/** The microphone opens this long after the screen appears (the screen settles first). */
+private const val START_LISTEN_DELAY_MS = 700L

@@ -30,6 +30,45 @@ data class Particle(
     enum class Kind { HEART, STAR, SPARK }
 }
 
+/** Which eye winks when a cheek is touched (the touched side squints, the other stays wide open). */
+enum class WinkSide { NONE, LEFT, RIGHT }
+
+/** A touch ripple: expanding translucent rings at her fingertip. */
+data class Ripple(val x: Float, val y: Float, val bornAt: Long)
+
+/** A spoken Bengali line shown glowing beside the cheek it came from. */
+data class SpeechBubble(val text: String, val side: WinkSide, val until: Long)
+
+/**
+ * A toddler taps 8-10 times in 2 seconds: the faces and ripples answer every tap, but sounds are spaced
+ * ([soundGapMs] for chimes, [giggleGapMs] for the spoken laugh) and never play while Seema is listening or
+ * speaking — her microphone must not hear them and her voice must not be cut.
+ */
+class TapAudioGate(
+    private val soundGapMs: Long = AvatarMath.SOUND_GAP_MS,
+    private val giggleGapMs: Long = AvatarMath.GIGGLE_GAP_MS,
+) {
+    private var lastSound = Long.MIN_VALUE / 2
+    private var lastGiggle = Long.MIN_VALUE / 2
+
+    /** A chime may play now (and is counted as played). */
+    @Synchronized
+    fun sound(now: Long, busy: Boolean): Boolean {
+        if (busy || now - lastSound < soundGapMs) return false
+        lastSound = now
+        return true
+    }
+
+    /** The spoken laugh may play now (and is counted as played). */
+    @Synchronized
+    fun giggle(now: Long, busy: Boolean): Boolean {
+        if (busy || now - lastGiggle < giggleGapMs) return false
+        lastGiggle = now
+        lastSound = now
+        return true
+    }
+}
+
 data class Bubble(val id: Long, val x: Float, val y: Float, val r: Float, val vy: Float, val phase: Float, val colorArgb: Long)
 
 object AvatarMath {
@@ -41,7 +80,14 @@ object AvatarMath {
     /** A boop squishes the nose for this long. */
     const val BOOP_MS = 450L
     /** The giggle line is said at most this often (a toddler taps a lot). */
-    const val GIGGLE_GAP_MS = 4_000L
+    const val GIGGLE_GAP_MS = 4_500L
+    /** Chimes and pops are at least this far apart. */
+    const val SOUND_GAP_MS = 600L
+    /** A touch ripple grows and fades over this long. */
+    const val RIPPLE_MS = 900L
+    const val MAX_RIPPLES = 6
+    /** The glowing Bengali line beside the cheek stays this long. */
+    const val SPEECH_BUBBLE_MS = 2_600L
     /** Pupils go back to looking ahead this long after the last touch. */
     const val LOOK_MS = 2_200L
     const val MAX_BUBBLES = 6
@@ -102,6 +148,38 @@ object AvatarMath {
         return if (mood == AvatarMood.THINKING) maxR * 0.25f to -maxR * 0.85f else 0f to 0f
     }
 
+    /** Sound must wait: Seema is listening (the microphone would hear it) or speaking (it would cut her voice). */
+    fun audioBusy(state: AssistantState): Boolean = state == AssistantState.Listening || state == AssistantState.Speaking
+
+    /** A cheek tap winks the eye on that side; a tap elsewhere on the face closes both happily (^ ^). */
+    fun winkSide(zone: FaceZone, x: Float, cx: Float): WinkSide = when (zone) {
+        FaceZone.CHEEK -> if (x < cx) WinkSide.LEFT else WinkSide.RIGHT
+        else -> WinkSide.NONE
+    }
+
+    /**
+     * How shut each eye is while tickled, 0 open .. 1 squinted: the winking side closes, the other stays wide open;
+     * with no side both squint happily. [leftEye] is the eye on the left of the screen.
+     */
+    fun squint(mood: AvatarMood, wink: WinkSide, leftEye: Boolean): Float = when {
+        mood != AvatarMood.TICKLED -> 0f
+        wink == WinkSide.NONE -> 1f
+        (wink == WinkSide.LEFT) == leftEye -> 1f
+        else -> 0f
+    }
+
+    /** A ripple's ring radius (0..1 of its full size) and opacity at [now]; null when it has faded. */
+    fun ripple(r: Ripple, now: Long): Pair<Float, Float>? {
+        val age = now - r.bornAt
+        if (age < 0 || age >= RIPPLE_MS) return null
+        val k = age.toFloat() / RIPPLE_MS
+        return k to (1f - k)
+    }
+
+    /** Ripples still showing, the newest kept when there are too many. */
+    fun liveRipples(ripples: List<Ripple>, now: Long): List<Ripple> =
+        ripples.filter { ripple(it, now) != null }.takeLast(MAX_RIPPLES)
+
     /** Which part of a face centred at ([cx], [cy]) with radius [r] a tap at ([x], [y]) hit. */
     fun zone(x: Float, y: Float, cx: Float, cy: Float, r: Float): FaceZone {
         val nx = (x - cx) / r
@@ -121,7 +199,7 @@ object AvatarMath {
     const val MOUTH_Y = 0.52f
 
     /** A small burst where she tapped: hearts for a tickle, stars for a boop or a popped bubble. */
-    fun burst(x: Float, y: Float, kind: Particle.Kind, count: Int, seed: Int, scale: Float): List<Particle> {
+    fun burst(x: Float, y: Float, kind: Particle.Kind, count: Int, seed: Int, scale: Float, palette: List<Long> = PALETTE): List<Particle> {
         val rnd = java.util.Random(seed.toLong())
         return List(count) {
             val a = rnd.nextFloat() * 2 * PI
@@ -132,7 +210,7 @@ object AvatarMath {
                 vy = (sin(a) * speed).toFloat() - 60f * scale,
                 life = 0.9f + rnd.nextFloat() * 0.6f,
                 kind = kind,
-                colorArgb = PALETTE[rnd.nextInt(PALETTE.size)],
+                colorArgb = palette[rnd.nextInt(palette.size)],
                 size = (10f + rnd.nextFloat() * 10f) * scale,
             )
         }
@@ -178,8 +256,11 @@ object AvatarMath {
         return Bubble(id, x, height + r, r, vy = 40f + rnd.nextFloat() * 50f, phase = rnd.nextFloat() * 6.28f, colorArgb = PALETTE[rnd.nextInt(PALETTE.size)])
     }
 
+    /** The holographic face's particles: cyan, warm gold and white light. */
+    val HOLO_PALETTE = listOf(0xFF4DF0FF, 0xFFFFD27D, 0xFFFFFFFF, 0xFF9AF6FF)
+
     val PALETTE = listOf(0xFFFF6B9A, 0xFFFFD43B, 0xFF69DB7C, 0xFF4DABF7, 0xFFB197FC, 0xFFFFA94D)
 
     /** What she says when tickled (at most every [GIGGLE_GAP_MS]). */
-    val GIGGLES = listOf("হাহা, সুড়সুড়ি লাগছে!", "হিহি, আবার করো!", "হাহাহা, রিয়া সোনা!")
+    val GIGGLES = listOf("হাহা, সুড়সুড়ি লাগছে!", "আহা! তুমি আবার ছেড়ো না", "হিহি, আবার করো!", "হাহাহা, রিয়া সোনা!")
 }

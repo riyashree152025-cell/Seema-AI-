@@ -138,12 +138,19 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             // Hinglish: let the recogniser also accept Indian English words in the same sentence.
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", com.raju.aiassistant.domain.language.additionalSpeechLanguages(languageTag))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            if (com.raju.aiassistant.domain.voice.TurnPacing.toddler) {
+                // Riya mode: a toddler's broken Bengali with Hindi words in it, short and with pauses.
+                putStringArrayListExtra(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES, arrayListOf("bn-IN", "hi-IN"))
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("hi-IN"))
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+            }
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             // Allow 3.5s of comfortable silence so user does not get cut off immediately
             // End of speech after about a second and a half of quiet (3.5 s added that much to every answer);
             // no minimum length, so "haan" or "torch jalao" ends as soon as it is said.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            val toddler = com.raju.aiassistant.domain.voice.TurnPacing.toddler
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, if (toddler) com.raju.aiassistant.domain.voice.TurnPacing.TODDLER_SILENCE_MS else 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, if (toddler) com.raju.aiassistant.domain.voice.TurnPacing.TODDLER_SILENCE_MS - 300L else 1200L)
         }
         log("stt start $languageTag")
         muteBeep()
@@ -252,7 +259,9 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     }
 
     private fun release() {
-        recognizer?.let { runCatching { it.destroy() } }
+        // Cancelled, then destroyed: a recogniser left half-open after "no speech" made Android's speech
+        // service throttle the next start (seen as a silent hang in Riya mode's continuous listening).
+        recognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
         recognizer = null
     }
 

@@ -11,6 +11,8 @@ object KidPrompt {
         appendLine("Reply ONLY in very simple, warm spoken Bengali (Bengali script). 1-2 short sentences, at most about 15 words. Slow, happy, like talking to a small child. Call her সোনা, মা, $name sometimes.")
         appendLine("Her speech is toddler speech and the speech recogniser often writes it wrongly. Understand her meaning from: the conversation just before (a parent may have said the word properly), her own words below, and how toddlers change words:")
         appendLine("- the end changes (মালাই→মালু, জল→জলু), r→l (রসগোল্লা→লসগোল্লা), শ/ষ→স, hard sounds dropped, a hard word becomes a known similar word (গণপতি→গান্ধী), half words (পেশাব→হুসু/সুসু).")
+        appendLine("- Her lines may end with (sounds: …): the same words in plain letters; use them to match her words below.")
+        appendLine("- She mixes Hindi words into Bengali; understand both, answer in Bengali.")
         appendLine("- Lines may also come from a parent (Hindi or Bengali); use them as context, answer $name.")
         appendLine("If you understood a new toddler word from context with confidence, add [LEARN:herword=meaning] at the end.")
         appendLine("If you are not sure what she means, guess and ask her gently (\"তুমি কি মালাই খাবে?\") and add [ASK:herword=yourguess] at the end. Never make her feel wrong; never correct her harshly.")
@@ -22,6 +24,15 @@ object KidPrompt {
             appendLine("$name's own words (she says → she means):")
             words.forEach { appendLine("${it.heard} → ${it.meaning}") }
         }
+    }
+
+    /**
+     * Her line as the AI gets it: what the recogniser wrote, plus how it sounds in plain letters, so a
+     * misheard toddler syllable can still be matched to her words ("খীর মালু খাবো (sounds: kir malu kabo)").
+     */
+    fun userLine(text: String): String {
+        val sound = com.raju.aiassistant.domain.tools.Romanize.phonetic(text)
+        return if (com.raju.aiassistant.domain.tools.Romanize.isIndic(text) && sound.isNotBlank()) "$text (sounds: $sound)" else text
     }
 
     /** Spoken when the AI cannot answer (no internet, no key). */

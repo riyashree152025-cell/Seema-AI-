@@ -679,6 +679,7 @@ class AssistantEngine(
         val gen = ++listenGen
         // A ringing call or a "haan / nahi" question: a short answer, cut quickly.
         com.raju.aiassistant.domain.voice.TurnPacing.quick = clock() < callCommandUntil || voiceConfirmOpen()
+        com.raju.aiassistant.domain.voice.TurnPacing.toddler = settings.value.kidMode
         _state.value = AssistantState.Listening
         _heard.value = null
         _hint.value = null
@@ -711,6 +712,19 @@ class AssistantEngine(
                         }
                         else -> finishReadReply(null)
                     }
+                    return@start
+                }
+                if (settings.value.kidMode && !err.permissionDenied && !paused()) {
+                    // Riya mode listens hands-free all the time: a toddler never presses a button first. Silence or
+                    // an unclear sound starts the listening again after a short pause (the recogniser was cancelled
+                    // and destroyed), and backs off when it keeps failing at once — never a rapid loop.
+                    val fast = clock() - listenStartedAt < FAST_NO_SPEECH_MS
+                    kidFastFails = if (fast) kidFastFails + 1 else 0
+                    val wait = com.raju.aiassistant.domain.voice.TurnPacing.toddlerRelistenMs(kidFastFails)
+                    trace("riya: nothing clear (${if (err.noSpeech) "silence" else if (err.unclear) "unclear" else "recogniser error"}), listening again in $wait ms")
+                    _voiceSession.value = true
+                    val g = listenGen
+                    scope.launch { delay(wait); if (g == listenGen && settings.value.kidMode && job?.isActive != true) listen() }
                     return@start
                 }
                 if (clock() < callCommandUntil) {
@@ -1986,6 +2000,22 @@ class AssistantEngine(
 
     /** The last lines of Riya's conversation (her own, never the main chat's history). */
     private val kidHistory = ArrayDeque<Turn>()
+    /** Riya mode: instant recogniser failures in a row (a struggling speech service gets a longer pause). */
+    private var kidFastFails = 0
+
+    /**
+     * Riya mode opened (or came back on screen): listen at once, hands-free — she will not press a button.
+     * Nothing happens while Seema is already listening, thinking or speaking.
+     */
+    fun startKidListening() {
+        if (!settings.value.kidMode || paused() || !voice.isAvailable()) return
+        if (voice.listening.value || job?.isActive == true || _state.value == AssistantState.Speaking) return
+        kidFastFails = 0
+        leaveSleep()
+        _voiceSession.value = true
+        trace("riya: listening hands-free")
+        listen()
+    }
     /** Seema asked "তুমি কি মালাই খাবে?" about one of her words: her "হ্যাঁ" teaches it. */
     private var kidGuess: Pair<String, String>? = null
     private var kidGuessUntil = 0L
@@ -2025,7 +2055,7 @@ class AssistantEngine(
         val system = com.raju.aiassistant.domain.kids.KidPrompt.system(
             KID_NAME, com.raju.aiassistant.domain.kids.KidLexicon.forPrompt(text, words, now), partOfDay(hourOfDay()),
         )
-        kidHistory.addLast(Turn(TurnRole.USER, text))
+        kidHistory.addLast(Turn(TurnRole.USER, com.raju.aiassistant.domain.kids.KidPrompt.userLine(text)))
         while (kidHistory.size > KID_HISTORY_LINES) kidHistory.removeFirst()
         val reply = kidAsk(system, kidHistory.toList())
         if (reply == null) {
@@ -2095,7 +2125,14 @@ class AssistantEngine(
             // A conversation she was woken into by name goes on (until the quiet timer), even over another app.
             if (asked || wakeConversation()) listen() else goToSleep()
         } else if (_voiceSession.value && (s.continuousConversation || handsFree || s.kidMode) && !s.assistantPaused) {
-            listen()
+            // Riya mode: a short pause first, so her voice's audio focus is released before the microphone opens.
+            if (s.kidMode) {
+                val g = listenGen
+                scope.launch {
+                    delay(com.raju.aiassistant.domain.voice.TurnPacing.KID_AFTER_SPEECH_MS)
+                    if (g == listenGen && _voiceSession.value && settings.value.kidMode) listen()
+                }
+            } else listen()
         } else {
             _voiceSession.value = false
             if (_state.value == AssistantState.Error) scheduleErrorReset()

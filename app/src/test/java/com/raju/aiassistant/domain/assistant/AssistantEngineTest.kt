@@ -2576,6 +2576,40 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun riyaModeListensHandsFreeAndRecoversFromSilenceWithoutRapidLooping() = runTest {
+        settings.value = settings.value.copy(kidMode = true)
+        val e = engine(AiResult.Success("হ্যাঁ সোনা!"))
+        e.startKidListening()
+        runCurrent()
+        assertEquals(1, voice.starts) // no button press needed
+        assertEquals("bn-IN", voice.lastLanguage)
+        // "No speech was heard": listens again after a short pause, not at once.
+        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, voice.starts)
+        advanceTimeBy(200); runCurrent()
+        assertEquals(2, voice.starts)
+        // Instant failures again and again: a longer pause (the speech service is not hammered).
+        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
+        advanceTimeBy(500); runCurrent()
+        voice.onError!!(VoiceError("Speech was heard but no words were recognised.", unclear = true))
+        advanceTimeBy(500); runCurrent()
+        val before = voice.starts
+        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(before, voice.starts)
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(before + 1, voice.starts)
+        // She speaks: answered, then the microphone opens again by itself.
+        voice.onResult!!("খীর মালু খাবো")
+        settle()
+        assertEquals("হ্যাঁ সোনা!", speaker.spoken.last())
+        assertTrue(voice.starts > before + 1)
+        assertTrue(provider.calls.last().last().text.contains("(sounds:")) // her words also in plain letters
+        settings.value = settings.value.copy(kidMode = false)
+    }
+
+    @Test
     fun riyasYesToSeemasGuessTeachesTheWord() = runTest {
         settings.value = settings.value.copy(kidMode = true)
         val words = com.raju.aiassistant.domain.kids.InMemoryKidWordStore()
