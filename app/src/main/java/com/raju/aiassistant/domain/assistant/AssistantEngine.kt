@@ -1094,6 +1094,19 @@ class AssistantEngine(
             kidTurn(text, fromVoice)
             return
         }
+        // "QR kisko bhejna hai?" → "Rizwan ko" / "Rizwan".
+        pendingPayTo?.let { pay ->
+            pendingPayTo = null
+            if (clock() < pendingPayToUntil && Correction.parse(text) != Correction.Cancel) {
+                val who = (com.raju.aiassistant.domain.payments.PaymentShare.contactOf(text) ?: text).trim().trimEnd('.', '।', '!')
+                val next = when (pay) {
+                    is AssistantAction.SendPaymentQr -> pay.copy(contact = who, amountRupees = pay.amountRupees ?: com.raju.aiassistant.domain.payments.PaymentShare.amount(text))
+                    is AssistantAction.SendUpiId -> pay.copy(contact = who)
+                    else -> null
+                }
+                if (next != null && who.length >= 2 && runLocalCommand(next, speak = fromVoice || s.autoSpeakReplies)) return
+            }
+        }
         // "Jalal bhai ko kaun si UPI ID bhejni hai — Paytm ya PhonePe?" → "Paytm wala".
         pendingUpi?.let { p ->
             pendingUpi = null
@@ -2050,10 +2063,26 @@ class AssistantEngine(
     /** "Kaun si UPI ID?" was asked: the answer ("Paytm wala") is taken within [UPI_ASK_MS]. */
     private data class PendingUpiShare(val contact: String, val amountRupees: Long?, val until: Long)
     private var pendingUpi: PendingUpiShare? = null
-    private fun upiQuestionOpen(): Boolean = pendingUpi?.let { clock() < it.until } == true
+
+    /** "QR / UPI ID kisko bhejna hai?" was asked: the next sentence is the person. */
+    private var pendingPayTo: AssistantAction? = null
+    private var pendingPayToUntil = 0L
+
+    /** No name said ("mera QR bhejo"): asks whom, and listens for the name without "Hey Seema". */
+    private suspend fun askWhomToPay(action: AssistantAction, speak: Boolean) {
+        val q = phrase(lang(), if (action is AssistantAction.SendPaymentQr) "QR किसको भेजना है?" else "UPI ID किसको भेजनी है?", if (action is AssistantAction.SendPaymentQr) "QR কাকে পাঠাব?" else "UPI ID কাকে পাঠাব?")
+        report(action, ActionStatus.CANCELLED, q)
+        record(ChatRole.ASSISTANT, q)
+        pendingPayTo = action
+        pendingPayToUntil = clock() + UPI_ASK_MS
+        followUpUntil = maxOf(followUpUntil, pendingPayToUntil)
+        if (speak) { say(q); _voiceSession.value = true }
+    }
+    private fun upiQuestionOpen(): Boolean = pendingUpi?.let { clock() < it.until } == true || (pendingPayTo != null && clock() < pendingPayToUntil)
 
     /** "Mera QR bhej do Rizwan ko": the saved QR photo to that contact on WhatsApp (asked first, then a 2.5 s stop window). */
     private suspend fun sendPaymentQr(action: AssistantAction.SendPaymentQr, speak: Boolean) {
+        if (action.contact.isBlank() && tools.hasPaymentQr()) return askWhomToPay(action, speak)
         if (!tools.hasPaymentQr()) {
             val msg = phrase(lang(), "Payment QR अभी सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में QR की फ़ोटो चुनिए।", "Payment QR এখনও সেভ নেই। Apps & Tools → Payment QR & UPI IDs-এ QR-এর ছবি বেছে নিন।")
             report(action, ActionStatus.FAILED, msg)
@@ -2090,6 +2119,7 @@ class AssistantEngine(
      */
     private suspend fun sendUpiId(action: AssistantAction.SendUpiId, speak: Boolean) {
         val saved = settings.value.upiIds
+        if (action.contact.isBlank() && saved.isNotEmpty()) return askWhomToPay(action, speak)
         if (saved.isEmpty()) {
             val msg = phrase(lang(), "कोई UPI ID सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में UPI ID जोड़िए।", "কোনো UPI ID সেভ নেই। Apps & Tools-এ UPI ID যোগ করুন।")
             report(action, ActionStatus.FAILED, msg)
@@ -2377,7 +2407,9 @@ class AssistantEngine(
 
     /** A plain spoken reason for a failed action. */
     private fun failureLine(action: AssistantAction, message: String): String = when (action) {
-        is AssistantAction.OpenApp -> phrase(lang(), "माफ़ कीजिए, ${action.name} फ़ोन में नहीं मिला।", "দুঃখিত, ${action.name} ফোনে পাইনি।")
+        is AssistantAction.OpenApp ->
+            if (message.contains("नहीं मिला") || message.contains("not found", true) || message.contains("not installed", true)) phrase(lang(), "माफ़ कीजिए, ${action.name} फ़ोन में नहीं मिला।", "দুঃখিত, ${action.name} ফোনে পাইনি।")
+            else message.take(160).ifBlank { phrase(lang(), "माफ़ कीजिए, ${action.name} नहीं खुल पाया।", "দুঃখিত, ${action.name} খোলা গেল না।") }
         else -> {
             val why = message.trim().take(140)
             phrase(lang(), if (why.isEmpty()) "माफ़ कीजिए, यह काम नहीं हो पाया।" else "माफ़ कीजिए, यह नहीं हो पाया — $why", "দুঃখিত, কাজটা হল না।")

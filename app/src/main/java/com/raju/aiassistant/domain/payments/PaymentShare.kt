@@ -28,13 +28,34 @@ object PaymentShare {
         "mera", "meri", "mere", "apna", "apni", "payment", "code", "id", "aaidi", "wala", "vala", "ka", "ki", "ke", "bhi", "zara", "jara",
         "seema", "please", "plz", "abhi", "jaldi", "do", "de", "dena", "karo", "whatsapp", "par", "pe", "on",
         "मेरा", "मेरी", "मेरे", "अपना", "पेमेंट", "कोड", "आईडी", "वाला", "का", "की", "के", "भी", "ज़रा", "सीमा", "अभी", "दो", "दे", "देना", "करो",
-        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা",
+        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা", "paytm", "phonepe", "gpay", "pe", "पेटीएम", "फोनपे", "फ़ोनपे", "वाला", "वाली",
     )
 
     private fun hasWord(text: String, pattern: String) = Regex("(?<![\\p{L}\\p{M}])$pattern", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
-    /** The amount said in rupees ("500 rupaye", "₹1,200"), or null. */
-    fun amount(text: String): Long? = AMOUNT.find(text.replace(",", ""))?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).toLongOrNull() }
+    /** The amount said in rupees ("500 rupaye", "₹1,200", "हज़ार रुपए", "do hazaar", "डेढ़ हज़ार"), or null. */
+    fun amount(text: String): Long? {
+        AMOUNT.find(text.replace(",", ""))?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).toLongOrNull()?.let { return it } }
+        val m = WORD_AMOUNT.find(text) ?: return null
+        val count = m.groupValues[1].trim().lowercase().let { w -> if (w.isEmpty()) 1.0 else w.toDoubleOrNull() ?: NUMBER_WORDS[w] ?: return null }
+        val unit = when (m.groupValues[2].lowercase()) {
+            "sau", "सौ" -> 100.0
+            "lakh", "लाख" -> 100_000.0
+            else -> 1_000.0
+        }
+        return (count * unit).toLong().takeIf { it > 0 }
+    }
+
+    private val NUMBER_WORDS = mapOf(
+        "ek" to 1.0, "एक" to 1.0, "do" to 2.0, "दो" to 2.0, "teen" to 3.0, "तीन" to 3.0, "char" to 4.0, "चार" to 4.0,
+        "paanch" to 5.0, "panch" to 5.0, "पांच" to 5.0, "पाँच" to 5.0, "chhe" to 6.0, "छह" to 6.0, "saat" to 7.0, "सात" to 7.0,
+        "aath" to 8.0, "आठ" to 8.0, "nau" to 9.0, "नौ" to 9.0, "das" to 10.0, "दस" to 10.0,
+        "dedh" to 1.5, "डेढ़" to 1.5, "डेढ" to 1.5, "dhai" to 2.5, "ढाई" to 2.5, "sava" to 1.25, "सवा" to 1.25,
+    )
+    private val WORD_AMOUNT = Regex(
+        "(?<![\\p{L}\\p{M}])((?:\\d+(?:\\.\\d+)?|ek|एक|do|दो|teen|तीन|char|चार|paanch|panch|पांच|पाँच|chhe|छह|saat|सात|aath|आठ|nau|नौ|das|दस|dedh|डेढ़|डेढ|dhai|ढाई|sava|सवा)\\s+)?(hazaar|hazar|हज़ार|हजार|sau|सौ|lakh|लाख)(?![\\p{L}\\p{M}])",
+        RegexOption.IGNORE_CASE,
+    )
 
     /** The person before "ko": up to three words, without the words around it ("mera QR", "UPI ID"). */
     fun contactBeforeKo(text: String): String? {
@@ -44,27 +65,47 @@ object PaymentShare {
         val name = mutableListOf<String>()
         for (w in before.asReversed()) {
             val lw = w.lowercase()
-            if (lw in FILLER || Regex("^$QR$|^$UPI$|^$SEND\\S*$", RegexOption.IGNORE_CASE).matches(lw) || lw.any { it.isDigit() } || lw.startsWith("₹")) break
+            // Digits stay: a contact can be saved as "Vodafone 01". Money words end the name.
+            if (lw in FILLER || Regex("^$QR$|^$UPI$|^$SEND\\S*$", RegexOption.IGNORE_CASE).matches(lw) || lw.startsWith("₹") || MONEY_WORD.matches(lw)) break
             name.add(0, w)
             if (name.size == 3) break
         }
         return name.joinToString(" ").takeIf { it.length >= 2 }
     }
 
-    /** "Mera QR bhej do Rizwan ko", "Rizwan ko payment QR bhejo 500 rupaye"; null when it is not this request. */
+    /**
+     * "Mera QR bhej do Rizwan ko", "Rizwan ko payment QR bhejo 500 rupaye", "Paytm ka QR bhej do Rizwan bhai",
+     * "mera QR bhejo" (no name: [QrRequest.contact] is empty and Seema asks whom). Null when it is not this request.
+     */
     fun qrRequest(text: String): QrRequest? {
-        if (!hasWord(text, QR) || !hasWord(text, SEND) || text.length > 140) return null
-        val who = contactBeforeKo(text) ?: return null
-        return QrRequest(who, amount(text))
+        if (!hasWord(text, QR) || !hasWord(text, SEND) || text.length > 200) return null
+        return QrRequest(contactOf(text).orEmpty(), amount(text))
+    }
+
+    /** The person: before "ko"; only when there is no "ko" at all, the words after the send verb ("bhej do Rizwan bhai"). */
+    fun contactOf(text: String): String? = if (TO.containsMatchIn(text)) contactBeforeKo(text) else contactAfterVerb(text)
+
+    private val MONEY_WORD = Regex("^(?:rupaye|rupaiya|rupees|rupee|rs|रुपये|रुपए|रुपया|टका|টাকা|hazaar|hazar|हज़ार|हजार|sau|सौ|lakh|लाख)$", RegexOption.IGNORE_CASE)
+
+    private fun contactAfterVerb(text: String): String? {
+        val t = text.replace(Regex("[,.!?।]"), " ").replace(Regex("\\s+"), " ").trim()
+        val words = t.split(' ')
+        val verbAt = words.indexOfLast { Regex("^$SEND\\S*$", RegexOption.IGNORE_CASE).matches(it) }
+        if (verbAt < 0) return null
+        val name = words.drop(verbAt + 1).filter { w ->
+            val lw = w.lowercase()
+            lw !in FILLER && !Regex("^$QR$|^$UPI$|^$SEND\\S*$", RegexOption.IGNORE_CASE).matches(lw) && lw.none { it.isDigit() } && !lw.startsWith("₹") &&
+                !Regex("^(?:rupaye|rupees|rs|रुपये|रुपए|টাকা|dena|दे|दो|do|de)$", RegexOption.IGNORE_CASE).matches(lw)
+        }
+        return name.take(3).joinToString(" ").takeIf { it.length >= 2 }
     }
 
     /** "Jalal bhai ko UPI ID bhej do", "PhonePe wala UPI Anand ko bhejo"; null when it is not this request. */
     fun upiRequest(text: String, saved: List<UpiEntry>): UpiRequest? {
-        if (!hasWord(text, UPI) || !hasWord(text, SEND) || text.length > 140) return null
+        if (!hasWord(text, UPI) || !hasWord(text, SEND) || text.length > 200) return null
         val label = pick(saved, text)?.label
         val withoutLabel = label?.let { l -> text.replace(Regex(Regex.escape(l), RegexOption.IGNORE_CASE), " ") } ?: text
-        val who = contactBeforeKo(withoutLabel) ?: return null
-        return UpiRequest(who, label, amount(text))
+        return UpiRequest(contactOf(withoutLabel).orEmpty(), label, amount(text))
     }
 
     /** The saved ID a reply names ("Paytm wala", "फोनपे भेज दो", "pehla"), or null. */

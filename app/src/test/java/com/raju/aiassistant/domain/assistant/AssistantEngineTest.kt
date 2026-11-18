@@ -2701,6 +2701,22 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun withoutANameSeemaAsksWhomTheQrGoesTo() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Vodafone 01", "98000 00005")))
+        val e = engine()
+        e.submit("mera QR bhej do 1000 rupaye", fromVoice = true)
+        settle()
+        assertEquals("QR किसको भेजना है?", speaker.spoken.last())
+        e.submit("Vodafone 01 ko", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals("98000 00005", tools.qrShares.single().first)
+        assertTrue(tools.qrShares.single().second.contains("*Amount:* ₹1000"))
+        assertEquals(0, provider.calls.size) // never "I cannot open payment apps"
+    }
+
+    @Test
     fun theSavedPaymentQrIsSentAfterTheYes() = runTest {
         tools.contacts = ContactLookup.Found(listOf(Contact("Rizwan", "98000 00004")))
         val e = engine()

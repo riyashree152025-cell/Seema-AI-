@@ -18,6 +18,12 @@ class PaymentShareTest {
         assertEquals(QrRequest("जलाल भाई", null), PaymentShare.qrRequest("जलाल भाई को मेरा क्यूआर कोड भेज दो"))
         assertNull(PaymentShare.qrRequest("QR code kya hota hai"))
         assertEquals(AssistantAction.SendPaymentQr("Rizwan", null), LocalCommands.parse("Mera QR bhej do Rizwan ko"))
+        // Exactly what was typed on the phone: a contact saved with digits, and the amount in words.
+        assertEquals(QrRequest("Vodafone 0 1", 1000), PaymentShare.qrRequest("Vodafone 0 1 को वह QR भेज दो और हज़ार रुपए का लगा दो उसमें"))
+        assertEquals(QrRequest("Rizwan bhai", null), PaymentShare.qrRequest("Paytm ka QR bhej do Rizwan bhai"))
+        assertEquals(QrRequest("", null), PaymentShare.qrRequest("mera QR bhej do")) // whom: Seema asks
+        assertEquals(2500L, PaymentShare.amount("dhai hazaar rupaye"))
+        assertEquals(1500L, PaymentShare.amount("डेढ़ हज़ार"))
     }
 
     @Test
