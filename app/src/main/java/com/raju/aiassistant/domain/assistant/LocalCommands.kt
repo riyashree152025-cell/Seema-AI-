@@ -19,7 +19,15 @@ import com.raju.aiassistant.domain.tools.MediaCommand
  */
 object LocalCommands {
 
-    fun parse(said: String): AssistantAction? {
+    /**
+     * A phone command in the user's words, or null. Hindi heard by a Bengali recogniser comes back in Bengali
+     * letters ("আজ কিতনা ডেবিট হুয়া"): when nothing matches, the same sentence is tried again in Devanagari.
+     */
+    fun parse(said: String): AssistantAction? =
+        parseOnce(said) ?: if (com.raju.aiassistant.domain.language.hasBengaliLetters(said))
+            parseOnce(com.raju.aiassistant.domain.language.bengaliToDevanagari(said)) else null
+
+    private fun parseOnce(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         DevotionalGreeting.reply(text)?.let { return AssistantAction.Greeting(it) }
         if (KID_MODE_ON.containsMatchIn(text) && text.length <= 80) return AssistantAction.KidModeOn

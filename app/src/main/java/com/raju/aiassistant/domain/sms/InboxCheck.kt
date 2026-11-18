@@ -59,15 +59,15 @@ fun withoutNamedDates(text: String): String =
     DAY_AND_MONTH.replace(DAY_OF_MONTH.replace(asciiDigitsOf(text), " "), " ")
 
 private val INBOX_PLACE = Regex(
-    "inbox|in box|इनबॉक्स|इनबॉक्स|\\bsms\\b|एसएमएस|एस एम एस|bank\\s+(?:ka|ke|से|ke\\s+)?\\s*(?:message|msg|sms)|बैंक",
+    "inbox|in box|इनबॉक्स|इनबॉक्स|ইনবক্স|এসএমএস|ব্যাংক|ব্যাঙ্ক|\\bsms\\b|एसएमएस|एस एम एस|bank\\s+(?:ka|ke|से|ke\\s+)?\\s*(?:message|msg|sms)|बैंक",
     RegexOption.IGNORE_CASE,
 )
-private val MESSAGE_WORD = Regex("message|messages|msg|massage|मैसेज|मेसेज|मेसेज|संदेश|sms", RegexOption.IGNORE_CASE)
-private val PHONE_WORD = Regex("mobile|phone|फ़ोन|फोन|मोबाइल", RegexOption.IGNORE_CASE)
-private val CREDIT_ASK = Regex("credit|क्रेडिट|jama|जमा|paisa aaya|paise aaye|पैसा आया|पैसे आए|received|refund|रिफंड", RegexOption.IGNORE_CASE)
-private val DEBIT_ASK = Regex("debit|डेबिट|kata|kate|kaata|कटा|कटे|kharch|खर्च|spent", RegexOption.IGNORE_CASE)
+private val MESSAGE_WORD = Regex("message|messages|msg|massage|मैसेज|मेसेज|मेसेज|संदेश|sms|মেসেজ|ম্যাসেজ|বার্তা|এসএমএস", RegexOption.IGNORE_CASE)
+private val PHONE_WORD = Regex("mobile|phone|फ़ोन|फोन|मोबाइल|মোবাইল|ফোন", RegexOption.IGNORE_CASE)
+private val CREDIT_ASK = Regex("credit|क्रेडिट|ক্রেডিট|জমা|টাকা এসেছে|jama|जमा|paisa aaya|paise aaye|पैसा आया|पैसे आए|received|refund|रिफंड", RegexOption.IGNORE_CASE)
+private val DEBIT_ASK = Regex("debit|डेबिट|ডেবিট|কাটা|কেটেছে|খরচ|kata|kate|kaata|कटा|कटे|kharch|खर्च|spent", RegexOption.IGNORE_CASE)
 private val ASK = Regex(
-    "track|ट्रैक|hisab|hisaab|हिसाब|check|चेक|dekho|dekh|देखो|देख|batao|bata|बताओ|बता|kitna|kitne|kitni|कितना|कितने|कितनी|padho|पढ़ो|पढो|sunao|सुनाओ|aaya|aaye|aayi|आया|आए|आई|kya|क्या",
+    "দেখো|দেখ|বলো|কত|কতো|কতটা|চেক|হিসাব|track|ट्रैक|hisab|hisaab|हिसाब|check|चेक|dekho|dekh|देखो|देख|batao|bata|बताओ|बता|kitna|kitne|kitni|कितना|कितने|कितनी|padho|पढ़ो|पढो|sunao|सुनाओ|aaya|aaye|aayi|आया|आए|आई|kya|क्या",
     RegexOption.IGNORE_CASE,
 )
 private val SENDING = Regex("bhejo|bhej do|likho|send|भेजो|भेज दो|लिखो|delete|डिलीट|mitao|मिटाओ", RegexOption.IGNORE_CASE)
@@ -97,9 +97,9 @@ fun parseInboxQuestion(text: String, today: LocalDate = LocalDate.now()): InboxQ
         }
     }
     val period = when {
-        Regex("\\b(aaj|today)\\b|${hindiWord("आज")}").containsMatchIn(l) -> InboxPeriod.TODAY
+        Regex("\\b(aaj|today)\\b|${hindiWord("आज")}|${hindiWord("আজ")}|${hindiWord("আজকে")}").containsMatchIn(l) -> InboxPeriod.TODAY
         YESTERDAY_SAID.containsMatchIn(l) -> InboxPeriod.YESTERDAY
-        Regex("mahin|month|महीन").containsMatchIn(l) -> InboxPeriod.MONTH
+        Regex("mahin|month|महीन|মাস").containsMatchIn(l) -> InboxPeriod.MONTH
         else -> InboxPeriod.WEEK
     }
     return InboxQuery(period, kind)

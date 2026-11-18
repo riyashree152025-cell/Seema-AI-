@@ -30,6 +30,23 @@ fun toDevanagari(text: String): String {
 }
 
 
+/** True when [text] has Bengali letters. */
+fun hasBengaliLetters(text: String): Boolean = text.any { it in '\u0980'..'\u09FF' }
+
+/**
+ * Bengali letters moved to the same place in Devanagari ("আজ কিতনা ডেবিট" → "आज कितना डेबिट"): for Hindi that a
+ * Bengali recogniser wrote in Bengali script. Letters with no Devanagari twin stay as they are.
+ */
+fun bengaliToDevanagari(text: String): String {
+    val out = StringBuilder(text.length)
+    for (ch in text) {
+        if (ch !in '\u0980'..'\u09FF') { out.append(ch); continue }
+        val dev = ch.code - 0x80
+        out.append(if (Character.isDefined(dev) && Character.UnicodeBlock.of(dev) == Character.UnicodeBlock.DEVANAGARI) dev.toChar() else ch)
+    }
+    return out.toString()
+}
+
 private val WHATSAPP_HEARD = Regex(
     "(?i)(?<![\\p{L}])(?:what'?s\\s?up|what\\s?sapp|वॉट्स\\s?अप|वाट्स\\s?अप|व्हाट्स\\s?अप|व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|वॉट्सएप)(?![\\p{L}])",
 )

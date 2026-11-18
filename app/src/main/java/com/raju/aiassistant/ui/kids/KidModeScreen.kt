@@ -208,6 +208,7 @@ fun KidModeScreen() {
                         asking = false
                         runCatching { activity?.stopLockTask() }
                         engine.stop()
+                        engine.onKidModeExit()
                         scope.launch { container.settingsRepository.setKidMode(false) }
                     } else {
                         wrong = true

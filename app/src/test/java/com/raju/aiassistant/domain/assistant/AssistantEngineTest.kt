@@ -2610,6 +2610,21 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun afterRiyaModeSeemaTalksWithTheParentInHindiAgain() = runTest {
+        settings.value = settings.value.copy(kidMode = true, speechLanguage = "auto")
+        val e = engine(AiResult.Success("হ্যাঁ সোনা!"))
+        e.submit("আমি খেলবো", fromVoice = true)
+        settle()
+        settings.value = settings.value.copy(kidMode = false)
+        e.onKidModeExit()
+        assertEquals(com.raju.aiassistant.domain.language.SeemaLanguage.HINDI, e.language.value)
+        // The parent's question works at once (no AI), even if the recogniser wrote it in Bengali letters.
+        e.submit("আজ কিতনা কিতনা ডেবিট হুয়া মেসেজ দেখো", fromVoice = true)
+        settle()
+        assertEquals(1, provider.calls.size) // only Riya's turn went to the AI
+    }
+
+    @Test
     fun riyasYesToSeemasGuessTeachesTheWord() = runTest {
         settings.value = settings.value.copy(kidMode = true)
         val words = com.raju.aiassistant.domain.kids.InMemoryKidWordStore()

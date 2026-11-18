@@ -60,6 +60,20 @@ class DayAccountTest {
     }
 
     @Test
+    fun theQuestionWorksWhenABengaliRecogniserWroteIt() {
+        // Hindi said to a Bengali recogniser (Bengali letters), and real Bengali.
+        listOf(
+            "আজ কিতনা কিতনা ডেবিট হুয়া মেসেজ দেখো",
+            "মোবাইল কা ইনবক্স দেখ কে আজ কিতনা ডেবিট হুয়া বতাও",
+            "আজ কত টাকা ডেবিট হয়েছে মেসেজ দেখো",
+            "আজকে কত ক্রেডিট আর ডেবিট হয়েছে ব্যাংকের মেসেজ দেখো",
+        ).forEach { said ->
+            val a = LocalCommands.parse(said)
+            assertTrue(said + " → " + a, a is AssistantAction.InboxCheck && a.period == InboxPeriod.TODAY)
+        }
+    }
+
+    @Test
     fun daysAreReadAsDates() {
         assertEquals(LocalDate.of(2026, 11, 15), namedDay("15 तारीख का", today))
         assertEquals(LocalDate.of(2026, 11, 15), namedDay("15th ka", today))

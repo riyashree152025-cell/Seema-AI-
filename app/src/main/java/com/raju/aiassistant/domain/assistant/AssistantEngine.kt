@@ -439,7 +439,10 @@ class AssistantEngine(
         lastActivityAt = clock()
         cancelWork()
         lastUserText = trimmed
-        conversationLanguage.value = nextConversationLanguage(settings.value.speechLanguage, conversationLanguage.value, trimmed)
+        // Riya mode speaks Bengali by itself; her words must not switch the parent's language after the mode.
+        if (!settings.value.kidMode) {
+            conversationLanguage.value = nextConversationLanguage(settings.value.speechLanguage, conversationLanguage.value, trimmed)
+        }
         languageUnclear = settings.value.speechLanguage == LANGUAGE_AUTO && detectScript(trimmed) == Detection.MIXED
         trace("submit ${if (fromVoice) "voice" else "typed"} (${trimmed.length} chars)")
         job = scope.launch { handleUserMessage(trimmed, fromVoice) }
@@ -2007,6 +2010,18 @@ class AssistantEngine(
      * Riya mode opened (or came back on screen): listen at once, hands-free — she will not press a button.
      * Nothing happens while Seema is already listening, thinking or speaking.
      */
+    /**
+     * A parent left Riya mode: her conversation is over, and Seema talks with the parent again in their
+     * language (Hindi in Auto), with the parent's recogniser — not in Riya's Bengali.
+     */
+    fun onKidModeExit() {
+        kidHistory.clear()
+        kidGuess = null
+        com.raju.aiassistant.domain.voice.TurnPacing.toddler = false
+        if (SeemaLanguage.fromTag(settings.value.speechLanguage) == null) conversationLanguage.value = SeemaLanguage.HINDI
+        trace("riya: mode left")
+    }
+
     fun startKidListening() {
         if (!settings.value.kidMode || paused() || !voice.isAvailable()) return
         if (voice.listening.value || job?.isActive == true || _state.value == AssistantState.Speaking) return
