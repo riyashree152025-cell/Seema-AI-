@@ -780,12 +780,13 @@ fun HomeScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 2.dp)
-                        .softGlass(shape = RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFFFF6B9A), Color(0xFFFFA94D))))
                         .clickable(onClick = onOpenKidMode)
-                        .padding(vertical = 9.dp),
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("👧  রিয়া মোড", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("👧  রিয়া মোড  (Riya Mode)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
 
                 // Armored Bottom Dock Status Bar (Flush with bottom edge, clickable to open Chat)

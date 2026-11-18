@@ -21,6 +21,14 @@ class KidLexiconTest {
     }
 
     @Test
+    fun riyaModeIsTurnedOnByVoice() {
+        listOf("रिया मोड चालू करो", "Riya mode on karo", "রিয়া মোড চালু করো", "बेटी वाला मोड", "Seema, riya mode").forEach {
+            assertEquals(it, com.raju.aiassistant.domain.assistant.AssistantAction.KidModeOn, com.raju.aiassistant.domain.assistant.LocalCommands.parse(it))
+        }
+        assertTrue(com.raju.aiassistant.domain.assistant.LocalCommands.parse("रिया को कॉल करो") != com.raju.aiassistant.domain.assistant.AssistantAction.KidModeOn)
+    }
+
+    @Test
     fun herYesAndNoAreUnderstood() {
         listOf("হ্যাঁ", "হ্যাঁ খাবো", "হুঁ", "हाँ", "haan").forEach { assertEquals(it, true, KidLexicon.answer(it)) }
         listOf("না", "না খাবো না", "नहीं", "no").forEach { assertEquals(it, false, KidLexicon.answer(it)) }

@@ -290,6 +290,8 @@ class AssistantEngine(
     private val callRinging: () -> Boolean = { false },
     /** Riya's own words (Riya mode): learned from her "হ্যাঁ", from the talk, or taught by a parent. */
     private val kidWords: com.raju.aiassistant.domain.kids.KidWordStore = com.raju.aiassistant.domain.kids.InMemoryKidWordStore(),
+    /** Turns Riya mode on (saved in Settings; the app then shows only her screen). */
+    private val setKidMode: suspend (Boolean) -> Unit = {},
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -1694,6 +1696,10 @@ class AssistantEngine(
                 trace("offline command: greeting")
                 informational(action, action.reply, speak)
             }
+            AssistantAction.KidModeOn -> {
+                trace("offline command: riya mode")
+                kidModeOn(action, speak)
+            }
             AssistantAction.OpenSetupCheck -> {
                 trace("offline command: setup check")
                 val outcome = tools.openSetupCheck()
@@ -2041,6 +2047,12 @@ class AssistantEngine(
         val line = notes.text.ifBlank { com.raju.aiassistant.domain.kids.KidPrompt.AGAIN }
         kidHistory.addLast(Turn(TurnRole.ASSISTANT, line))
         kidAnswer(line, speak)
+    }
+
+    private suspend fun kidModeOn(action: AssistantAction, speak: Boolean) {
+        report(action, ActionStatus.SUCCESS, "Riya mode on.")
+        if (speak) say("ঠিক আছে, এখন রিয়া মোড। রিয়া সোনা, কথা বলো!")
+        setKidMode(true)
     }
 
     private suspend fun kidAnswer(line: String, speak: Boolean) {
@@ -2557,6 +2569,7 @@ class AssistantEngine(
             is AssistantAction.SetLanguage -> switchLanguage(action, speak)
             AssistantAction.GoToSleep -> sleepNow(action, speak)
             is AssistantAction.Greeting -> informational(action, action.reply, speak)
+            AssistantAction.KidModeOn -> kidModeOn(action, speak)
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)

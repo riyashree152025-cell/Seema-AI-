@@ -459,6 +459,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setAskBeforeReading(v: Boolean) = launch { repo.setAskBeforeReading(v) }
     fun setAnnounceCalls(v: Boolean) = launch { repo.setAnnounceCalls(v) }
     fun setAnnounceMoneyIn(v: Boolean) = launch { repo.setAnnounceMoneyIn(v) }
+    fun setKidMode(v: Boolean) = launch { repo.setKidMode(v) }
     fun setSpeakCallerNumber(v: Boolean) = launch { repo.setSpeakCallerNumber(v) }
     fun setAnnounceAppCalls(v: Boolean) = launch { repo.setAnnounceAppCalls(v) }
     fun setDirectCalling(v: Boolean) = launch { repo.setDirectCalling(v) }

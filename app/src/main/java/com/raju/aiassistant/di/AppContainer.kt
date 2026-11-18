@@ -466,6 +466,7 @@ class AppContainer(context: Context) {
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
             callRinging = { audioInterruptions.ringing() },
             kidWords = kidWords,
+            setKidMode = { on -> settingsRepository.setKidMode(on) },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {

@@ -36,6 +36,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -188,7 +189,8 @@ fun SettingsScreen(
                     onOpenAppearance = { currentScreen = "appearance" },
                     onOpenPrivacy = { currentScreen = "privacy" },
                     onOpenAutomation = { currentScreen = "automation" },
-                    onOpenSystem = { currentScreen = "system" }
+                    onOpenSystem = { currentScreen = "system" },
+                    onOpenKidMode = { viewModel.setKidMode(true) },
                 )
             }
             "brain_ai" -> {
@@ -454,6 +456,7 @@ fun SettingsMenuScreen(
     onOpenPrivacy: () -> Unit,
     onOpenAutomation: () -> Unit,
     onOpenSystem: () -> Unit,
+    onOpenKidMode: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -554,6 +557,7 @@ fun SettingsMenuScreen(
 
         // 2. The six categories in one glass panel (reference look); each row opens the same page as before.
         SciFiSettingsPanel {
+            SciFiSettingsRow(title = "👧 Riya Mode (রিয়া মোড)", subtitle = "बेटी के लिए: सिर्फ़ बंगाली बात, फ़ोन के काम बंद", icon = Icons.Filled.ChildCare, iconTint = Color(0xFFFF6B9A), onClick = onOpenKidMode)
             SciFiSettingsRow(title = "Brain & AI", subtitle = "Providers, Models, API Keys", icon = Icons.Filled.Psychology, iconTint = Color(0xFF00E5FF), onClick = onOpenBrainAi)
             SciFiSettingsRow(title = "Voice & Speech", subtitle = "Engines, Settings, Test", icon = Icons.Filled.GraphicEq, iconTint = Color(0xFF40C4FF), onClick = onOpenVoice)
             SciFiSettingsRow(title = "Appearance & Performance", subtitle = "Theme, Animations, UI Style", icon = Icons.Filled.Palette, iconTint = Color(0xFFFFB300), onClick = onOpenAppearance)
