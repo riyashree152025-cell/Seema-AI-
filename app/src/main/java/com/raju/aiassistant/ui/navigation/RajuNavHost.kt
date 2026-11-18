@@ -98,7 +98,23 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     // voice answer only ever said "permission nahi hai". Asked once with the call-log and phone-state permissions
     // (caller number, call state); the call-screening role follows.
     val phonePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { askCallScreeningRole() }
+    // The phone kills a background microphone service to save battery ("Hey Seema", call announcements and
+    // message read-outs then stop silently): asked once to leave Seema running.
+    val askBatteryOnce: () -> Unit = {
+        val prefs = appContext.getSharedPreferences("seema_setup", android.content.Context.MODE_PRIVATE)
+        val pm = appContext.getSystemService(android.os.PowerManager::class.java)
+        if (pm?.isIgnoringBatteryOptimizations(appContext.packageName) == false && !prefs.getBoolean("asked_battery", false)) {
+            prefs.edit().putBoolean("asked_battery", true).apply()
+            runCatching {
+                appContext.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${appContext.packageName}"))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
     val askCallScreeningOnce: () -> Unit = {
+        askBatteryOnce()
         val prefs = appContext.getSharedPreferences("seema_setup", android.content.Context.MODE_PRIVATE)
         val missing = listOf(Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG)
             .filter { androidx.core.content.ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }

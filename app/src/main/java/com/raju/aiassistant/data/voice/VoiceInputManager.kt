@@ -197,9 +197,15 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         }
     }
 
+    /**
+     * Audio focus for listening: asked once per listening session (not every turn) and as "may duck", so the
+     * user's song or video is lowered for a moment instead of paused again and again in hands-free mode (an
+     * exclusive request every few seconds kept stopping YouTube and music apps).
+     */
     private fun requestFocus() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            if (focusRequest != null) return
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -212,7 +218,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             runCatching { audio?.requestAudioFocus(req) }
         } else {
             @Suppress("DEPRECATION")
-            runCatching { audio?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE) }
+            runCatching { audio?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) }
         }
     }
 

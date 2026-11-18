@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.toSize
 import com.raju.aiassistant.domain.kids.AvatarMath
 import com.raju.aiassistant.domain.kids.AvatarMood
 import com.raju.aiassistant.domain.kids.Bubble
@@ -125,7 +127,7 @@ fun RiyaAvatarFace(
     }
 
     Canvas(
-        modifier.pointerInput(Unit) {
+        modifier.onSizeChanged { canvasSize = it.toSize() }.pointerInput(Unit) {
             detectTapGestures { pos ->
                 val t = System.currentTimeMillis()
                 touch = pos
@@ -162,7 +164,6 @@ fun RiyaAvatarFace(
             }
         },
     ) {
-        canvasSize = size
         val t = now
         val mood = AvatarMath.mood(state, t, tickledUntil)
         val (cx, baseCy, r) = faceGeometry(size)

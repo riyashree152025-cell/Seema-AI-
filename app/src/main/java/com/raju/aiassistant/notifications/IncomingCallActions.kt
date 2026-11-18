@@ -14,6 +14,9 @@ object IncomingCallActions {
     @Volatile private var answer: PendingIntent? = null
     @Volatile private var decline: PendingIntent? = null
     @Volatile private var key: String? = null
+    /** When the buttons were last seen: older than [STALE_MS] they are not trusted (a missed "removed"). */
+    @Volatile private var rememberedAt = 0L
+    private const val STALE_MS = 90_000L
 
     /** A call notification was posted (or updated): its Answer / Decline buttons, found by their titles. */
     fun remember(notificationKey: String, n: Notification) {
@@ -32,10 +35,13 @@ object IncomingCallActions {
         answer = a
         decline = d
         key = notificationKey
+        rememberedAt = System.currentTimeMillis()
     }
 
     /** A call notification with an Answer button is showing: the phone is ringing. */
-    fun ringing(): Boolean = answer != null
+    fun ringing(): Boolean = answer != null && fresh()
+
+    private fun fresh(): Boolean = System.currentTimeMillis() - rememberedAt < STALE_MS
 
     fun forget(notificationKey: String) {
         if (notificationKey != key) return
@@ -46,6 +52,7 @@ object IncomingCallActions {
 
     /** Presses the notification's Answer (or Decline) button; false when there is none. */
     fun press(answerCall: Boolean): Boolean {
+        if (!fresh()) return false
         val pi = (if (answerCall) answer else decline) ?: return false
         return runCatching { pi.send() }.isSuccess
     }

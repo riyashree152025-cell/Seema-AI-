@@ -17,8 +17,6 @@ import com.raju.aiassistant.MainActivity
 import com.raju.aiassistant.R
 import com.raju.aiassistant.RajuApp
 import com.raju.aiassistant.domain.reminder.Reminder
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -127,12 +125,18 @@ class ReminderReceiver : BroadcastReceiver() {
         Reminders.fire(context, r)
         val pending = goAsync()
         TatkalAlarms.ring(context, 2_500) {
-            CoroutineScope(Dispatchers.Main).launch {
+            // The app's own scope (not a loose one), and the spoken line within 5 s: ring + speech stay well inside
+            // the ~10 s a broadcast may take with goAsync().
+            val c = (context.applicationContext as? RajuApp)?.container
+            if (c == null) {
+                pending.finish()
+                return@ring
+            }
+            c.appScope.launch {
                 try {
-                    val c = (context.applicationContext as? RajuApp)?.container
-                    val s = c?.currentSettings?.value
-                    if (c != null && s != null && !s.assistantPaused && !s.safetyMode) {
-                        withTimeoutOrNull(7_000) { runCatching { c.speaker.speak("याद दिलाना था: ${r.text}") } }
+                    val s = c.currentSettings.value
+                    if (!s.assistantPaused && !s.safetyMode) {
+                        withTimeoutOrNull(REMINDER_SPEAK_MS) { runCatching { c.speaker.speak("याद दिलाना था: ${r.text}") } }
                     }
                 } finally {
                     pending.finish()
@@ -141,3 +145,6 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 }
+
+/** The reminder line must be spoken within this, inside the broadcast's time. */
+private const val REMINDER_SPEAK_MS = 5_000L
