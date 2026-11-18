@@ -14,10 +14,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -52,7 +50,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.raju.aiassistant.RajuApp
 import com.raju.aiassistant.domain.model.AssistantState
 import com.raju.aiassistant.domain.model.ChatRole
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -78,26 +75,21 @@ fun KidModeScreen() {
     }
     BackHandler(enabled = true) { /* Riya cannot leave with Back */ }
 
-    val pulse = rememberInfiniteTransition(label = "riya")
-    val beat by pulse.animateFloat(
-        initialValue = 1f, targetValue = if (state == AssistantState.Listening || state == AssistantState.Speaking) 1.08f else 1.02f,
-        animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "beat",
-    )
-    val face = when (state) {
-        AssistantState.Listening -> "👂"
-        AssistantState.Thinking, AssistantState.Executing -> "🤔"
-        AssistantState.Speaking -> "😄"
-        AssistantState.Error -> "🙈"
-        else -> "😊"
-    }
+    val level by container.speaker.level.collectAsStateWithLifecycle()
     val lastLine = transcript.lastOrNull { it.role == ChatRole.ASSISTANT }?.text ?: "রিয়া সোনা, কথা বলো!"
 
-    Box(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFFFF4D6), Color(0xFFDFF5FF)))),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        // The whole screen is her friend's face on a night sky: tap the cheeks, boop the nose, pop the bubbles.
+        RiyaAvatarFace(
+            state = state,
+            level = level,
+            onGiggle = { line -> scope.launch { runCatching { container.speaker.speak(line) } } },
+            modifier = Modifier.fillMaxSize(),
+        )
+
         // The lock: a parent holds it for 3 seconds.
         Box(
-            Modifier.align(Alignment.TopEnd).padding(16.dp).size(44.dp).clip(CircleShape).background(Color(0x22000000))
+            Modifier.align(Alignment.TopEnd).padding(16.dp).size(44.dp).clip(CircleShape).background(Color(0x33FFFFFF))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown()
@@ -114,35 +106,41 @@ fun KidModeScreen() {
             contentAlignment = Alignment.Center,
         ) { Text("🔒", fontSize = 20.sp) }
 
+        Text(
+            "রিয়ার সীমা দিদি", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 22.dp),
+        )
+
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("রিয়ার সীমা দিদি", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD6336C))
-            Box(
-                Modifier.size(220.dp).scale(beat).clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(Color(0xFFFFFFFF), Color(0xFFFFC2D9)))),
-                contentAlignment = Alignment.Center,
-            ) { Text(face, fontSize = 110.sp) }
             Text(
-                lastLine, fontSize = 22.sp, lineHeight = 30.sp, textAlign = TextAlign.Center, color = Color(0xFF5A3E5D),
-                maxLines = 4, modifier = Modifier.fillMaxWidth(),
+                lastLine, fontSize = 21.sp, lineHeight = 29.sp, textAlign = TextAlign.Center, color = Color(0xFF4A2F4D),
+                maxLines = 3, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xB3FFFFFF)).padding(12.dp),
             )
-            // The one button: talk (or stop her talking).
-            Box(
-                Modifier.size(130.dp).clip(CircleShape)
-                    .background(if (state == AssistantState.Listening) Color(0xFF51CF66) else Color(0xFFFF6B9A))
-                    .clickable {
-                        when (state) {
-                            AssistantState.Speaking -> engine.interrupt()
-                            AssistantState.Listening -> Unit
-                            else -> engine.startVoice()
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) { Text(if (state == AssistantState.Listening) "👂" else "🎤", fontSize = 56.sp) }
-            Spacer(Modifier.height(8.dp))
+            // The one button: talk (or stop her talking). It glows while she listens.
+            val glow = rememberInfiniteTransition(label = "mic")
+            val ring by glow.animateFloat(1f, 1.18f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "ring")
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.size(130.dp).scale(if (state == AssistantState.Listening) ring else 1f).clip(CircleShape)
+                        .background(Color(if (state == AssistantState.Listening) 0x5551CF66 else 0x44FF6B9A)),
+                )
+                Box(
+                    Modifier.size(112.dp).clip(CircleShape)
+                        .background(Brush.radialGradient(listOf(if (state == AssistantState.Listening) Color(0xFF8CE99A) else Color(0xFFFF8FB1), if (state == AssistantState.Listening) Color(0xFF2F9E44) else Color(0xFFE64980))))
+                        .clickable {
+                            when (state) {
+                                AssistantState.Speaking -> engine.interrupt()
+                                AssistantState.Listening -> Unit
+                                else -> engine.startVoice()
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) { Text("🎤", fontSize = 50.sp) }
+            }
         }
     }
 
