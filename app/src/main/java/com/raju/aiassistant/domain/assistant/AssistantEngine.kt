@@ -992,6 +992,13 @@ class AssistantEngine(
             val heard = com.raju.aiassistant.domain.language.toDevanagari(raw?.trim().orEmpty())
             // Privacy: only lengths in the log, never what was said.
             trace("wake heard: ${heard.length} chars")
+            // The phone rings and "Seema, call uthao" was in this recording: it is the answer to the call question
+            // (it used to be dropped because the call question had already woken her).
+            if (callCommandOpen() && heard.isNotBlank() && com.raju.aiassistant.domain.notify.callCommand(heard) != null) {
+                trace("call: answer heard in the wake recording")
+                handleCallCommand(heard)
+                return
+            }
             if (!asleep) return
             val request = when {
                 // Her name said: the rest is the request (as before). No name: the whole sentence,

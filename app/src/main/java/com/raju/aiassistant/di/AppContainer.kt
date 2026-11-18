@@ -317,7 +317,10 @@ class AppContainer(context: Context) {
             useDeepgram = {
                 // Without internet Deepgram cannot answer: the phone's own recogniser takes the turn, so
                 // the offline commands (torch, alarm, call…) still work by voice.
-                online.value && !currentSettings.value.kidMode &&
+                online.value && !currentSettings.value.kidMode && (
+                // A ringing call: "uthao / kaato" is heard by Deepgram whenever its key is saved, whatever the
+                // conversation language (the phone's Bengali recogniser wrote "উঠাও" and heard little over the ring).
+                (engine.callCommandOpen() && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value) ||
                 // Deepgram's models used here understand Hindi/Hinglish, not Bengali: Bengali uses the phone's recogniser.
                 (com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(currentSettings.value.speechLanguage) ?: conversationLanguage.value) !=
                     com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI &&
@@ -325,7 +328,7 @@ class AppContainer(context: Context) {
                     // preferred whenever its key is saved.
                     (currentSettings.value.sttEngine == SttEngine.DEEPGRAM ||
                         // … and for "uthao / kaat do" on a ringing call: no beep, and a quick cut of the turn.
-                        ((engine.handsFreeActive.value || engine.callCommandOpen()) && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value))
+                        ((engine.handsFreeActive.value || engine.callCommandOpen()) && SecretId.DEEPGRAM_API_KEY in secureKeyStore.configured.value)))
             },
             scope = appScope,
         )

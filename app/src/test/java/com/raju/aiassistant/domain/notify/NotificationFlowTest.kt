@@ -233,6 +233,16 @@ class NotificationFlowTest {
     }
 
     @Test
+    fun uthaoAndKaatoAreUnderstoodAsAnyRecogniserWritesThem() {
+        // Exactly what happened: the phone's Bengali recogniser wrote "उठाओ" in Bengali letters (4 chars).
+        listOf("উঠাও", "কল উঠাও", "উঠা লো", "ধরো", "তোলো", "उठाओ", "उठाव", "call uthao", "Call utha lo", "receive karo").forEach {
+            assertEquals(it, CallCommand.ANSWER, callCommand(it))
+        }
+        listOf("কাটো", "কেটে দাও", "काटो", "kaat do", "cut karo", "मत उठाओ").forEach { assertEquals(it, CallCommand.REJECT, callCommand(it)) }
+        assertNull(callCommand("Call"))
+    }
+
+    @Test
     fun everyOrdinaryWayOfSayingYesReadsTheMessage() {
         listOf("Thik hai sunao", "theek hai", "ठीक है सुनाओ", "ठीक है", "haan ji padhiye", "zaroor", "ज़रूर", "go ahead", "ঠিক আছে").forEach {
             assertEquals(it, true, readReply(it))

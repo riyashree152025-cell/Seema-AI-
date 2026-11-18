@@ -73,7 +73,13 @@ class RajuNotificationListener : NotificationListenerService() {
         if (!c.announcementDeduper.shouldAnnounce(item.packageName, item.sender.orEmpty() + item.group.orEmpty(), (item.preview ?: "") + item.isCall, now)) return
 
         if (item.isCall) {
-            if (settings.announceAppCalls) c.appScope.launch { c.speaker.speak(voipCallText(item, settings.userName)) }
+            if (settings.announceAppCalls && !settings.kidMode && !settings.assistantPaused) c.appScope.launch {
+                // "Raju, Mummy ka WhatsApp call aa raha hai. Uthaun ki nahi?" — and "uthao / kaato" presses the call
+                // notification's own Answer / Decline button (WhatsApp, Telegram… are not phone calls for Android).
+                val canAnswer = com.raju.aiassistant.notifications.IncomingCallActions.ringing()
+                c.speaker.speak(voipCallText(item, settings.userName) + if (canAnswer) " " + com.raju.aiassistant.domain.notify.ASK_TO_ANSWER else "")
+                if (canAnswer && com.raju.aiassistant.notifications.IncomingCallActions.ringing()) c.engine.listenForCallCommand(null, item.sender)
+            }
         } else {
             c.announcements.onMessage(item)
         }

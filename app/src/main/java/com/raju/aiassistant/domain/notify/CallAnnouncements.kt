@@ -43,11 +43,11 @@ enum class CallCommand { ANSWER, REJECT }
 
 // "No" words first: "mat uthao" / "nahi uthana" must never answer the call.
 private val REJECT_WORDS = Regex(
-    "\\b(mat|nahi|nahin|no|nope|kaat|kaato|kaat do|kat do|kat|kato|cut|reject|decline|disconnect|hata do|band karo|baad me|baad mein)\\b|मत|नहीं|नही|काट|(?<![\\u0900-\\u097F])कट(?![\\u0900-\\u097F])|रिजेक्ट|डिस्कनेक्ट|बंद कर|बाद में|কেটে|কাটো|পরে",
+    "\\b(mat|nahi|nahin|no|nope|kaat|kaato|kaat do|kat do|kat|kato|katt|cut|cutt|reject|decline|disconnect|hata do|band karo|baad me|baad mein)\\b|मत|नहीं|नही|काट|काटो|(?<![\\u0900-\\u097F])कट(?![\\u0900-\\u097F])|रिजेक्ट|डिस्कनेक्ट|बंद कर|बाद में|কেটে|কাটো|কাট|না ধরো|পরে|ধরব না|রাখো",
     RegexOption.IGNORE_CASE,
 )
 private val ANSWER_WORDS = Regex(
-    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|utha|uthao|utha lo|uthalo|uthaa|pick|pick up|receive|recieve|risiv|answer|accept|baat karao)\\b|हाँ|हां|उठा|रिसीव|रिसिव|रीसीव|(?<![\\u0900-\\u097F])पिक(?![\\u0900-\\u097F])|एक्सेप्ट|आंसर|ठीक है|হ্যাঁ|ধরো|রিসিভ",
+    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|utha|uthao|utao|uthav|utha lo|uthalo|uthaa|uthaiye|pick|pick up|receive|recieve|risiv|answer|accept|baat karao|lift)\\b|हाँ|हां|उठा|उठाव|उठाइए|रिसीव|रिसिव|रीसीव|(?<![\\u0900-\\u097F])पिक(?![\\u0900-\\u097F])|एक्सेप्ट|आंसर|ठीक है|হ্যাঁ|ধরো|ধর|তোলো|তুলে|ওঠাও|উঠাও|রিসিভ",
     RegexOption.IGNORE_CASE,
 )
 
@@ -56,10 +56,14 @@ private val SPEAKER = Regex("\\b(speaker|spiker|speakerphone|loudspeaker|loud)\\
 /** True when the user wants the call on the loudspeaker ("receive karo aur speaker mein daalo"). */
 fun wantsSpeaker(heard: String): Boolean = SPEAKER.containsMatchIn(heard)
 
-/** "Haan, utha lo" → ANSWER; "nahi, kaat do" / "mat uthao" → REJECT; anything else → null. */
+/**
+ * "Haan, utha lo" → ANSWER; "nahi, kaat do" / "mat uthao" → REJECT; anything else → null. Hindi written by a
+ * Bengali recogniser ("উঠাও" for उठाओ) is read in Devanagari too, and Bengali words count ("ধরো", "কেটে দাও").
+ */
 fun callCommand(heard: String): CallCommand? {
-    val t = heard.trim()
-    if (t.isEmpty()) return null
+    val raw = heard.trim()
+    if (raw.isEmpty()) return null
+    val t = if (com.raju.aiassistant.domain.language.hasBengaliLetters(raw)) raw + " " + com.raju.aiassistant.domain.language.bengaliToDevanagari(raw) else raw
     return when {
         REJECT_WORDS.containsMatchIn(t) -> CallCommand.REJECT
         ANSWER_WORDS.containsMatchIn(t) -> CallCommand.ANSWER
