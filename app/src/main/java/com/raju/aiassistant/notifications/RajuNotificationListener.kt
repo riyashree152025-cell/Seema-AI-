@@ -35,6 +35,9 @@ class RajuNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        // A ringing call's notification: keep its Answer / Decline buttons for "uthao" / "kaato" (before any
+        // other check — this must work whatever the announcement settings are).
+        sbn.notification?.let { n -> if (IncomingCallActions.isCallNotification(n, sbn.packageName)) IncomingCallActions.remember(sbn.key, n) }
         val c = container ?: return
         val settings = c.currentSettings.value
         announceMoneyIn(c, sbn)
@@ -104,6 +107,7 @@ class RajuNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        IncomingCallActions.forget(sbn.key)
         container?.announcements?.onRemoved(sbn.key)
         NotificationReplies.forget(sbn.key)
     }

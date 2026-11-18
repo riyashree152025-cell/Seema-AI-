@@ -230,7 +230,11 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         requestFocus()
         val am = audio ?: return
         if (mutedStreams.isNotEmpty()) return
-        mutedStreams = BEEP_STREAMS.filter { stream ->
+        // The recogniser's "trung" earcon plays on the system or the media stream (it depends on the phone).
+        // Media is silenced too, but only when nothing is playing (the user's song or video is never cut);
+        // the notification stream is never touched, so messages are still heard while she listens.
+        val streams = if (runCatching { am.isMusicActive }.getOrDefault(true)) BEEP_STREAMS else BEEP_STREAMS + AudioManager.STREAM_MUSIC
+        mutedStreams = streams.filter { stream ->
             !am.isStreamMute(stream) && runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0) }.isSuccess
         }
         if (mutedStreams.isNotEmpty()) prefs.edit().putString(KEY_MUTED, mutedStreams.joinToString(",")).apply()
@@ -287,6 +291,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
          * notifications and the user's media went silent most of the time.
          */
         val BEEP_STREAMS = listOf(AudioManager.STREAM_SYSTEM)
+        // (STREAM_MUSIC is added per turn when no media is playing; STREAM_NOTIFICATION is never muted.)
         const val KEY_MUTED = "muted_streams"
         // SpeechRecognizer error codes added in Android 12 (API 31).
         const val ERROR_TOO_MANY_REQUESTS = 10

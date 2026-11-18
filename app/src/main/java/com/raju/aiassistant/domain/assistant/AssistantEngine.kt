@@ -2645,14 +2645,16 @@ class AssistantEngine(
     private suspend fun answerRingingCall() {
         var outcome = tools.answerCall()
         if (outcome !is ToolOutcome.Done) {
-            trace("call: telecom answer refused, trying the screen button")
+            trace("call: telecom answer refused, trying the call buttons")
             val onScreen = tools.answerCallOnScreen()
+            trace("call: button answer ${if (onScreen is ToolOutcome.Done) "pressed" else "not found"}")
             if (onScreen is ToolOutcome.Done) outcome = onScreen
         } else {
             delay(CALL_VERIFY_MS)
             if (callRinging()) {
-                trace("call: still ringing after the answer, pressing the screen button")
+                trace("call: still ringing after the answer, pressing the call buttons")
                 val onScreen = tools.answerCallOnScreen()
+                trace("call: button answer ${if (onScreen is ToolOutcome.Done) "pressed" else "not found"}")
                 if (onScreen is ToolOutcome.Done) outcome = onScreen
             }
         }

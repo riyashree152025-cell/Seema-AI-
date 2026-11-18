@@ -467,7 +467,7 @@ class AppContainer(context: Context) {
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
-            callRinging = { audioInterruptions.ringing() },
+            callRinging = { audioInterruptions.ringing() || com.raju.aiassistant.notifications.IncomingCallActions.ringing() },
             kidWords = kidWords,
             setKidMode = { on -> settingsRepository.setKidMode(on) },
             micOpenChime = { runCatching { micChime?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90) } },
