@@ -109,7 +109,12 @@ object TurnPacing {
     @Volatile var quick: Boolean = false
 
     fun detector(frameMs: Int): EndpointDetector =
-        if (quick) EndpointDetector(frameMs = frameMs, silenceMs = QUICK_SILENCE_MS, maxMs = QUICK_MAX_MS, minSpeechMs = 120)
+        // A ringing call: the ringtone (ducked, but still there) must not raise the bar above the user's "uthao":
+        // the room level follows it, so a voice only has to be a little louder than the ring.
+        if (quick) EndpointDetector(
+            frameMs = frameMs, silenceMs = QUICK_SILENCE_MS, maxMs = QUICK_MAX_MS, minSpeechMs = 120,
+            noSpeechTimeoutMs = QUICK_NO_SPEECH_MS, minThreshold = VOICE_FLOOR, noiseFactor = QUICK_OVER_NOISE,
+        )
         else EndpointDetector(
             frameMs = frameMs, silenceMs = NORMAL_SILENCE_MS,
             shortSilenceMs = SHORT_SILENCE_MS, shortSpeechMs = SHORT_SPEECH_MS,
@@ -124,6 +129,8 @@ object TurnPacing {
     const val SHORT_SILENCE_MS = 800
     const val SHORT_SPEECH_MS = 1_500
     const val QUICK_MAX_MS = 6_000
+    const val QUICK_NO_SPEECH_MS = 5_000
+    const val QUICK_OVER_NOISE = 1.5
     /** Wait this long for the user to start talking before the turn counts as "no speech". */
     const val NO_SPEECH_MS = 8_000
     /** Quietest level that counts as a voice (the wake listener hears the same voice at 110). */

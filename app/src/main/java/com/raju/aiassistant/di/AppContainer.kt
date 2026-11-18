@@ -395,12 +395,21 @@ class AppContainer(context: Context) {
             appScope, speaker, currentSettings,
             // "Padh ke sunau kya?" → listen ~5 s: "haan" reads it, "rehne do" / silence drops it quietly.
             onAsked = { p ->
-                engine.listenForReadReply { yes ->
-                    when (yes) {
-                        true -> announcements.read(p.id)
-                        false -> { announcements.skip(p.id); speaker.stop() }
-                        // Silence: she goes quiet, but a later "batao / padho" still reads it.
-                        null -> Unit
+                // The window is opened right after her question; if she is still busy with the previous turn
+                // (listenForReadReply refuses) it is tried again for a few seconds — never left silent.
+                appScope.launch {
+                    repeat(READ_REPLY_OPEN_TRIES) {
+                        if (announcements.pending.value?.id != p.id) return@launch
+                        val opened = engine.listenForReadReply { yes ->
+                            when (yes) {
+                                true -> announcements.read(p.id)
+                                false -> { announcements.skip(p.id); speaker.stop() }
+                                // Silence: she goes quiet, but a later "batao / padho" still reads it.
+                                null -> Unit
+                            }
+                        }
+                        if (opened) return@launch
+                        kotlinx.coroutines.delay(READ_REPLY_RETRY_MS)
                     }
                 }
             },
@@ -453,6 +462,7 @@ class AppContainer(context: Context) {
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
+            callRinging = { audioInterruptions.ringing() },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {
@@ -482,3 +492,7 @@ class AppContainer(context: Context) {
         }
     }
 }
+
+/** "Padh ke sunau kya?": how often (and how far apart) the "haan / nahi" listening is tried while she is busy. */
+private const val READ_REPLY_OPEN_TRIES = 8
+private const val READ_REPLY_RETRY_MS = 600L

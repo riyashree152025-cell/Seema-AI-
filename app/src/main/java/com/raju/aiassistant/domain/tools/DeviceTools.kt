@@ -118,6 +118,10 @@ interface DeviceTools {
     fun beaconHardware(): BeaconHardware? = null
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
+    /** Fallback when TelecomManager does not answer the ringing call (some ROMs): presses the dialer's Answer button. */
+    fun answerCallOnScreen(): ToolOutcome = ToolOutcome.Failed("Answering on the screen is not supported here.")
+    /** Fallback when TelecomManager does not cut the ringing call: presses the dialer's Decline button. */
+    fun endCallOnScreen(): ToolOutcome = ToolOutcome.Failed("Cutting on the screen is not supported here.")
     /** Loudspeaker on or off for the current call. */
     fun setSpeakerphone(on: Boolean): ToolOutcome = ToolOutcome.Failed("Speaker control is not supported here.")
     /** A "कॉल काटें" button (notification) for the call Seema just placed; removed when the call ends. */

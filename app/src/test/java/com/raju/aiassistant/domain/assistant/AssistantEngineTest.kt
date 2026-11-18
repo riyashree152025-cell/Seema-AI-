@@ -79,8 +79,16 @@ class AssistantEngineTest {
         val dialed = mutableListOf<Contact>()
         var answered = 0
         var ended = 0
-        override fun answerCall(): ToolOutcome { answered++; return ToolOutcome.Done("Answered") }
-        override fun endCall(): ToolOutcome { ended++; return ToolOutcome.Done("Ended") }
+        /** What TelecomManager says; a ROM that ignores it is Done while the phone keeps ringing (see [ringing]). */
+        var answerResult: ToolOutcome = ToolOutcome.Done("Answered")
+        var endResult: ToolOutcome = ToolOutcome.Done("Ended")
+        var screenResult: ToolOutcome = ToolOutcome.Done("pressed")
+        var answeredOnScreen = 0
+        var endedOnScreen = 0
+        override fun answerCall(): ToolOutcome { answered++; return answerResult }
+        override fun endCall(): ToolOutcome { ended++; return endResult }
+        override fun answerCallOnScreen(): ToolOutcome { answeredOnScreen++; return screenResult }
+        override fun endCallOnScreen(): ToolOutcome { endedOnScreen++; return screenResult }
         val torch = mutableListOf<Boolean>()
         override fun setFlashlight(on: Boolean): ToolOutcome { torch += on; return ToolOutcome.Done(if (on) "Torch on" else "Torch off") }
         val volumes = mutableListOf<Int>()
@@ -199,8 +207,12 @@ class AssistantEngineTest {
             providerFor = { _, _ -> provider }, searchFor = { search },
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            callRinging = { ringing },
         )
     }
+
+    /** The phone is still ringing (the audio mode says so). */
+    private var ringing = false
 
     @Test
     fun replyIsRecordedSpokenAndStateReturnsToIdle() = runTest {
@@ -2463,6 +2475,101 @@ class AssistantEngineTest {
         voice.onResult!!("उठा लो")
         settle()
         assertEquals(1, tools.answered)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun whenTelecomRefusesTheScreenAnswerButtonIsPressed() = runTest {
+        tools.answerResult = ToolOutcome.NeedsPermission("android.permission.ANSWER_PHONE_CALLS", "no permission")
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("uthao")
+        settle()
+        assertEquals(1, tools.answered)
+        assertEquals(1, tools.answeredOnScreen)
+        assertEquals(0, provider.calls.size)
+        assertTrue(tools.speakerCalls.isNotEmpty() && tools.speakerCalls.all { it })
+    }
+
+    @Test
+    fun whenTelecomSaysDoneButThePhoneKeepsRingingTheScreenButtonIsPressed() = runTest {
+        ringing = true // a Samsung / Xiaomi ROM that ignores acceptRingingCall()
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("receive karo")
+        settle()
+        assertEquals(1, tools.answered)
+        assertEquals(1, tools.answeredOnScreen)
+        ringing = false
+    }
+
+    @Test
+    fun anAnswerThatWorkedNeverTouchesTheScreen() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("haan utha lo")
+        settle()
+        assertEquals(0, tools.answeredOnScreen)
+    }
+
+    @Test
+    fun theLoudspeakerGoesOnHalfASecondAfterTheCallIsAnswered() = runTest {
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("utha lo") // no "speaker" said
+        advanceTimeBy(1_600); runCurrent() // the answer is checked at 1.2 s, the speaker follows 0.5 s later
+        assertTrue("not before 0.5 s: ${tools.speakerCalls}", tools.speakerCalls.isEmpty())
+        advanceTimeBy(300); runCurrent()
+        assertEquals(listOf(true), tools.speakerCalls)
+        settle()
+        assertTrue(tools.speakerCalls.all { it }) // never switched off
+    }
+
+    @Test
+    fun whenTelecomRefusesToCutTheScreenDeclineButtonIsPressed() = runTest {
+        tools.endResult = ToolOutcome.Failed("no active call")
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("kato")
+        settle()
+        assertEquals(1, tools.ended)
+        assertEquals(1, tools.endedOnScreen)
+        assertEquals(0, tools.answered)
+    }
+
+    @Test
+    fun ifNothingCanAnswerTheCallTheUserIsToldWhy() = runTest {
+        tools.answerResult = ToolOutcome.NeedsPermission("android.permission.ANSWER_PHONE_CALLS", "no permission")
+        tools.screenResult = ToolOutcome.Failed("button not found")
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("utha lo")
+        settle()
+        assertTrue(speaker.spoken.toString(), speaker.spoken.any { it.contains("अनुमति") || it.contains("Phone") })
+        assertTrue(tools.speakerCalls.isEmpty())
+    }
+
+    @Test
+    fun thikHaiSunaoAfterTheQuestionIsAYes() = runTest {
+        val e = engine()
+        var got: Boolean? = null
+        assertTrue(e.listenForReadReply { got = it })
+        advanceTimeBy(400); runCurrent()
+        voice.onResult!!("Thik hai sunao")
+        settle()
+        assertEquals(true, got)
         assertEquals(0, provider.calls.size)
     }
 

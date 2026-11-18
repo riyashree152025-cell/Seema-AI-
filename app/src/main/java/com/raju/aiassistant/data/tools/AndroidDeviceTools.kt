@@ -287,6 +287,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     override fun answerCall(): ToolOutcome = telecomCall(answer = true)
 
+    override fun answerCallOnScreen(): ToolOutcome =
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = true)) ToolOutcome.Done("कॉल उठा ली है।")
+        else ToolOutcome.Failed("स्क्रीन पर Answer बटन नहीं मिला (Settings → Accessibility में Seema ON होना चाहिए)।")
+
+    override fun endCallOnScreen(): ToolOutcome =
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = false)) ToolOutcome.Done("फोन कॉल कट कर दिया गया है।")
+        else ToolOutcome.Failed("स्क्रीन पर Decline बटन नहीं मिला (Settings → Accessibility में Seema ON होना चाहिए)।")
+
     override fun showHangUpButton(name: String) {
         com.raju.aiassistant.notifications.CallControls.showHangUp(context, name)
     }

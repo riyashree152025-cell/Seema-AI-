@@ -28,6 +28,8 @@
     <!-- Only used if the user turns on "Direct calling"; otherwise the dialer is opened. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- Call state and the ringing number ("utha lo / kaat do", caller announcement). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Tatkal alerts at the exact time the user sets (ring on time, even when Seema is closed). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />

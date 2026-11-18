@@ -231,6 +231,39 @@ class NotificationFlowTest {
     }
 
     @Test
+    fun everyOrdinaryWayOfSayingYesReadsTheMessage() {
+        listOf("Thik hai sunao", "theek hai", "ठीक है सुनाओ", "ठीक है", "haan ji padhiye", "zaroor", "ज़रूर", "go ahead", "ঠিক আছে").forEach {
+            assertEquals(it, true, readReply(it))
+        }
+        listOf("thik nahi", "ठीक नहीं है", "nahi sunao", "abhi mat padho").forEach { assertEquals(it, false, readReply(it)) }
+    }
+
+    @Test
+    fun theMessageIsStillReadAfterTheQuestionTimedOut() = runTest {
+        // "Padh ke sunau kya?" → silence for 30 s (the question closes) → "thik hai sunao" a little later still reads it.
+        val c = coordinator()
+        c.onMessage(msg("Riya", "Aaj shaam ko milte hain"))
+        runCurrent()
+        advanceTimeBy(31_000); runCurrent()
+        assertNull(c.pending.value)
+        assertTrue(c.followUpPending())
+        assertEquals("WhatsApp par Riya ne likha: Aaj shaam ko milte hain", c.getLatestMessageSummary())
+        assertFalse(c.followUpPending()) // read once
+    }
+
+    @Test
+    fun yesWhileThePendingQuestionIsOpenReadsTheTextAtOnce() = runTest {
+        val c = coordinator()
+        c.onMessage(msg("Riya", "Kahan ho?"))
+        runCurrent()
+        val p = c.pending.value!!
+        if (readReply("Thik hai sunao") == true) c.read(p.id)
+        runCurrent()
+        assertEquals("Riya ne likha: Kahan ho?", speaker.spoken.last())
+        assertNull(c.pending.value)
+    }
+
+    @Test
     fun afterAskingTheReplyWindowIsOpened() = runTest {
         var asked = 0
         val c = AnnouncementCoordinator(backgroundScope, speaker, settings, consentTimeoutMs = 30_000, onAsked = { asked++ })

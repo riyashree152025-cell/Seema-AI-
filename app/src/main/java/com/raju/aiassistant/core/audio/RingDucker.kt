@@ -13,7 +13,7 @@ class RingDucker(context: Context) {
     private val audio = context.getSystemService(AudioManager::class.java)
     @Volatile private var saved: Int? = null
 
-    fun duck(fraction: Float = 0.2f) {
+    fun duck(fraction: Float = 0.1f) {
         try {
             val am = audio ?: return
             if (saved != null) return

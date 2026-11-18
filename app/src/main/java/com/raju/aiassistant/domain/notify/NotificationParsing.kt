@@ -141,6 +141,6 @@ private val READ_NO = Regex(
     RegexOption.IGNORE_CASE,
 )
 private val READ_YES = Regex(
-    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|suno|sunao|suna do|padho|padh do|padhkar|padh ke|bolo|bologe|batao|bata do|read)\\b|हाँ|हां|सुनाओ|सुना दो|सुनो|पढ़ो|पढ़ दो|पढ़|बोलो|बताओ|হ্যাঁ|পড়ো|শোনাও",
+    "\\b(haan|han|ha|haa|haanji|ji|yes|ok|okay|thik hai|theek hai|thik|theek|zaroor|bilkul|suno|sunao|sunaiye|suna do|suna dijiye|padho|padhiye|padh do|padh dijiye|padhkar|padh ke|bolo|bologe|batao|bata do|read|go ahead)\\b|हाँ|हां|ठीक है|ठीक|ज़रूर|जरूर|बिल्कुल|सुनाओ|सुनाइए|सुना दो|सुना दीजिए|सुनो|पढ़ो|पढ़िए|पढ़ दो|पढ़ दीजिए|पढ़|बोलो|बताओ|হ্যাঁ|ঠিক আছে|পড়ো|শোনাও",
     RegexOption.IGNORE_CASE,
 )

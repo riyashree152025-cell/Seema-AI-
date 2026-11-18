@@ -257,6 +257,25 @@ class SeemaAccessibilityService : AccessibilityService() {
     private fun texts(root: AccessibilityNodeInfo): List<String> =
         walk(root).mapNotNull { (it.text ?: it.contentDescription)?.toString() }.take(40).toList()
 
+    /** All windows' nodes (the dialer, the notification shade's heads-up call) searched for the call button. */
+    private fun clickCallButton(answer: Boolean): Boolean {
+        val roots = buildList {
+            rootInActiveWindow?.let { add(it) }
+            runCatching { windows.mapNotNull { it.root } }.getOrNull()?.let { addAll(it) }
+        }
+        for (root in roots) {
+            for (node in walk(root)) {
+                val label = listOfNotNull(
+                    node.text?.toString(), node.contentDescription?.toString(), node.viewIdResourceName?.substringAfterLast('/'),
+                ).joinToString(" ")
+                val match = if (answer) com.raju.aiassistant.domain.notify.CallButtons.isAnswer(label)
+                else com.raju.aiassistant.domain.notify.CallButtons.isDecline(label)
+                if (match && clickNode(node)) return true
+            }
+        }
+        return false
+    }
+
     private fun clickNode(node: AccessibilityNodeInfo): Boolean {
         var current: AccessibilityNodeInfo? = node
         while (current != null) {
@@ -318,6 +337,16 @@ class SeemaAccessibilityService : AccessibilityService() {
         }
 
         fun isRunning(): Boolean = instance != null
+
+        /**
+         * Presses the Answer ([answer] true) or Decline button of a ringing call on the screen: the dialer's
+         * call UI or the heads-up notification. The fallback for phones whose TelecomManager ignores
+         * acceptRingingCall() / endCall(). True when a matching button was found and clicked.
+         */
+        fun pressCallButton(answer: Boolean): Boolean {
+            val service = instance ?: return false
+            return runCatching { service.clickCallButton(answer) }.getOrDefault(false)
+        }
 
         /** Presses Send in the WhatsApp chat Seema opens next with [text]; gives up after 15 s. */
         fun armWhatsAppAutoSend(text: String? = null) {

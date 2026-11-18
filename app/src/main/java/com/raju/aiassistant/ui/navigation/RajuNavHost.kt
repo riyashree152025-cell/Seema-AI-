@@ -80,7 +80,7 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     // Doctor can ask again).
     val appContext = LocalContext.current.applicationContext
     val callScreeningRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
-    val askCallScreeningOnce: () -> Unit = {
+    val askCallScreeningRole: () -> Unit = {
         val prefs = appContext.getSharedPreferences("seema_setup", android.content.Context.MODE_PRIVATE)
         if (android.os.Build.VERSION.SDK_INT >= 29 && !prefs.getBoolean("asked_call_screening", false)) {
             val rm = appContext.getSystemService(android.app.role.RoleManager::class.java)
@@ -93,6 +93,19 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                 runCatching { callScreeningRole.launch(intent) }
             }
         }
+    }
+    // "Utha lo" / "kaat do" need the Phone permission (ANSWER_PHONE_CALLS); nothing asked for it before, so a
+    // voice answer only ever said "permission nahi hai". Asked once with the call-log and phone-state permissions
+    // (caller number, call state); the call-screening role follows.
+    val phonePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { askCallScreeningRole() }
+    val askCallScreeningOnce: () -> Unit = {
+        val prefs = appContext.getSharedPreferences("seema_setup", android.content.Context.MODE_PRIVATE)
+        val missing = listOf(Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG)
+            .filter { androidx.core.content.ContextCompat.checkSelfPermission(appContext, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty() && !prefs.getBoolean("asked_phone_permissions", false)) {
+            prefs.edit().putBoolean("asked_phone_permissions", true).apply()
+            runCatching { phonePermissions.launch(missing.toTypedArray()) }.onFailure { askCallScreeningRole() }
+        } else askCallScreeningRole()
     }
     val handsFreeMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) container.engine.startHandsFree()

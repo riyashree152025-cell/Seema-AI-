@@ -131,6 +131,8 @@ private const val BACKGROUND_GUARD_MS = 3_000L
  * (also while another app is on screen). Every new command starts it again.
  */
 private const val FOLLOW_UP_MS = 20_000L
+/** "Padh ke sunau kya?" stays open this long: a "haan sunao" in standby needs no "Hey Seema". */
+private const val NOTIFICATION_ASK_TTL_MS = 30_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
 /** How long a WhatsApp Send / Call press is waited for (slow networks, a dialog in between). */
 private const val AUTO_ACTION_WAIT_MS = 14_000L
@@ -151,7 +153,12 @@ private const val TEST_SYSTEM_PROMPT = "You are a connection test. Reply with th
 private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_EXCEEDED, FailureKind.TIMEOUT, FailureKind.SERVER, FailureKind.INVALID_KEY, FailureKind.UNKNOWN)
 /** Consecutive recogniser errors (not silence) tolerated in hands-free mode before it stops. */
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
-private const val CALL_COMMAND_WINDOW_MS = 25_000L
+private const val CALL_COMMAND_WINDOW_MS = 35_000L
+/** After a voice answer / cut: how long before it is checked that the phone really stopped ringing. */
+private const val CALL_VERIFY_MS = 1_200L
+/** The loudspeaker goes on this long after "uthao" worked, and once more [SPEAKER_RETRY_MS] later. */
+private const val SPEAKER_AFTER_ANSWER_MS = 500L
+private const val SPEAKER_RETRY_MS = 1_000L
 /** After cutting a call, the time Android takes to write it to the call log. */
 private const val CALL_LOG_SETTLE_MS = 1_500L
 /** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
@@ -274,6 +281,8 @@ class AssistantEngine(
      * on the loudspeaker her own voice reached the microphone and cut her replies after a word.
      */
     private val headphones: () -> Boolean = { true },
+    /** A phone call is still ringing (the audio mode says so): an answer / cut that changed nothing is retried on the screen. */
+    private val callRinging: () -> Boolean = { false },
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -2147,7 +2156,9 @@ class AssistantEngine(
         callReplyText(text)?.let { reply ->
             callCommandUntil = 0
             trace("call: reject with an SMS reply")
-            val ended = tools.endCall()
+            val ended = tools.endCall().let { telecom ->
+                if (telecom is ToolOutcome.Done) telecom else tools.endCallOnScreen().let { screen -> if (screen is ToolOutcome.Done) screen else telecom }
+            }
             val screened = ringingNumber?.takeIf { n -> n.count { it.isDigit() } >= 6 }?.let { Contact(ringingName ?: it, it) }
             val screenedName = ringingName
             scope.launch {
@@ -2182,29 +2193,16 @@ class AssistantEngine(
         when (callCommand(text)) {
             CallCommand.ANSWER -> {
                 callCommandUntil = 0
-                val speaker = com.raju.aiassistant.domain.notify.wantsSpeaker(text)
-                trace("call: answer" + if (speaker) " + speaker" else "")
-                val outcome = tools.answerCall()
-                scope.launch {
-                    report(AssistantAction.AnswerCall, outcome)
-                    if (outcome is ToolOutcome.Done) {
-                        // "… aur speaker mein daalo": loudspeaker on once the call connects.
-                        if (speaker) { delay(700); runCatching { tools.setSpeakerphone(true) } }
-                    } else {
-                        // Never silent when it did not work: say why (most often the Phone permission).
-                        say(callFailureText(outcome, answer = true))
-                    }
-                }
+                trace("call: answer")
+                scope.launch { answerRingingCall() }
             }
             CallCommand.REJECT -> {
                 callCommandUntil = 0
                 trace("call: reject")
                 ringingNumber = null
                 ringingName = null
-                val outcome = tools.endCall()
                 scope.launch {
-                    report(AssistantAction.EndCall, outcome)
-                    if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
+                    cutRingingCall()
                     if (!pausedForCall) returnToStandby()
                 }
             }
@@ -2224,6 +2222,57 @@ class AssistantEngine(
             }
         }
         return true
+    }
+
+    /**
+     * "Uthao": TelecomManager first; when it refuses (no Phone permission) or changes nothing (some Samsung /
+     * Xiaomi ROMs ignore acceptRingingCall()), the dialer's Answer button is pressed through the accessibility
+     * service. Once the call is up the loudspeaker goes on after [SPEAKER_AFTER_ANSWER_MS], so the user can talk
+     * hands-free (again a little later: dialers reset the audio route while the call connects).
+     */
+    private suspend fun answerRingingCall() {
+        var outcome = tools.answerCall()
+        if (outcome !is ToolOutcome.Done) {
+            trace("call: telecom answer refused, trying the screen button")
+            val onScreen = tools.answerCallOnScreen()
+            if (onScreen is ToolOutcome.Done) outcome = onScreen
+        } else {
+            delay(CALL_VERIFY_MS)
+            if (callRinging()) {
+                trace("call: still ringing after the answer, pressing the screen button")
+                val onScreen = tools.answerCallOnScreen()
+                if (onScreen is ToolOutcome.Done) outcome = onScreen
+            }
+        }
+        report(AssistantAction.AnswerCall, outcome)
+        if (outcome is ToolOutcome.Done) {
+            delay(SPEAKER_AFTER_ANSWER_MS)
+            runCatching { tools.setSpeakerphone(true) }
+            delay(SPEAKER_RETRY_MS)
+            runCatching { tools.setSpeakerphone(true) }
+        } else {
+            // Never silent when it did not work: say why (most often the Phone permission).
+            say(callFailureText(outcome, answer = true))
+        }
+    }
+
+    /** "Kaato": TelecomManager first, the dialer's Decline button as the fallback. */
+    private suspend fun cutRingingCall() {
+        var outcome = tools.endCall()
+        if (outcome !is ToolOutcome.Done) {
+            trace("call: telecom cut refused, trying the screen button")
+            val onScreen = tools.endCallOnScreen()
+            if (onScreen is ToolOutcome.Done) outcome = onScreen
+        } else {
+            delay(CALL_VERIFY_MS)
+            if (callRinging()) {
+                trace("call: still ringing after the cut, pressing the screen button")
+                val onScreen = tools.endCallOnScreen()
+                if (onScreen is ToolOutcome.Done) outcome = onScreen
+            }
+        }
+        report(AssistantAction.EndCall, outcome)
+        if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
     }
 
     /** Why answering / cutting a ringing call did not work, said out loud. */
@@ -2253,6 +2302,9 @@ class AssistantEngine(
         // interrupted it, so it is started again once the question has finished playing).
         val alreadyInConversation = _voiceSession.value
         replyHandler = onReply
+        // If the window ends in silence she goes back to standby: "haan sunao" said a little later must still
+        // count without "Hey Seema" (the question is open for [NOTIFICATION_ASK_TTL_MS]).
+        followUpUntil = maxOf(followUpUntil, clock() + NOTIFICATION_ASK_TTL_MS)
         // The window counts from when the microphone opens; an answer begun inside it gets time to be
         // transcribed (a hard cap, not a race against Deepgram's reply).
         replyUntil = clock() + ECHO_SETTLE_MS + windowMs
