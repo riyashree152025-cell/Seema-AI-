@@ -131,6 +131,10 @@ private const val BACKGROUND_GUARD_MS = 3_000L
  * (also while another app is on screen). Every new command starts it again.
  */
 private const val FOLLOW_UP_MS = 20_000L
+/** "Kaun si UPI ID?": the answer is taken this long after the question. */
+private const val UPI_ASK_MS = 10_000L
+/** Between "X mil gaya, ab call laga rahi hoon" and the call / send: time to say "ruko" or the right name. */
+private const val SAFETY_WINDOW_MS = 2_500L
 /** Riya mode: her name in Seema's words, how much of the talk goes with a request, and how long a guess waits. */
 private const val KID_NAME = "রিয়া"
 private const val KID_HISTORY_LINES = 10
@@ -292,6 +296,8 @@ class AssistantEngine(
     private val kidWords: com.raju.aiassistant.domain.kids.KidWordStore = com.raju.aiassistant.domain.kids.InMemoryKidWordStore(),
     /** Turns Riya mode on (saved in Settings; the app then shows only her screen). */
     private val setKidMode: suspend (Boolean) -> Unit = {},
+    /** A soft, short chime when listening for an answer starts. */
+    private val micOpenChime: () -> Unit = {},
 ) {
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
@@ -459,6 +465,7 @@ class AssistantEngine(
         if (settings.value.assistantPaused) { trace("off: heard result dropped"); return }
         trace("recognized (${heard.length} chars)")
         fastNoSpeech = 0
+        correctionWait?.let { if (!it.isCompleted) { it.complete(heard); return } }
         if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
@@ -679,6 +686,12 @@ class AssistantEngine(
             return
         }
         trace("[SeemaVoice] listening, microphone free")
+        // A soft 90 ms chime when she starts listening for an answer (after her name or a question), so it is
+        // clear from across the room that she is listening. Never in Riya mode (it would start her own loop).
+        if (chimeOnNextListen) {
+            chimeOnNextListen = false
+            if (!settings.value.kidMode) runCatching { micOpenChime() }
+        }
         val gen = ++listenGen
         // A ringing call or a "haan / nahi" question: a short answer, cut quickly.
         com.raju.aiassistant.domain.voice.TurnPacing.quick = clock() < callCommandUntil || voiceConfirmOpen()
@@ -717,6 +730,7 @@ class AssistantEngine(
                     }
                     return@start
                 }
+                if (correctionWait != null) return@start // the stop window: silence means "go ahead"
                 if (settings.value.kidMode && !err.permissionDenied && !paused()) {
                     // Riya mode listens hands-free all the time: a toddler never presses a button first. Silence or
                     // an unclear sound starts the listening again after a short pause (the recogniser was cancelled
@@ -1075,6 +1089,23 @@ class AssistantEngine(
             kidTurn(text, fromVoice)
             return
         }
+        // "Jalal bhai ko kaun si UPI ID bhejni hai — Paytm ya PhonePe?" → "Paytm wala".
+        pendingUpi?.let { p ->
+            pendingUpi = null
+            if (clock() < p.until) {
+                val entry = com.raju.aiassistant.domain.payments.PaymentShare.pick(s.upiIds, text)
+                if (entry != null) {
+                    trace("upi: chosen from the answer")
+                    if (runLocalCommand(AssistantAction.SendUpiId(p.contact, entry.label, p.amountRupees), speak = fromVoice || s.autoSpeakReplies)) return
+                } else if (Correction.parse(text) == Correction.Cancel) {
+                    val line = phrase(lang(), "ठीक है, UPI ID नहीं भेजी।", "ঠিক আছে, UPI ID পাঠাইনি।")
+                    record(ChatRole.ASSISTANT, line)
+                    if (fromVoice || s.autoSpeakReplies) say(line)
+                    finishTurn()
+                    return
+                }
+            }
+        }
         // A parent teaching one of Riya's words from the normal mode: "रिया हुसू बोले तो मतलब पेशाब".
         com.raju.aiassistant.domain.kids.KidLexicon.teachCommand(text, requireName = true)?.let { (heard, meaning) ->
             runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.TAUGHT, clock())) }
@@ -1233,7 +1264,7 @@ class AssistantEngine(
                     return
                 }
                 if (runLocalCommand(action, speakIt)) return
-                execute(action, provider, model, "", speakIt)
+                executeAndExplain(action, provider, model, "", speakIt)
                 if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
                 finishTurn()
                 return
@@ -1427,7 +1458,7 @@ class AssistantEngine(
             hadActions = true
             trace("ai action: ${action::class.simpleName}")
             val activeProvider = if (answeredBy == providerId) provider else keyFor(answeredBy)?.let { providerFor(answeredBy, it) } ?: provider
-            execute(action, activeProvider, answeredModel, system, speak)
+            executeAndExplain(action, activeProvider, answeredModel, system, speak)
         }
 
         if (hadActions && _state.value != AssistantState.Error) {
@@ -1883,6 +1914,16 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 whatsAppFile(action, speak)
             }
+            is AssistantAction.SendPaymentQr -> {
+                trace("offline command: payment qr")
+                _state.value = AssistantState.Executing
+                sendPaymentQr(action, speak)
+            }
+            is AssistantAction.SendUpiId -> {
+                trace("offline command: upi id")
+                _state.value = AssistantState.Executing
+                sendUpiId(action, speak)
+            }
             is AssistantAction.WhatsApp -> {
                 // Same path as when the AI asks for it: contacts first, WhatsApp's own search second.
                 trace("offline command: whatsapp")
@@ -1999,6 +2040,134 @@ class AssistantEngine(
      */
     private fun doneShownMs(): Long = if (_voiceSession.value || handsFree) 200L else 1_200L
 
+    // ---------------------------------------------------------------- payment QR and UPI IDs
+
+    /** "Kaun si UPI ID?" was asked: the answer ("Paytm wala") is taken within [UPI_ASK_MS]. */
+    private data class PendingUpiShare(val contact: String, val amountRupees: Long?, val until: Long)
+    private var pendingUpi: PendingUpiShare? = null
+    private fun upiQuestionOpen(): Boolean = pendingUpi?.let { clock() < it.until } == true
+
+    /** "Mera QR bhej do Rizwan ko": the saved QR photo to that contact on WhatsApp (asked first, then a 2.5 s stop window). */
+    private suspend fun sendPaymentQr(action: AssistantAction.SendPaymentQr, speak: Boolean) {
+        if (!tools.hasPaymentQr()) {
+            val msg = phrase(lang(), "Payment QR अभी सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में QR की फ़ोटो चुनिए।", "Payment QR এখনও সেভ নেই। Apps & Tools → Payment QR & UPI IDs-এ QR-এর ছবি বেছে নিন।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val target = pickWhatsAppContact(action, action.contact, speak, "Send payment QR?", "Payment QR WhatsApp par jayega", "इन्हें Payment QR भेजूँ", "একে Payment QR পাঠাব") ?: return
+        when (val c = actionSafetyWindow(target.name, speak, "WhatsApp पर QR भेज रही हूँ")) {
+            Correction.Cancel -> return cancelledLine(action, speak, phrase(lang(), "ठीक है, QR नहीं भेजा।", "ঠিক আছে, QR পাঠাইনি।"))
+            is Correction.Rename -> {
+                if (speak) say(phrase(lang(), "अच्छा सॉरी, ${c.name} को ढूँढ रही हूँ…", "আচ্ছা সরি, ${c.name}-কে খুঁজছি…"))
+                return sendPaymentQr(action.copy(contact = c.name), speak)
+            }
+            null -> Unit
+        }
+        val outcome = tools.sharePaymentQr(target.number, com.raju.aiassistant.domain.payments.PaymentShare.qrCaption(action.amountRupees))
+        report(action, outcome)
+        val sent = if (outcome is ToolOutcome.Done && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
+        if (sent == false) report(action, ActionStatus.FAILED, "WhatsApp में Send नहीं दबा पाई — WhatsApp में खुद Send दबाइए।")
+        if (speak) say(
+            when {
+                outcome !is ToolOutcome.Done -> phrase(lang(), "माफ़ कीजिए, QR नहीं भेज पाई — ${outcome.spokenReason()}", "দুঃখিত, QR পাঠাতে পারিনি।")
+                sent == true -> phrase(lang(), "हो गया, ${target.name} को Payment QR भेज दिया।", "হয়ে গেছে, ${target.name}-কে Payment QR পাঠিয়ে দিয়েছি।")
+                sent == false -> phrase(lang(), "QR WhatsApp में तैयार है, पर Send नहीं दब पाया — Send आप दबा दीजिए।", "QR হোয়াটসঅ্যাপে তৈরি, Send আপনি চাপুন।")
+                else -> phrase(lang(), "QR WhatsApp में ${target.name} के लिए तैयार है — Send दबा दीजिए।", "QR হোয়াটসঅ্যাপে তৈরি — Send চাপুন।")
+            },
+        )
+    }
+
+    /**
+     * "Jalal bhai ko UPI ID bhej do": the named saved ID, the only one, or — with several and none named — "kaun si?"
+     * (the answer is heard within [UPI_ASK_MS], no "Hey Seema" needed). The message goes through the usual WhatsApp
+     * path (asked first, then sent).
+     */
+    private suspend fun sendUpiId(action: AssistantAction.SendUpiId, speak: Boolean) {
+        val saved = settings.value.upiIds
+        if (saved.isEmpty()) {
+            val msg = phrase(lang(), "कोई UPI ID सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में UPI ID जोड़िए।", "কোনো UPI ID সেভ নেই। Apps & Tools-এ UPI ID যোগ করুন।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        // Named in the request ("Paytm wala UPI ID…"), or the only one saved.
+        val entry = action.upiLabel?.let { l -> saved.firstOrNull { it.label.equals(l, true) } ?: com.raju.aiassistant.domain.payments.PaymentShare.pick(saved, l) }
+            ?: lastUserText?.let { said -> com.raju.aiassistant.domain.payments.PaymentShare.pick(saved, said.replace(action.contact, " ")) }
+            ?: saved.singleOrNull()
+        if (entry == null) {
+            val q = com.raju.aiassistant.domain.payments.PaymentShare.whichQuestion(action.contact, saved)
+            report(action, ActionStatus.CANCELLED, q)
+            record(ChatRole.ASSISTANT, q)
+            if (speak) say(q)
+            // The answer may come in the next 10 s, without "Hey Seema".
+            pendingUpi = PendingUpiShare(action.contact, action.amountRupees, clock() + UPI_ASK_MS)
+            followUpUntil = maxOf(followUpUntil, clock() + UPI_ASK_MS)
+            if (speak) _voiceSession.value = true
+            trace("upi: asked which of ${saved.size}")
+            return
+        }
+        val message = com.raju.aiassistant.domain.payments.PaymentShare.upiMessage(entry, settings.value.upiPayeeName, action.amountRupees)
+        whatsApp(AssistantAction.WhatsApp(action.contact, message), speak)
+    }
+
+    /** Finds [name] in Contacts for a WhatsApp send, saying what she does, and asks before anything is sent. */
+    private suspend fun pickWhatsAppContact(action: AssistantAction, name: String, speak: Boolean, title: String, why: String, verbHi: String, verbBn: String): Contact? {
+        if (speak) say(phrase(lang(), "Contacts में $name का नंबर निकाल रही हूँ…", "কন্টাক্টে $name-এর নম্বর খুঁজছি…"))
+        val found = lookup(name)
+        if (found == null) { report(action, ActionStatus.CANCELLED, "Contacts permission was not granted."); return null }
+        val usable = found.filter { normalizeForWhatsApp(it.number) != null }
+        if (usable.isEmpty()) {
+            val msg = phrase(lang(), "Contacts में \"$name\" का कोई WhatsApp नंबर नहीं मिला। सेव किया हुआ नाम बोलिए।", "কন্টাক্টে \"$name\" এর কোনো নম্বর পাইনি।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return null
+        }
+        return chooseContact(title, why, usable, name, speak, verbHi = verbHi, verbBn = verbBn)
+            ?: run { cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।")); null }
+    }
+
+    private suspend fun cancelledLine(action: AssistantAction, speak: Boolean, line: String) {
+        report(action, ActionStatus.CANCELLED, line)
+        if (speak) say(line)
+    }
+
+    /** What a failed tool said, short enough to speak. */
+    private fun ToolOutcome.spokenReason(): String = when (this) {
+        is ToolOutcome.Failed -> message.take(140)
+        is ToolOutcome.NeedsPermission -> reason.take(140)
+        else -> ""
+    }
+
+    // ---------------------------------------------------------------- the 2.5 s stop window
+
+    /** Set while the stop window listens: the next words heard go here instead of a new request. */
+    private var correctionWait: CompletableDeferred<String>? = null
+
+    /**
+     * "[name] mil gaya, ab call laga rahi hoon" — then 2.5 s in which "ruko", "nahi", "galat", "cancel" or "Siya nahi
+     * Riya" stops or corrects the action before it happens. Only in a voice turn; null = go ahead.
+     */
+    private suspend fun actionSafetyWindow(name: String, speak: Boolean, doing: String): Correction? {
+        if (!speak) return null
+        say(phrase(lang(), "$name मिल गए, अब $doing…", "$name পেয়েছি, এখন পাঠাচ্ছি…"), allowBargeIn = false)
+        if (!voice.isAvailable() || paused()) {
+            delay(SAFETY_WINDOW_MS)
+            return null
+        }
+        val wait = CompletableDeferred<String>()
+        correctionWait = wait
+        _voiceSession.value = true
+        listen()
+        val heard = withTimeoutOrNull(SAFETY_WINDOW_MS) { wait.await() }
+        correctionWait = null
+        listenGen++
+        voice.stop()
+        val c = heard?.let { Correction.parse(it) }
+        trace("stop window: ${when (c) { null -> "go ahead"; Correction.Cancel -> "cancelled"; is Correction.Rename -> "corrected name" }}")
+        return c
+    }
+
     // ---------------------------------------------------------------- Riya mode
 
     /** The last lines of Riya's conversation (her own, never the main chat's history). */
@@ -2020,6 +2189,26 @@ class AssistantEngine(
         com.raju.aiassistant.domain.voice.TurnPacing.toddler = false
         if (SeemaLanguage.fromTag(settings.value.speechLanguage) == null) conversationLanguage.value = SeemaLanguage.HINDI
         trace("riya: mode left")
+    }
+
+    /**
+     * Riya tickled the face: a short laugh line. Allowed while the microphone only waits (passive listening);
+     * the listening is paused for the line (so her microphone does not hear Seema's laugh as Riya's words)
+     * and opens again right after. Never over Seema's own answer or a running turn.
+     */
+    fun kidReact(line: String) {
+        if (!settings.value.kidMode || paused() || job?.isActive == true || _state.value == AssistantState.Speaking) return
+        if (voice.listening.value && voice.partial.value.isNotBlank()) return // she is talking right now
+        listenGen++
+        voice.stop()
+        job = scope.launch {
+            say(line, allowBargeIn = false)
+            delay(com.raju.aiassistant.domain.voice.TurnPacing.KID_AFTER_SPEECH_MS)
+            if (settings.value.kidMode) {
+                _voiceSession.value = true
+                listen()
+            }
+        }
     }
 
     fun startKidListening() {
@@ -2139,7 +2328,7 @@ class AssistantEngine(
             val asked = lastSpoken?.trimEnd()?.let { it.endsWith("?") || it.endsWith("？") } == true && clock() - lastSpokeAt < 5_000L
             // A conversation she was woken into by name goes on (until the quiet timer), even over another app.
             if (asked || wakeConversation()) listen() else goToSleep()
-        } else if (_voiceSession.value && (s.continuousConversation || handsFree || s.kidMode) && !s.assistantPaused) {
+        } else if ((_voiceSession.value || upiQuestionOpen()) && (s.continuousConversation || handsFree || s.kidMode || upiQuestionOpen()) && !s.assistantPaused) {
             // Riya mode: a short pause first, so her voice's audio focus is released before the microphone opens.
             if (s.kidMode) {
                 val g = listenGen
@@ -2161,7 +2350,41 @@ class AssistantEngine(
         }
     }
 
+    /** Lines spoken so far (to know whether an action already said why it failed). */
+    private var spokenLines = 0
+    private var lastReportMessage: String = ""
+
+    /**
+     * Runs an action the AI asked for and, when it failed without a word, says why — "माफ़ कीजिए, Phonepe फ़ोन में
+     * नहीं मिला" — instead of failing silently (the reason was only in the log).
+     */
+    private suspend fun executeAndExplain(action: AssistantAction, provider: AiProvider, model: String, system: String, speak: Boolean) {
+        lastReportStatus = null
+        val before = spokenLines
+        execute(action, provider, model, system, speak)
+        if (speak && lastReportStatus == ActionStatus.FAILED && spokenLines == before) {
+            val shown = _state.value
+            say(failureLine(action, lastReportMessage))
+            // The failure stays on screen as a failure (speaking it does not turn it into "done").
+            if (shown == AssistantState.Error) _state.value = AssistantState.Error
+        }
+    }
+
+    /** A plain spoken reason for a failed action. */
+    private fun failureLine(action: AssistantAction, message: String): String = when (action) {
+        is AssistantAction.OpenApp -> phrase(lang(), "माफ़ कीजिए, ${action.name} फ़ोन में नहीं मिला।", "দুঃখিত, ${action.name} ফোনে পাইনি।")
+        else -> {
+            val why = message.trim().take(140)
+            phrase(lang(), if (why.isEmpty()) "माफ़ कीजिए, यह काम नहीं हो पाया।" else "माफ़ कीजिए, यह नहीं हो पाया — $why", "দুঃখিত, কাজটা হল না।")
+        }
+    }
+
+    /** After her name ("haan ji, boliye?") or a question of hers, the next listening starts with a soft chime. */
+    private var chimeOnNextListen = false
+
     private suspend fun say(text: String, allowBargeIn: Boolean = true, depth: Int = 0) {
+        spokenLines++
+        if (text.trimEnd().endsWith("?") || text.trimEnd().endsWith("？")) chimeOnNextListen = true
         // "Speaking" is shown only once audio really plays; while the voice is being prepared she is thinking.
         if (_state.value != AssistantState.Thinking && _state.value != AssistantState.Executing) _state.value = AssistantState.Thinking
         val spoken = speakableText(text)
@@ -2579,6 +2802,11 @@ class AssistantEngine(
         handsFreeBeforeCall = false
         trace("phone call ended")
         if (settings.value.assistantPaused) return
+        // Riya mode: the call is over, she plays on — the microphone opens again by itself.
+        if (settings.value.kidMode) {
+            startKidListening()
+            return
+        }
         if (wasHandsFree && handsFree && !inBackground) startHandsFree() else returnToStandby()
     }
 
@@ -2622,6 +2850,8 @@ class AssistantEngine(
             AssistantAction.GoToSleep -> sleepNow(action, speak)
             is AssistantAction.Greeting -> informational(action, action.reply, speak)
             AssistantAction.KidModeOn -> kidModeOn(action, speak)
+            is AssistantAction.SendPaymentQr -> sendPaymentQr(action, speak)
+            is AssistantAction.SendUpiId -> sendUpiId(action, speak)
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)
@@ -3295,6 +3525,10 @@ class AssistantEngine(
             if (speak) say(msg)
         }
         val spokenNumber = action.number != null && action.contact == null
+        // Said as she does it: "Phonebook mein Riya ko dhoondh rahi hoon…"
+        if (speak && !spokenNumber && !action.contact.isNullOrBlank()) {
+            say(phrase(lang(), "फ़ोनबुक में ${action.contact} को ढूँढ रही हूँ…", "ফোনবুকে ${action.contact}-কে খুঁজছি…"), allowBargeIn = false)
+        }
         val found: List<Contact> = if (spokenNumber) {
             listOf(Contact(action.number.orEmpty(), action.number.orEmpty()))
         } else {
@@ -3334,7 +3568,15 @@ class AssistantEngine(
         // The user has confirmed the person: call straight away when Android allows it,
         // otherwise open the dialer and say plainly that the green button is theirs to press.
         val direct = tools.hasPermission("android.permission.CALL_PHONE")
-        if (speak && direct) say(phrase(lang(), "${chosen.name} को कॉल लगा रही हूँ।", "${chosen.name} কে কল করছি।"))
+        // "Riya mil gayi, ab call laga rahi hoon" — and 2.5 s to say "ruko" or "Siya nahi Riya" before it rings.
+        if (direct) when (val c = actionSafetyWindow(chosen.name, speak, "कॉल लगा रही हूँ")) {
+            Correction.Cancel -> return endWith(phrase(lang(), "ठीक है, कॉल नहीं लगाई।", "ঠিক আছে, কল করিনি।"), ActionStatus.CANCELLED)
+            is Correction.Rename -> {
+                if (speak) say(phrase(lang(), "अच्छा सॉरी, ${c.name} को ढूँढ रही हूँ…", "আচ্ছা সরি, ${c.name}-কে খুঁজছি…"), allowBargeIn = false)
+                return callContact(action.copy(contact = c.name, number = null), speak)
+            }
+            null -> Unit
+        }
         val outcome = tools.dial(chosen, direct)
         if (outcome !is ToolOutcome.Done) {
             report(action, outcome)
@@ -3914,6 +4156,7 @@ class AssistantEngine(
         if (action.contact != null) {
             // A phone number said or typed instead of a name ("98765 43210 ko message karo").
             val digitsOnly = action.contact.filter { it.isDigit() }
+            if (speak && digitsOnly.length < 7) say(phrase(lang(), "Contacts में ${action.contact} का नंबर निकाल रही हूँ…", "কন্টাক্টে ${action.contact}-এর নম্বর খুঁজছি…"), allowBargeIn = false)
             val found = if (digitsOnly.length >= 7 && digitsOnly.length * 2 >= action.contact.count { !it.isWhitespace() }) {
                 listOf(Contact(action.contact, action.contact))
             } else {
@@ -3973,6 +4216,16 @@ class AssistantEngine(
                 speak,
             )
             if (!ok) { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
+        }
+        target?.let { t ->
+            when (val c = actionSafetyWindow(t.name, speak, "WhatsApp पर भेज रही हूँ")) {
+                Correction.Cancel -> return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।"))
+                is Correction.Rename -> {
+                    if (speak) say(phrase(lang(), "अच्छा सॉरी, ${c.name} को ढूँढ रही हूँ…", "আচ্ছা সরি, ${c.name}-কে খুঁজছি…"), allowBargeIn = false)
+                    return whatsApp(action.copy(contact = c.name), speak)
+                }
+                null -> Unit
+            }
         }
         val outcome = tools.openWhatsApp(target?.number, action.text)
         report(action, outcome)
@@ -4464,6 +4717,7 @@ class AssistantEngine(
 
     private suspend fun report(action: AssistantAction, status: ActionStatus, message: String) {
         lastReportStatus = status
+        lastReportMessage = message
         val icon = when (status) {
             ActionStatus.SUCCESS -> "✅"
             ActionStatus.FAILED -> "❌"

@@ -34,6 +34,9 @@ object LocalCommands {
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
         languageSwitch(text)?.let { return it }
         if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep
+        // Payment QR / UPI ID before the general WhatsApp and SMS commands ("X ko UPI ID bhej do").
+        com.raju.aiassistant.domain.payments.PaymentShare.qrRequest(text)?.let { return AssistantAction.SendPaymentQr(it.contact, it.amountRupees) }
+        com.raju.aiassistant.domain.payments.PaymentShare.upiRequest(text, emptyList())?.let { return AssistantAction.SendUpiId(it.contact, null, it.amountRupees) }
         pnrTrack(text)?.let { return it }
         sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }

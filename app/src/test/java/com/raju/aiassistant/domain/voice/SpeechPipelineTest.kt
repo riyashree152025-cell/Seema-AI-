@@ -72,6 +72,25 @@ class SpeechPipelineTest {
     }
 
     @Test
+    fun aVoiceThatCannotSpeakBengaliIsPassedOverWithoutAFailedTry() = runTest {
+        val sink = FakeSink()
+        val kokoro = object : TtsProvider {
+            override val engine = TtsEngine.KOKORO
+            override val label = "Kokoro"
+            var tries = 0
+            override suspend fun isAvailable() = true
+            override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> { tries++; return AiResult.Failure(FailureKind.UNKNOWN, "no Bengali offline voice yet") }
+            override fun supportsLanguage(languageTag: String) = !languageTag.startsWith("bn") && !languageTag.startsWith("hi")
+        }
+        val sarvam = FakeProvider(TtsEngine.SARVAM)
+        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak("আমি ভালো আছি। তুমি কেমন আছো?", listOf(kokoro, sarvam), "bn-IN", 1f)
+        assertTrue(r.completed)
+        assertEquals(0, kokoro.tries) // never tried for Bengali
+        assertEquals(null, r.error) // so no "Kokoro failed" note in the log
+        assertTrue(sink.played.all { it.startsWith("SARVAM:") })
+    }
+
+    @Test
     fun unavailableProviderIsSkippedSilently() = runTest {
         val sink = FakeSink()
         val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(text, listOf(FakeProvider(TtsEngine.SARVAM, available = false), FakeProvider(TtsEngine.ANDROID)), "hi-IN", 1f)

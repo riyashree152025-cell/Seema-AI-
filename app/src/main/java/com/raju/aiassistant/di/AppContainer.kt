@@ -358,6 +358,9 @@ class AppContainer(context: Context) {
     val recentNotifications = com.raju.aiassistant.domain.notify.RecentNotifications()
     val callDeduper = CallDeduper()
 
+    /** The soft chime when Seema starts listening for an answer (low volume, media stream). */
+    private val micChime: android.media.ToneGenerator? by lazy { runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 22) }.getOrNull() }
+
     /** Riya's words (Riya mode), kept on the phone. */
     val kidWords by lazy { com.raju.aiassistant.data.prefs.KidWordsPrefs(appContext) }
 
@@ -467,6 +470,7 @@ class AppContainer(context: Context) {
             callRinging = { audioInterruptions.ringing() },
             kidWords = kidWords,
             setKidMode = { on -> settingsRepository.setKidMode(on) },
+            micOpenChime = { runCatching { micChime?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90) } },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {

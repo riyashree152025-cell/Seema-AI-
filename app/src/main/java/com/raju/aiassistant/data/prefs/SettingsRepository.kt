@@ -98,6 +98,8 @@ class SettingsRepository(private val context: Context) {
             safetyMode = this[Keys.SAFETY] ?: d.safetyMode,
             floatingPopup = this[Keys.FLOATING_POPUP] ?: d.floatingPopup,
             kidMode = this[Keys.KID_MODE] ?: d.kidMode,
+            upiIds = com.raju.aiassistant.domain.payments.PaymentShare.decode(this[Keys.UPI_IDS]),
+            upiPayeeName = this[Keys.UPI_PAYEE] ?: d.upiPayeeName,
             assistantPaused = this[Keys.PAUSED] ?: d.assistantPaused,
             userName = this[Keys.USER_NAME] ?: d.userName,
             userEmail = this[Keys.USER_EMAIL] ?: d.userEmail,
@@ -171,6 +173,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSafetyMode(v: Boolean) = edit { it[Keys.SAFETY] = v }
     suspend fun setFloatingPopup(v: Boolean) = edit { it[Keys.FLOATING_POPUP] = v }
     suspend fun setKidMode(v: Boolean) = edit { it[Keys.KID_MODE] = v }
+    suspend fun setUpiIds(list: List<com.raju.aiassistant.domain.payments.UpiEntry>) = edit { it[Keys.UPI_IDS] = com.raju.aiassistant.domain.payments.PaymentShare.encode(list) }
+    suspend fun setUpiPayeeName(v: String) = edit { it[Keys.UPI_PAYEE] = v.trim() }
     suspend fun setAssistantPaused(v: Boolean) = edit { it[Keys.PAUSED] = v }
     suspend fun saveProfile(name: String, email: String) = edit {
         it[Keys.USER_NAME] = name
@@ -242,6 +246,8 @@ class SettingsRepository(private val context: Context) {
         val SAFETY = booleanPreferencesKey("safety_mode")
         val FLOATING_POPUP = booleanPreferencesKey("floating_popup")
         val KID_MODE = booleanPreferencesKey("kid_mode")
+        val UPI_IDS = stringPreferencesKey("upi_ids")
+        val UPI_PAYEE = stringPreferencesKey("upi_payee_name")
         val PAUSED = booleanPreferencesKey("assistant_paused")
         val USER_NAME = stringPreferencesKey("user_name")
         val USER_EMAIL = stringPreferencesKey("user_email")

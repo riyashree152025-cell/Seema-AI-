@@ -18,6 +18,12 @@ interface TtsProvider {
     suspend fun isAvailable(): Boolean
 
     suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio>
+
+    /**
+     * False when this voice cannot speak [languageTag] at all (an offline English/Hindi-only model asked for
+     * Bengali): it is passed over for that sentence without a failed attempt, and stays in use for others.
+     */
+    fun supportsLanguage(languageTag: String): Boolean = true
 }
 
 /** Audio output used by the pipeline (AudioTrack on Android, a fake in tests). */
@@ -122,20 +128,27 @@ class SpeechPipeline(
                         ready.send(Result.success(cached))
                         continue
                     }
+                    val lang = languageFor(chunk, preferredLanguage)
+                    var usedLabel = ""
                     while (audio == null && usable.isNotEmpty()) {
-                        val provider = usable.first()
+                        // A voice that cannot speak this language is skipped (no failed try, no note); when none
+                        // can, the first one is tried anyway rather than staying silent.
+                        val provider = usable.firstOrNull { it.supportsLanguage(lang) } ?: usable.first()
                         // A voice service that hangs must not keep her silent (the HTTP client allows 90 s):
                         // after a fair wait the next voice takes over from this same chunk.
-                        val r = kotlinx.coroutines.withTimeoutOrNull(synthTimeoutMs(chunk)) { provider.synthesize(chunk, languageFor(chunk, preferredLanguage), rate) }
+                        val r = kotlinx.coroutines.withTimeoutOrNull(synthTimeoutMs(chunk)) { provider.synthesize(chunk, lang, rate) }
                             ?: com.raju.aiassistant.domain.ai.AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.TIMEOUT, "no audio within ${synthTimeoutMs(chunk) / 1000} s")
                         when (r) {
                             // A voice that returns (almost) no sound for real words has failed, even if it says OK.
                             is AiResult.Success -> if (silent(r.value, chunk)) {
-                                usable.removeAt(0)
+                                usable.remove(provider)
                                 fallbackNote = "${provider.label} returned no sound" + (usable.firstOrNull()?.let { " — using ${it.label}." } ?: ".")
-                            } else audio = r.value
+                            } else {
+                                audio = r.value
+                                usedLabel = provider.label
+                            }
                             is AiResult.Failure -> {
-                                usable.removeAt(0)
+                                usable.remove(provider)
                                 fallbackNote = "${provider.label} failed (${r.message})" +
                                     (usable.firstOrNull()?.let { " — using ${it.label}." } ?: ".")
                             }
@@ -145,7 +158,7 @@ class SpeechPipeline(
                         ready.send(Result.failure(IllegalStateException(fallbackNote ?: "Speech synthesis failed.")))
                         break
                     }
-                    val made = usable.first().label to audio
+                    val made = usedLabel to audio
                     if (chunk.length <= PHRASE_CACHE_MAX_CHARS) synchronized(phraseCache) { phraseCache[key] = made }
                     ready.send(Result.success(made))
                 }

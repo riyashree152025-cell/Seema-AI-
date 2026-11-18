@@ -99,6 +99,7 @@ fun KidModeScreen() {
     }
 
     val level by container.speaker.level.collectAsStateWithLifecycle()
+    val partial by engine.partialTranscript.collectAsStateWithLifecycle()
     val lastLine = transcript.lastOrNull { it.role == ChatRole.ASSISTANT }?.text ?: "রিয়া সোনা, কথা বলো!"
     val cyan = Color(0xFF4DF0FF)
     val gold = Color(0xFFFFD27D)
@@ -107,8 +108,9 @@ fun KidModeScreen() {
         RiyaAvatarFace(
             state = state,
             level = level,
-            onGiggle = { line -> scope.launch { runCatching { container.speaker.speak(line) } } },
+            onGiggle = { line -> engine.kidReact(line) },
             modifier = Modifier.fillMaxSize(),
+            capturing = partial.isNotBlank(),
         )
 
         // "RIYA AI" glass badge, top left.

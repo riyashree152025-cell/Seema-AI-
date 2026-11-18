@@ -69,10 +69,13 @@ fun RiyaAvatarFace(
     level: Float,
     onGiggle: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Riya is saying something right now (words are coming in): no sound over her. */
+    capturing: Boolean = false,
 ) {
     val currentState by rememberUpdatedState(state)
     val currentLevel by rememberUpdatedState(level)
     val giggle by rememberUpdatedState(onGiggle)
+    val currentCapturing by rememberUpdatedState(capturing)
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var mouth by remember { mutableFloatStateOf(0f) }
@@ -129,7 +132,7 @@ fun RiyaAvatarFace(
                 touchAt = t
                 ripples = ripples + Ripple(pos.x, pos.y, t)
                 val k = min(size.width, size.height) / 1080f * 2f
-                val busy = AvatarMath.audioBusy(currentState)
+                val busy = AvatarMath.audioBusy(currentState, currentCapturing)
                 AvatarMath.bubbleAt(bubbles, pos.x, pos.y, t)?.let { b ->
                     bubbles = bubbles - b
                     particles = particles + AvatarMath.burst(pos.x, pos.y, Particle.Kind.SPARK, 10, seed++, k, AvatarMath.HOLO_PALETTE)

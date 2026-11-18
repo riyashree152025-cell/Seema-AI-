@@ -171,6 +171,10 @@ data class UserSettings(
     val floatingPopup: Boolean = true,
     /** Riya mode: Seema talks only with the little one, in Bengali; no phone task works until a parent exits. */
     val kidMode: Boolean = false,
+    /** Saved UPI IDs for "X ko UPI ID bhej do" (Apps & Tools → Payment QR & UPI IDs). */
+    val upiIds: List<com.raju.aiassistant.domain.payments.UpiEntry> = emptyList(),
+    /** The name written under the UPI ID in the WhatsApp message. */
+    val upiPayeeName: String = "Raju Barai",
     val assistantPaused: Boolean = false,
     val userName: String = "Raju",
     val userEmail: String = "ruhulamin16121998@gmail.com",

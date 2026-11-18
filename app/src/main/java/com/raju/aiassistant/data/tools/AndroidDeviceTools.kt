@@ -267,6 +267,32 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return start(intent, msg, "Could not open WhatsApp.")
     }
 
+    override fun hasPaymentQr(): Boolean = PaymentQr.file(context).exists()
+
+    override fun sharePaymentQr(number: String, caption: String): ToolOutcome {
+        val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
+            ?: return ToolOutcome.Failed("WhatsApp is not installed.")
+        val file = PaymentQr.file(context)
+        if (!file.exists()) return ToolOutcome.Failed("Payment QR सेव नहीं है — Apps & Tools → Payment QR & UPI IDs में QR की फ़ोटो चुनिए।")
+        val normalized = normalizeForWhatsApp(number) ?: return ToolOutcome.Failed("इस नंबर पर WhatsApp नहीं भेजा जा सकता।")
+        val uri = runCatching { androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file) }.getOrNull()
+            ?: return ToolOutcome.Failed("QR की फ़ोटो साझा नहीं हो पाई।")
+        // Straight into that person's chat ("jid"); Seema's Accessibility presses Send on the preview.
+        val intent = Intent(Intent.ACTION_SEND).setType("image/png")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_TEXT, caption)
+            .putExtra("jid", "$normalized@s.whatsapp.net")
+            .setPackage(pkg)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
+        if (autoSend) com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend(null)
+        return start(
+            intent,
+            if (autoSend) "Payment QR WhatsApp पर भेजा जा रहा है।" else "Payment QR WhatsApp में तैयार है — Send आप दबाइए।",
+            "WhatsApp नहीं खुल पाया।",
+        )
+    }
+
     override fun openWhatsAppCall(number: String?, video: Boolean): ToolOutcome {
         val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
             ?: return ToolOutcome.Failed("WhatsApp is not installed.")
@@ -851,6 +877,9 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return try {
             // Unmute silent mode & maximize ring, alarm, and music volume
             runCatching { am.ringerMode = AudioManager.RINGER_MODE_NORMAL }
+            // The volumes before are saved on disk and given back when the ringing stops (or at the next app start).
+            val loud = com.raju.aiassistant.domain.audio.LoudModePolicy(com.raju.aiassistant.core.audio.PrefsVolumeMemory(context))
+            loud.remember(am.getStreamVolume(AudioManager.STREAM_ALARM), am.getStreamVolume(AudioManager.STREAM_MUSIC), am.getStreamVolume(AudioManager.STREAM_RING))
             val maxAlarm = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val maxMusic = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             val maxRing = am.getStreamMaxVolume(AudioManager.STREAM_RING)
@@ -870,6 +899,14 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
                 }
                 it.play()
             }
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                runCatching { ringtone?.stop() }
+                loud.restore()?.let { (a, m, r) ->
+                    runCatching { am.setStreamVolume(AudioManager.STREAM_ALARM, a, 0) }
+                    runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, m, 0) }
+                    runCatching { am.setStreamVolume(AudioManager.STREAM_RING, r, 0) }
+                }
+            }, FIND_PHONE_RING_MS)
             ToolOutcome.Done("फोन पर 100% फुल वॉल्यूम में अलार्म और घंटी बजा दी गई है!")
         } catch (e: Exception) {
             ToolOutcome.Failed("घंटी बजाने में समस्या आई: ${e.message}")
@@ -932,6 +969,8 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     private companion object {
+        /** The legacy "phone dhundo" ring: stops and gives the volumes back after this long. */
+        const val FIND_PHONE_RING_MS = 45_000L
         const val MAX_SMS_SCANNED = 3_000
         const val MAPS_PKG = "com.google.android.apps.maps"
         const val BACKGROUND_BLOCKED = "दूसरे ऐप के ऊपर से कुछ खोलने के लिए एक बार अनुमति चाहिए: Seema → Settings → Diagnose में \"दूसरे ऐप के ऊपर खोलना\" दबाकर Allow कीजिए (या Accessibility में Seema AI चालू कीजिए)।"

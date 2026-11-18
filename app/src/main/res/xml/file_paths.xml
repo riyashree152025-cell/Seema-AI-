@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="shared" path="shared/" />
+    <!-- Only the saved payment QR photo (Apps & Tools → Payment QR & UPI IDs), shared to WhatsApp on request. -->
+    <files-path name="payment" path="payment/" />
 </paths>

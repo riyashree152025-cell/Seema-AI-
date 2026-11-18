@@ -134,9 +134,12 @@ class AvatarMathTest {
         assertTrue(g.giggle(4_600, busy = false))
         // Never while Seema listens or speaks (the faces still react: that is drawn, not gated).
         val busy = TapAudioGate()
-        assertTrue(!busy.sound(0, busy = AvatarMath.audioBusy(AssistantState.Listening)))
+        assertTrue(!busy.sound(0, busy = AvatarMath.audioBusy(AssistantState.Listening, capturing = true))) // she is talking
         assertTrue(!busy.giggle(0, busy = AvatarMath.audioBusy(AssistantState.Speaking)))
         assertTrue(busy.sound(0, busy = AvatarMath.audioBusy(AssistantState.Idle)))
+        // The microphone merely open (nobody talking): the laugh and chimes are allowed.
+        val passive = TapAudioGate()
+        assertTrue(passive.giggle(0, busy = AvatarMath.audioBusy(AssistantState.Listening, capturing = false)))
     }
 
     @Test

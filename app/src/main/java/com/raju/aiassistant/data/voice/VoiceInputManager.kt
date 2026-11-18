@@ -281,7 +281,12 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     }
 
     private companion object {
-        val BEEP_STREAMS = listOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)
+        /**
+         * Only the system stream (the recogniser's own start/stop earcon) is silenced for a moment. Music and
+         * notifications were muted too, for every listening turn: in hands-free (and Riya mode) the phone's
+         * notifications and the user's media went silent most of the time.
+         */
+        val BEEP_STREAMS = listOf(AudioManager.STREAM_SYSTEM)
         const val KEY_MUTED = "muted_streams"
         // SpeechRecognizer error codes added in Android 12 (API 31).
         const val ERROR_TOO_MANY_REQUESTS = 10

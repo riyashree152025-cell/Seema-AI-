@@ -273,7 +273,32 @@ class SeemaAccessibilityService : AccessibilityService() {
                 if (match && clickNode(node)) return true
             }
         }
-        return false
+        // No button with a name (Samsung's round drag handle, Pixel's swipe-up): drag it — only when the phone's
+        // own call screen is really showing, so no other app is ever swiped.
+        val callScreen = roots.firstOrNull { r -> CALL_UI.containsMatchIn(r.packageName?.toString().orEmpty()) } ?: return false
+        val m = resources.displayMetrics
+        val w = m.widthPixels.toFloat()
+        val h = m.heightPixels.toFloat()
+        val handle = walk(callScreen).firstOrNull { n ->
+            val l = listOfNotNull(n.contentDescription?.toString(), n.viewIdResourceName?.substringAfterLast('/')).joinToString(" ")
+            HANDLE.containsMatchIn(l)
+        }
+        val (from, to) = if (handle != null) {
+            val r = android.graphics.Rect().also { handle.getBoundsInScreen(it) }
+            val cx = r.exactCenterX()
+            val cy = r.exactCenterY()
+            // Samsung: answer drags to the right/up, decline to the left/down.
+            if (answer) (cx to cy) to ((cx + w * 0.35f).coerceAtMost(w - 4f) to (cy - h * 0.12f).coerceAtLeast(4f))
+            else (cx to cy) to ((cx - w * 0.35f).coerceAtLeast(4f) to (cy + h * 0.08f).coerceAtMost(h - 4f))
+        } else {
+            // Pixel-style: swipe up from the bottom to answer, down to decline.
+            if (answer) (w / 2 to h * 0.86f) to (w / 2 to h * 0.42f) else (w / 2 to h * 0.80f) to (w / 2 to h * 0.97f)
+        }
+        val path = android.graphics.Path().apply { moveTo(from.first, from.second); lineTo(to.first, to.second) }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, SWIPE_MS))
+            .build()
+        return dispatchGesture(gesture, null, null)
     }
 
     private fun clickNode(node: AccessibilityNodeInfo): Boolean {
@@ -335,6 +360,12 @@ class SeemaAccessibilityService : AccessibilityService() {
         private fun finishAuto(ok: Boolean) {
             autoResult = ok
         }
+
+        /** The phone's own call screen (Samsung, Google, Xiaomi, Oppo, Vivo…). */
+        private val CALL_UI = Regex("incallui|dialer|telecom|\\.phone|callui|contacts", RegexOption.IGNORE_CASE)
+        /** The drag handle of a ringing call (no "Answer" text on it). */
+        private val HANDLE = Regex("glowpad|slide|swipe|handle|drag|incoming_call_widget|answer_and_decline|call_button_area", RegexOption.IGNORE_CASE)
+        private const val SWIPE_MS = 380L
 
         fun isRunning(): Boolean = instance != null
 

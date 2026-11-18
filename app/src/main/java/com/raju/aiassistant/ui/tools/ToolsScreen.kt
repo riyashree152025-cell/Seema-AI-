@@ -104,6 +104,10 @@ fun ToolsScreen(onOpenChat: () -> Unit = {}, viewModel: ToolsViewModel = viewMod
         }
 
         item {
+            HudPanel(title = "Payment QR & UPI IDs") { PaymentShareCard() }
+        }
+
+        item {
             HudPanel(title = "Khata (expenses)") {
                 Text(
                     "Bolkar likhwaiye: \"200 ka petrol daala\", \"aaj kitna kharcha hua?\". Stored only on this phone.",

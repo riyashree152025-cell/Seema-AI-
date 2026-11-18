@@ -16,6 +16,8 @@ class RajuApp : Application() {
         runCatching { com.raju.aiassistant.notifications.BusinessScheduler.schedule(this) }
         runCatching { container.cleanSharedFiles() }
         // Calls and headphone disconnects pause / silence Seema (no extra permission needed).
+        // Volumes a killed process left lowered (ring at 10 %) or raised are given back first.
+        runCatching { container.ringDucker.restoreAfterRestart() }
         runCatching { container.audioInterruptions.start() }
     }
 

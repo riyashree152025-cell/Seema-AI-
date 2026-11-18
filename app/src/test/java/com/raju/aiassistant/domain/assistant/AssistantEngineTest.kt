@@ -88,6 +88,10 @@ class AssistantEngineTest {
         override fun answerCall(): ToolOutcome { answered++; return answerResult }
         override fun endCall(): ToolOutcome { ended++; return endResult }
         override fun answerCallOnScreen(): ToolOutcome { answeredOnScreen++; return screenResult }
+        var qrSaved = true
+        val qrShares = mutableListOf<Pair<String, String>>()
+        override fun hasPaymentQr(): Boolean = qrSaved
+        override fun sharePaymentQr(number: String, caption: String): ToolOutcome { qrShares += number to caption; return ToolOutcome.Done("QR shared") }
         override fun endCallOnScreen(): ToolOutcome { endedOnScreen++; return screenResult }
         val torch = mutableListOf<Boolean>()
         override fun setFlashlight(on: Boolean): ToolOutcome { torch += on; return ToolOutcome.Done(if (on) "Torch on" else "Torch off") }
@@ -342,6 +346,39 @@ class AssistantEngineTest {
         runCurrent()
         assertTrue(e.transcript.value.last().text.startsWith("❌"))
         assertEquals(AssistantState.Error, e.state.value)
+    }
+
+    @Test
+    fun aSoftChimeWhenSheListensForAnAnswerButNotInRiyaMode() = runTest {
+        var chimes = 0
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rahul Sharma", "91234 56789")))
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            micOpenChime = { chimes++ },
+        )
+        e.submit("rahul sharma ko call karo", fromVoice = true)
+        runCurrent()
+        assertEquals("Rahul Sharma — कॉल लगाऊँ?", speaker.spoken.last())
+        assertEquals(1, chimes) // listening for the yes starts with the chime
+        voice.onResult!!("nahi")
+        settle()
+        settings.value = settings.value.copy(kidMode = true)
+        e.startKidListening()
+        runCurrent()
+        assertEquals(1, chimes) // Riya mode: never
+        settings.value = settings.value.copy(kidMode = false)
+    }
+
+    @Test
+    fun aFailedAppIsExplainedOutLoud() = runTest {
+        val e = engine(AiResult.Success("""Kholti hoon. <action>{"type":"open_app","name":"Zzz"}</action>"""))
+        e.submit("zzz kholo", fromVoice = true)
+        settle()
+        assertEquals("माफ़ कीजिए, Zzz फ़ोन में नहीं मिला।", speaker.spoken.last()) // not a silent failure
     }
 
     @Test
@@ -2606,6 +2643,100 @@ class AssistantEngineTest {
         assertEquals("হ্যাঁ সোনা!", speaker.spoken.last())
         assertTrue(voice.starts > before + 1)
         assertTrue(provider.calls.last().last().text.contains("(sounds:")) // her words also in plain letters
+        settings.value = settings.value.copy(kidMode = false)
+    }
+
+    @Test
+    fun rukoSiyaNahiRiyaInTheStopWindowCallsRiyaInstead() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Siya", "98000 00001")))
+        val e = engine()
+        e.submit("siya ko call karo", fromVoice = true)
+        runCurrent()
+        assertTrue(speaker.spoken.toString(), speaker.spoken.any { it.contains("फ़ोनबुक में siya को ढूँढ रही हूँ") })
+        voice.onResult!!("haan") // yes to "Siya — कॉल लगाऊँ?"
+        runCurrent()
+        assertTrue(speaker.spoken.last().startsWith("Siya मिल गए, अब कॉल लगा रही हूँ"))
+        assertTrue(tools.dialed.isEmpty()) // nothing yet: 2.5 s to stop it
+        advanceTimeBy(800); runCurrent()
+        tools.contacts = ContactLookup.Found(listOf(Contact("Riya", "98000 00002")))
+        voice.onResult!!("Ruko Siya nahi Riya")
+        runCurrent()
+        assertTrue(speaker.spoken.toString(), speaker.spoken.any { it.contains("अच्छा सॉरी, Riya को ढूँढ रही हूँ") })
+        voice.onResult!!("haan") // yes to "Riya — कॉल लगाऊँ?"
+        settle()
+        assertEquals(listOf(Contact("Riya", "98000 00002")), tools.dialed) // Siya was never called
+    }
+
+    @Test
+    fun rukoAloneInTheStopWindowCallsNobody() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Siya", "98000 00001")))
+        val e = engine()
+        e.submit("siya ko call karo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        runCurrent()
+        voice.onResult!!("ruko")
+        settle()
+        assertTrue(tools.dialed.isEmpty())
+        assertEquals("ठीक है, कॉल नहीं लगाई।", speaker.spoken.last())
+    }
+
+    @Test
+    fun severalUpiIdsAreAskedAboutAndTheChosenOneIsSentOnWhatsApp() = runTest {
+        val saved = listOf(com.raju.aiassistant.domain.payments.UpiEntry("Paytm", "raju@paytm"), com.raju.aiassistant.domain.payments.UpiEntry("PhonePe", "raju@ybl"))
+        settings.value = settings.value.copy(upiIds = saved, upiPayeeName = "Raju Barai")
+        tools.contacts = ContactLookup.Found(listOf(Contact("Jalal Bhai", "98000 00003")))
+        val e = engine()
+        e.submit("Jalal bhai ko UPI ID bhej do", fromVoice = true)
+        settle()
+        assertEquals("Jalal bhai को कौन सी UPI ID भेजनी है — Paytm या PhonePe?", speaker.spoken.last())
+        assertTrue(tools.whatsApps.isEmpty())
+        e.submit("Paytm wala", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan") // yes to the WhatsApp question
+        settle()
+        assertEquals("💳 *R Travels - Payment Details*\n*UPI ID:* raju@paytm\n*Name:* Raju Barai", tools.whatsApps.last().second)
+        assertEquals(0, provider.calls.size)
+        settings.value = settings.value.copy(upiIds = emptyList())
+    }
+
+    @Test
+    fun theSavedPaymentQrIsSentAfterTheYes() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Rizwan", "98000 00004")))
+        val e = engine()
+        e.submit("Mera QR bhej do Rizwan ko", fromVoice = true)
+        runCurrent()
+        assertTrue(tools.qrShares.isEmpty()) // asked first
+        voice.onResult!!("haan")
+        settle()
+        assertEquals("98000 00004", tools.qrShares.single().first)
+        assertTrue(tools.qrShares.single().second.startsWith("💳 *R Travels - Payment QR*"))
+        tools.qrSaved = false
+        e.submit("Rizwan ko mera QR code bhejo", fromVoice = true) // (the same words twice in a row count as one message)
+        settle()
+        assertTrue(speaker.spoken.last().contains("Payment QR अभी सेव नहीं है"))
+        tools.qrSaved = true
+    }
+
+    @Test
+    fun riyaModeListensAgainAfterAPhoneCallAndLaughsWhileOnlyListening() = runTest {
+        settings.value = settings.value.copy(kidMode = true)
+        val e = engine()
+        e.startKidListening()
+        runCurrent()
+        e.pauseForCall()
+        runCurrent()
+        val before = voice.starts
+        e.resumeAfterCall()
+        runCurrent()
+        assertEquals(before + 1, voice.starts) // no tap needed after the call
+        // Tickled while the microphone only waits: the laugh is said, then listening resumes.
+        voice.listening.value = true
+        e.kidReact("হাহা, সুড়সুড়ি লাগছে!")
+        settle()
+        assertEquals("হাহা, সুড়সুড়ি লাগছে!", speaker.spoken.last())
+        assertTrue(voice.starts > before + 1)
+        voice.listening.value = false
         settings.value = settings.value.copy(kidMode = false)
     }
 

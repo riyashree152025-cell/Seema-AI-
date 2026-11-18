@@ -118,6 +118,11 @@ interface DeviceTools {
     fun beaconHardware(): BeaconHardware? = null
     fun endCall(): ToolOutcome = ToolOutcome.Failed("Ending call is not supported here.")
     fun answerCall(): ToolOutcome = ToolOutcome.Failed("Answering a call is not supported here.")
+    /** True when a payment QR photo was saved (Apps & Tools → Payment QR & UPI IDs). */
+    fun hasPaymentQr(): Boolean = false
+    /** Shares the saved payment QR photo with [caption] to this WhatsApp number (Send pressed by Seema's Accessibility). */
+    fun sharePaymentQr(number: String, caption: String): ToolOutcome = ToolOutcome.Failed("Sharing the payment QR is not supported here.")
+
     /** Fallback when TelecomManager does not answer the ringing call (some ROMs): presses the dialer's Answer button. */
     fun answerCallOnScreen(): ToolOutcome = ToolOutcome.Failed("Answering on the screen is not supported here.")
     /** Fallback when TelecomManager does not cut the ringing call: presses the dialer's Decline button. */

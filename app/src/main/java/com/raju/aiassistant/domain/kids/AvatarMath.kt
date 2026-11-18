@@ -148,8 +148,13 @@ object AvatarMath {
         return if (mood == AvatarMood.THINKING) maxR * 0.25f to -maxR * 0.85f else 0f to 0f
     }
 
-    /** Sound must wait: Seema is listening (the microphone would hear it) or speaking (it would cut her voice). */
-    fun audioBusy(state: AssistantState): Boolean = state == AssistantState.Listening || state == AssistantState.Speaking
+    /**
+     * Sound must wait: Seema is speaking (it would cut her voice), or Riya is in the middle of saying something
+     * ([capturing]: words are coming in). Passive listening — the microphone open, nobody talking — does not
+     * block it: in hands-free Riya mode that is almost all the time, and the laugh would never play.
+     */
+    fun audioBusy(state: AssistantState, capturing: Boolean = false): Boolean =
+        state == AssistantState.Speaking || (state == AssistantState.Listening && capturing)
 
     /** A cheek tap winks the eye on that side; a tap elsewhere on the face closes both happily (^ ^). */
     fun winkSide(zone: FaceZone, x: Float, cx: Float): WinkSide = when (zone) {

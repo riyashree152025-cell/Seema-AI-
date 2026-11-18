@@ -55,6 +55,15 @@ sealed interface AssistantAction {
         override val label get() = "Sleep"
     }
 
+    /** "Mera QR bhej do Rizwan ko": the saved payment QR photo to that contact on WhatsApp. */
+    data class SendPaymentQr(val contact: String, val amountRupees: Long? = null) : AssistantAction {
+        override val label get() = "Payment QR"
+    }
+    /** "Jalal bhai ko UPI ID bhej do (Paytm wala)": a saved UPI ID to that contact on WhatsApp. */
+    data class SendUpiId(val contact: String, val upiLabel: String? = null, val amountRupees: Long? = null) : AssistantAction {
+        override val label get() = "UPI ID"
+    }
+
     /** "Riya mode chalu karo": Seema only for the little one (a parent leaves it on the screen). */
     data object KidModeOn : AssistantAction {
         override val label get() = "Riya mode"

@@ -142,6 +142,10 @@ class LocalTtsProvider(
 
     override suspend fun isAvailable() = host.nativeAvailable && manager.installedModel(engine) != null
 
+    /** No offline Bengali voice; Kokoro is not used for Hindi either (the cloud voices speak it far better). */
+    override fun supportsLanguage(languageTag: String): Boolean =
+        !languageTag.startsWith("bn") && !(engine == TtsEngine.KOKORO && languageTag.startsWith("hi"))
+
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
         val model = manager.installedModel(engine) ?: return AiResult.Failure(FailureKind.NOT_CONFIGURED, "voice model not downloaded")
         if (languageTag.startsWith("bn")) return AiResult.Failure(FailureKind.UNKNOWN, "no Bengali offline voice yet")
@@ -166,6 +170,7 @@ class MeasuredTtsProvider(private val inner: TtsProvider, private val stats: Voi
     override val engine get() = inner.engine
     override val label get() = inner.label
     override suspend fun isAvailable() = inner.isAvailable()
+    override fun supportsLanguage(languageTag: String) = inner.supportsLanguage(languageTag)
 
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
         val started = System.nanoTime()
