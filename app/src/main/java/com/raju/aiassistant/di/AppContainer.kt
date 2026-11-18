@@ -361,9 +361,6 @@ class AppContainer(context: Context) {
     val recentNotifications = com.raju.aiassistant.domain.notify.RecentNotifications()
     val callDeduper = CallDeduper()
 
-    /** The soft chime when Seema starts listening for an answer (low volume, media stream). */
-    private val micChime: android.media.ToneGenerator? by lazy { runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 22) }.getOrNull() }
-
     /**
      * The phone is ringing right now: the phone's own call state (needs the Phone permission), the audio mode, or a
      * call notification that still offers Answer. Any one is enough — a "done" that left it ringing is not done.
@@ -487,7 +484,6 @@ class AppContainer(context: Context) {
             kidWords = kidWords,
             setKidMode = { on -> settingsRepository.setKidMode(on) },
             contactAliases = com.raju.aiassistant.data.prefs.ContactAliasPrefs(appContext),
-            micOpenChime = { runCatching { micChime?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90) } },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {

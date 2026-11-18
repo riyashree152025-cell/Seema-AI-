@@ -80,6 +80,9 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
                 _listening.value = true
                 readyAt = SystemClock.elapsedRealtime()
                 log("stt ready")
+                // The start "trung" has played (silenced): notifications sound again while she listens.
+                handler.removeCallbacks(unmuteBriefRunnable)
+                handler.postDelayed(unmuteBriefRunnable, EARCON_MS)
             }
             override fun onBeginningOfSpeech() {
                 if (id != session) return
@@ -91,6 +94,8 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {
                 if (id != session) return
+                // The end "trung" comes now: silenced again until the recogniser is released.
+                muteBrief()
                 _listening.value = false
                 armWatchdog(id, RESULT_WAIT_MS) // waiting for the final text
             }
@@ -232,8 +237,40 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         }
     }
 
+    /**
+     * On many phones (Samsung) the recogniser's "trung / tiding" earcon plays on the notification stream. It is
+     * silenced only around the start and the end of listening (a moment each), never for the whole turn, so
+     * messages are still heard while she listens.
+     */
+    private var briefMuted = false
+    private val unmuteBriefRunnable = Runnable { unmuteBrief() }
+
+    private fun muteBrief() {
+        val am = audio ?: return
+        if (briefMuted || am.isStreamMute(AudioManager.STREAM_NOTIFICATION)) return
+        if (runCatching { am.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0) }.isSuccess) {
+            briefMuted = true
+            persistMuted()
+        }
+    }
+
+    private fun unmuteBrief() {
+        handler.removeCallbacks(unmuteBriefRunnable)
+        if (!briefMuted) return
+        runCatching { audio?.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0) }
+        briefMuted = false
+        persistMuted()
+    }
+
+    /** What is muted right now, kept so a killed process gives it back at the next start. */
+    private fun persistMuted() {
+        val all = mutedStreams + if (briefMuted) listOf(AudioManager.STREAM_NOTIFICATION) else emptyList()
+        if (all.isEmpty()) prefs.edit().remove(KEY_MUTED).apply() else prefs.edit().putString(KEY_MUTED, all.joinToString(",")).apply()
+    }
+
     private fun muteBeep() {
         requestFocus()
+        muteBrief()
         val am = audio ?: return
         if (mutedStreams.isNotEmpty()) return
         // The recogniser's "trung" earcon plays on the system or the media stream (it depends on the phone).
@@ -243,7 +280,7 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         mutedStreams = streams.filter { stream ->
             !am.isStreamMute(stream) && runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0) }.isSuccess
         }
-        if (mutedStreams.isNotEmpty()) prefs.edit().putString(KEY_MUTED, mutedStreams.joinToString(",")).apply()
+        persistMuted()
         handler.removeCallbacks(unmuteRunnable)
         handler.postDelayed(unmuteRunnable, 30_000) // safety net
     }
@@ -251,12 +288,14 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     private fun unmuteBeep() {
         handler.removeCallbacks(unmuteRunnable)
         abandonFocus()
+        unmuteBrief()
         val am = audio ?: return
         if (mutedStreams.isEmpty()) return
         mutedStreams.forEach { stream -> runCatching { am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0) } }
         mutedStreams = emptyList()
-        prefs.edit().remove(KEY_MUTED).apply()
+        persistMuted()
     }
+
 
     override fun stop() {
         session++ // any callback still on its way belongs to an old session now
@@ -299,6 +338,8 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
         val BEEP_STREAMS = listOf(AudioManager.STREAM_SYSTEM)
         // (STREAM_MUSIC is added per turn when no media is playing; STREAM_NOTIFICATION is never muted.)
         const val KEY_MUTED = "muted_streams"
+        /** How long the start earcon takes after the recogniser is ready. */
+        const val EARCON_MS = 700L
         // SpeechRecognizer error codes added in Android 12 (API 31).
         const val ERROR_TOO_MANY_REQUESTS = 10
         const val ERROR_SERVER_DISCONNECTED = 11
