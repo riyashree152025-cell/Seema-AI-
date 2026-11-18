@@ -2562,6 +2562,15 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun radheRadheIsAnsweredWithRadheRadheWithoutTheAi() = runTest {
+        val e = engine()
+        e.submit("राधे राधे", fromVoice = true)
+        settle()
+        assertEquals("राधे राधे", speaker.spoken.last())
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
     fun thikHaiSunaoAfterTheQuestionIsAYes() = runTest {
         val e = engine()
         var got: Boolean? = null

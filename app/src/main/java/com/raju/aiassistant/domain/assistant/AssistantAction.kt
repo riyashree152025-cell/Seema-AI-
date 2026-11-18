@@ -55,6 +55,11 @@ sealed interface AssistantAction {
         override val label get() = "Sleep"
     }
 
+    /** "Radhe radhe" → "राधे राधे": a devotional greeting answered with the same greeting. */
+    data class Greeting(val reply: String) : AssistantAction {
+        override val label get() = "Greeting"
+    }
+
     /** "Jo setting baki hai kholo": Seema's own check list of missing permissions, each with its fix button. */
     data object OpenSetupCheck : AssistantAction {
         override val label get() = "Open setup check"

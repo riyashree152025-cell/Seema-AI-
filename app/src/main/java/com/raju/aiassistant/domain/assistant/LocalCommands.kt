@@ -21,6 +21,7 @@ object LocalCommands {
 
     fun parse(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
+        DevotionalGreeting.reply(text)?.let { return AssistantAction.Greeting(it) }
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
         languageSwitch(text)?.let { return it }
         if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep

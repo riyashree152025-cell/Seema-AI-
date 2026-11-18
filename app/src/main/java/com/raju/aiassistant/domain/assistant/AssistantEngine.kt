@@ -1664,6 +1664,10 @@ class AssistantEngine(
                 trace("offline command: sleep")
                 sleepNow(action, speak)
             }
+            is AssistantAction.Greeting -> {
+                trace("offline command: greeting")
+                informational(action, action.reply, speak)
+            }
             AssistantAction.OpenSetupCheck -> {
                 trace("offline command: setup check")
                 val outcome = tools.openSetupCheck()
@@ -2431,6 +2435,7 @@ class AssistantEngine(
             AssistantAction.OpenSetupCheck -> report(action, tools.openSetupCheck())
             is AssistantAction.SetLanguage -> switchLanguage(action, speak)
             AssistantAction.GoToSleep -> sleepNow(action, speak)
+            is AssistantAction.Greeting -> informational(action, action.reply, speak)
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)
