@@ -123,7 +123,7 @@ private const val MIC_HANDOFF_MS = 180L
 /** How long the pieces of a PNR said in parts are collected. */
 private const val PNR_COLLECT_MS = 90_000L
 /** Careful thinking (deep tier) may take longer before its first words on mobile data: Gemini gets 28 s. */
-private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 9_000L
+private const val DEEP_FIRST_TEXT_TIMEOUT_MS = 6_000L
 /** How often the background guard checks that Seema is back to waiting for "Hey Seema". */
 private const val BACKGROUND_GUARD_MS = 3_000L
 /**
@@ -192,6 +192,9 @@ internal fun cooldownMsFor(kind: FailureKind, message: String = ""): Long = when
     // minute: benching the provider for 15 minutes sent every later turn to slower AIs (13-18 s on the phone).
     (kind == FailureKind.RATE_LIMITED || kind == FailureKind.QUOTA_EXCEEDED) && isPerMinuteLimit(message) -> 60_000L
     kind == FailureKind.RATE_LIMITED || kind == FailureKind.QUOTA_EXCEEDED || kind == FailureKind.INVALID_KEY -> 15 * 60_000L
+    // Silent for seconds (Gemini under heavy demand): the next questions go straight to the next AI for a while
+    // instead of waiting for it again (each wait cost 6-9 s before the fallback answered).
+    kind == FailureKind.TIMEOUT -> SLOW_PROVIDER_COOLDOWN_MS
     else -> 60_000L
 }
 
@@ -202,6 +205,8 @@ internal fun isPerMinuteLimit(message: String): Boolean {
 }
 
 private const val MAX_LISTEN_FAILURES = 3
+/** An AI that did not start answering in time rests this long. */
+internal const val SLOW_PROVIDER_COOLDOWN_MS = 5 * 60_000L
 /** A "no speech" sooner than this is the recogniser failing, not a quiet room. */
 private const val FAST_NO_SPEECH_MS = 1_000L
 /** After this many fast "no speech" in a row, the re-listen waits 2 s instead of 300 ms. */

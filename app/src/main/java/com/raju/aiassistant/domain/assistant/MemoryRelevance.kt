@@ -34,6 +34,6 @@ fun relevantMemories(memories: List<String>, query: String, limit: Int = 12): Li
 fun asksToRemember(text: String): Boolean = REMEMBER_ASK.containsMatchIn(text)
 
 private val REMEMBER_ASK = Regex(
-    "yaad\\s*rakh|yad\\s*rakh|याद\\s*रख|याद\\s*रखना|note\\s*kar|नोट\\s*कर|remember|মনে\\s*রাখ|মনে\\s*রেখ|save\\s*kar|सेव\\s*कर|likh\\s*lo|लिख\\s*लो",
+    "yaad\\s*rakh|yad\\s*rakh|yaad\\s*kar|याद\\s*रख|याद\\s*रखना|याद\\s*कर|याद\\s*रहे|dhyan\\s*rakh|ध्यान\\s*रख|note\\s*kar|नोट\\s*कर|remember|মনে\\s*রাখ|মনে\\s*রেখ|ভুলো না|save\\s*kar|सेव\\s*कर|likh\\s*lo|लिख\\s*लो|लिख\\s*के\\s*रख|भूलना\\s*मत|bhoolna\\s*mat|bhulna\\s*mat",
     RegexOption.IGNORE_CASE,
 )
