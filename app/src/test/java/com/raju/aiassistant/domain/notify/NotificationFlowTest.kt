@@ -90,9 +90,11 @@ class NotificationFlowTest {
     @Test
     fun callTextsNeverInventIdentity() {
         assertEquals("Mom ka call aa raha hai.", callAnnouncementText("Mom", "9876543210", speakNumber = false))
-        assertEquals("Unknown number ka call aa raha hai.", callAnnouncementText(null, "9876543210", speakNumber = false))
+        assertEquals("Ek naye number se call aa raha hai.", callAnnouncementText(null, "9876543210", speakNumber = false))
         assertEquals("Raju, Mom ka call aa raha hai.", callAnnouncementText("Mom", "9876543210", speakNumber = false, nickname = "Raju"))
-        assertEquals("Number 9 8 7 6 5 se call aa raha hai.", callAnnouncementText(null, "98765", speakNumber = true))
+        // An unsaved number is never read digit by digit (it took most of the ring): short line, then the question.
+        assertEquals("Raju, Ek naye number se call aa raha hai.", callAnnouncementText(null, "+91 98765 43210", speakNumber = true, nickname = "Raju"))
+        assertTrue(callAnnouncementText(null, "+91 98765 43210", speakNumber = true).none { it.isDigit() })
         assertEquals("Ek call aa raha hai. Number chhupa hua hai.", callAnnouncementText(null, null, speakNumber = true))
     }
 

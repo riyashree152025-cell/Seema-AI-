@@ -2,17 +2,18 @@ package com.raju.aiassistant.domain.notify
 
 /**
  * What to say for an incoming SIM call. The caller's name is used only when it was found in the
- * user's Contacts; the number is spoken only if the user enabled that; otherwise no identity is
- * invented ("unknown number" / "ek call").
+ * user's Contacts; a number that is not saved is never read out digit by digit — reading ten digits took
+ * most of the ring, and there was no time left for "uthaun ki nahi?". It is "ek naye number se call".
+ * ([speakNumber] is kept for the stored setting; the number is not spoken either way.)
  */
+@Suppress("UNUSED_PARAMETER")
 fun callAnnouncementText(contactName: String?, number: String?, speakNumber: Boolean, nickname: String? = null): String {
     val digits = number?.filter { it.isDigit() || it == '+' }.orEmpty()
     val prefix = nickPrefix(nickname)
     return when {
         !contactName.isNullOrBlank() -> "$prefix$contactName ka call aa raha hai."
-        digits.length >= 3 && speakNumber -> "${prefix}Number ${digits.toList().joinToString(" ")} se call aa raha hai."
         digits.isEmpty() -> "${prefix}Ek call aa raha hai. Number chhupa hua hai."
-        else -> "${prefix}Unknown number ka call aa raha hai."
+        else -> "${prefix}Ek naye number se call aa raha hai."
     }
 }
 
@@ -67,7 +68,7 @@ fun callCommand(heard: String): CallCommand? {
 }
 
 /** What Seema asks after naming the caller, so "haan" / "nahi" can be answered by voice. */
-const val ASK_TO_ANSWER = "Uthau ya kaatu?"
+const val ASK_TO_ANSWER = "Uthaun ki nahi?"
 
 /** Said instead of the question when the caller already hung up while Seema was announcing. */
 fun endedCallText(contactName: String?): String =

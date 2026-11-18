@@ -376,12 +376,11 @@ class AppContainer(context: Context) {
             if (!s.announceCalls || s.assistantPaused || s.safetyMode || !audioInterruptions.ringing()) return@launch
             lastCallAnnouncedAt = System.currentTimeMillis()
             android.util.Log.i("SeemaVoice", "call: announced without caller details (no call-screening role)")
-            speaker.speak(com.raju.aiassistant.domain.notify.ringingAnnouncementText(s.userName))
+            speaker.speak(com.raju.aiassistant.domain.notify.ringingAnnouncementText(s.userName) + " " + com.raju.aiassistant.domain.notify.ASK_TO_ANSWER)
             if (!audioInterruptions.ringing()) {
                 speaker.speak(com.raju.aiassistant.domain.notify.endedCallText(null))
                 return@launch
             }
-            speaker.speak(com.raju.aiassistant.domain.notify.ASK_TO_ANSWER)
             if (audioInterruptions.ringing()) engine.listenForCallCommand(null, null)
         }
     }
