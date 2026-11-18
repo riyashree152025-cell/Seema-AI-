@@ -88,6 +88,10 @@ class AssistantEngineTest {
         override fun answerCall(): ToolOutcome { answered++; return answerResult }
         override fun endCall(): ToolOutcome { ended++; return endResult }
         override fun answerCallOnScreen(): ToolOutcome { answeredOnScreen++; return screenResult }
+        var notificationPresses = 0
+        var notificationResult: ToolOutcome = ToolOutcome.Failed("no call notification")
+        var onNotificationPress: () -> Unit = {}
+        override fun pressCallNotification(answer: Boolean): ToolOutcome { notificationPresses++; onNotificationPress(); return notificationResult }
         var qrSaved = true
         val qrShares = mutableListOf<Pair<String, String>>()
         override fun hasPaymentQr(): Boolean = qrSaved
@@ -2545,6 +2549,41 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun theCallNotificationsAnswerButtonIsPressedFirstAndSuccessIsOnlySaidWhenTheRingingStops() = runTest {
+        ringing = true
+        tools.notificationResult = ToolOutcome.Done("Answer pressed")
+        tools.onNotificationPress = { ringing = false } // the call really picks up
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("uthao")
+        settle()
+        assertEquals(1, tools.notificationPresses)
+        assertEquals(0, tools.answered) // TelecomManager was not even needed
+        assertTrue(tools.speakerCalls.isNotEmpty())
+        tools.notificationResult = ToolOutcome.Failed("no call notification")
+        tools.onNotificationPress = {}
+    }
+
+    @Test
+    fun aDoneThatLeftThePhoneRingingIsNeverReportedAsAnswered() = runTest {
+        ringing = true // every way "worked" but the phone rings on (what happened on the phone)
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("uthao")
+        settle()
+        assertEquals(1, tools.answered)
+        assertEquals(1, tools.answeredOnScreen)
+        assertTrue(speaker.spoken.toString(), speaker.spoken.any { it.contains("अब भी बज रहा है") })
+        assertTrue(tools.speakerCalls.isEmpty())
+        assertTrue(e.transcript.value.none { it.text.contains("कॉल उठा ली") })
+        ringing = false
+    }
+
+    @Test
     fun anAnswerThatWorkedNeverTouchesTheScreen() = runTest {
         val e = engine()
         e.onCallRinging()
@@ -2714,6 +2753,31 @@ class AssistantEngineTest {
         assertEquals("98000 00005", tools.qrShares.single().first)
         assertTrue(tools.qrShares.single().second.contains("*Amount:* ₹1000"))
         assertEquals(0, provider.calls.size) // never "I cannot open payment apps"
+    }
+
+    @Test
+    fun aNameWithSpelledInitialsOrPartOfItStillFindsTheContact() = runTest {
+        // Contacts answer only to the saved name's own words (like the phone's search).
+        val saved = Contact("Sajid Shaikh NZM", "98000 00006")
+        val byName = object : DeviceTools by tools {
+            override suspend fun findContacts(query: String) =
+                ContactLookup.Found(if (query == "साजिद शेख" || query == "साजिद शेख NZM") listOf(saved) else emptyList())
+            override fun hasPaymentQr() = true
+            override fun sharePaymentQr(number: String, caption: String) = tools.sharePaymentQr(number, caption)
+        }
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = byName,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+        )
+        e.submit("साजिद शेख एन जेड एम उसको क्यू आर भेज दो", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals("98000 00006", tools.qrShares.single().first)
+        assertEquals(0, provider.calls.size)
     }
 
     @Test

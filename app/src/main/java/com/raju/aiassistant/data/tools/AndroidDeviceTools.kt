@@ -315,17 +315,17 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
 
     // Fallbacks, in order: the call notification's own Answer / Decline button (any answer style, screen off too),
     // then the button on the call screen through Seema's Accessibility (a drag on Samsung's handle as the last try).
-    override fun answerCallOnScreen(): ToolOutcome = when {
-        com.raju.aiassistant.notifications.IncomingCallActions.press(answerCall = true) -> ToolOutcome.Done("कॉल उठा ली है (notification का Answer बटन)।")
-        com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = true) -> ToolOutcome.Done("कॉल उठा ली है।")
-        else -> ToolOutcome.Failed("कॉल उठाने का बटन नहीं मिला। Seema को Notification access और Accessibility दोनों दीजिए।")
-    }
+    override fun pressCallNotification(answer: Boolean): ToolOutcome =
+        if (com.raju.aiassistant.notifications.IncomingCallActions.press(answerCall = answer)) ToolOutcome.Done(if (answer) "notification का Answer बटन दबाया।" else "notification का Decline बटन दबाया।")
+        else ToolOutcome.Failed("कॉल की notification में बटन नहीं मिला (Seema को Notification access चाहिए)।")
 
-    override fun endCallOnScreen(): ToolOutcome = when {
-        com.raju.aiassistant.notifications.IncomingCallActions.press(answerCall = false) -> ToolOutcome.Done("फोन कॉल कट कर दिया गया है (notification का Decline बटन)।")
-        com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = false) -> ToolOutcome.Done("फोन कॉल कट कर दिया गया है।")
-        else -> ToolOutcome.Failed("कॉल काटने का बटन नहीं मिला। Seema को Notification access और Accessibility दोनों दीजिए।")
-    }
+    override fun answerCallOnScreen(): ToolOutcome =
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = true)) ToolOutcome.Done("स्क्रीन पर Answer दबाया।")
+        else ToolOutcome.Failed("कॉल उठाने का बटन नहीं मिला। Seema को Notification access और Accessibility दोनों दीजिए।")
+
+    override fun endCallOnScreen(): ToolOutcome =
+        if (com.raju.aiassistant.accessibility.SeemaAccessibilityService.pressCallButton(answer = false)) ToolOutcome.Done("स्क्रीन पर Decline दबाया।")
+        else ToolOutcome.Failed("कॉल काटने का बटन नहीं मिला। Seema को Notification access और Accessibility दोनों दीजिए।")
 
     override fun showHangUpButton(name: String) {
         com.raju.aiassistant.notifications.CallControls.showHangUp(context, name)

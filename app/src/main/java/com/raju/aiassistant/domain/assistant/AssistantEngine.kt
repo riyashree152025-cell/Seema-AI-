@@ -133,6 +133,8 @@ private const val BACKGROUND_GUARD_MS = 3_000L
 private const val FOLLOW_UP_MS = 20_000L
 /** "Kaun si UPI ID?": the answer is taken this long after the question. */
 private const val UPI_ASK_MS = 10_000L
+/** A shorter form of a name is offered only when it fits this few contacts (each is confirmed). */
+private const val MAX_NEAR_MATCHES = 5
 /** Between "X mil gaya, ab call laga rahi hoon" and the call / send: time to say "ruko" or the right name. */
 private const val SAFETY_WINDOW_MS = 2_500L
 /** Riya mode: her name in Seema's words, how much of the talk goes with a request, and how long a guess waits. */
@@ -1098,7 +1100,7 @@ class AssistantEngine(
         pendingPayTo?.let { pay ->
             pendingPayTo = null
             if (clock() < pendingPayToUntil && Correction.parse(text) != Correction.Cancel) {
-                val who = (com.raju.aiassistant.domain.payments.PaymentShare.contactOf(text) ?: text).trim().trimEnd('.', '।', '!')
+                val who = com.raju.aiassistant.domain.payments.PaymentShare.nameFromAnswer(text)
                 val next = when (pay) {
                     is AssistantAction.SendPaymentQr -> pay.copy(contact = who, amountRupees = pay.amountRupees ?: com.raju.aiassistant.domain.payments.PaymentShare.amount(text))
                     is AssistantAction.SendUpiId -> pay.copy(contact = who)
@@ -2155,6 +2157,13 @@ class AssistantEngine(
         if (usable.isEmpty()) {
             val msg = phrase(lang(), "Contacts में \"$name\" का कोई WhatsApp नंबर नहीं मिला। सेव किया हुआ नाम बोलिए।", "কন্টাক্টে \"$name\" এর কোনো নম্বর পাইনি।")
             report(action, ActionStatus.FAILED, msg)
+            // The next sentence is the saved name (no "Hey Seema", no new request needed).
+            if (action is AssistantAction.SendPaymentQr) {
+                pendingPayTo = action.copy(contact = "")
+                pendingPayToUntil = clock() + UPI_ASK_MS
+                followUpUntil = maxOf(followUpUntil, pendingPayToUntil)
+                if (speak) _voiceSession.value = true
+            }
             if (speak) say(msg)
             return null
         }
@@ -2680,21 +2689,7 @@ class AssistantEngine(
      * hands-free (again a little later: dialers reset the audio route while the call connects).
      */
     private suspend fun answerRingingCall() {
-        var outcome = tools.answerCall()
-        if (outcome !is ToolOutcome.Done) {
-            trace("call: telecom answer refused, trying the call buttons")
-            val onScreen = tools.answerCallOnScreen()
-            trace("call: button answer ${if (onScreen is ToolOutcome.Done) "pressed" else "not found"}")
-            if (onScreen is ToolOutcome.Done) outcome = onScreen
-        } else {
-            delay(CALL_VERIFY_MS)
-            if (callRinging()) {
-                trace("call: still ringing after the answer, pressing the call buttons")
-                val onScreen = tools.answerCallOnScreen()
-                trace("call: button answer ${if (onScreen is ToolOutcome.Done) "pressed" else "not found"}")
-                if (onScreen is ToolOutcome.Done) outcome = onScreen
-            }
-        }
+        val outcome = tryCallSteps(answer = true)
         report(AssistantAction.AnswerCall, outcome)
         if (outcome is ToolOutcome.Done) {
             delay(SPEAKER_AFTER_ANSWER_MS)
@@ -2707,23 +2702,46 @@ class AssistantEngine(
         }
     }
 
-    /** "Kaato": TelecomManager first, the dialer's Decline button as the fallback. */
+    /** "Kaato": the same three ways, checked the same way. */
     private suspend fun cutRingingCall() {
-        var outcome = tools.endCall()
-        if (outcome !is ToolOutcome.Done) {
-            trace("call: telecom cut refused, trying the screen button")
-            val onScreen = tools.endCallOnScreen()
-            if (onScreen is ToolOutcome.Done) outcome = onScreen
-        } else {
-            delay(CALL_VERIFY_MS)
-            if (callRinging()) {
-                trace("call: still ringing after the cut, pressing the screen button")
-                val onScreen = tools.endCallOnScreen()
-                if (onScreen is ToolOutcome.Done) outcome = onScreen
-            }
-        }
+        val outcome = tryCallSteps(answer = false)
         report(AssistantAction.EndCall, outcome)
         if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
+    }
+
+    /**
+     * Answers (or cuts) the ringing call, and only calls it done when the phone has really stopped ringing:
+     * 1. the call notification's own Answer / Decline button (what the user taps; any answer style, screen off too),
+     * 2. TelecomManager (some ROMs say "done" and do nothing — the reason "कॉल उठा ली" was shown while it rang on),
+     * 3. the call screen's button through Seema's Accessibility (a drag on Samsung's handle as the last try).
+     * After each step it waits [CALL_VERIFY_MS] and checks the phone's own call state before trying the next.
+     */
+    private suspend fun tryCallSteps(answer: Boolean): ToolOutcome {
+        val steps: List<Pair<String, () -> ToolOutcome>> = listOf(
+            "notification" to { tools.pressCallNotification(answer) },
+            "telecom" to { if (answer) tools.answerCall() else tools.endCall() },
+            "screen" to { if (answer) tools.answerCallOnScreen() else tools.endCallOnScreen() },
+        )
+        var last: ToolOutcome = ToolOutcome.Failed(if (answer) "कॉल नहीं उठ पाई।" else "कॉल नहीं कट पाई।")
+        var anyDone = false
+        for ((name, step) in steps) {
+            val r = runCatching { step() }.getOrElse { ToolOutcome.Failed(it.message ?: "error") }
+            trace("call: ${if (answer) "answer" else "cut"} via $name ${if (r is ToolOutcome.Done) "pressed" else "not available"}")
+            if (r !is ToolOutcome.Done) {
+                // Keep the most useful reason (a missing permission says what to allow).
+                if (!anyDone && (last !is ToolOutcome.NeedsPermission)) last = r
+                continue
+            }
+            anyDone = true
+            delay(CALL_VERIFY_MS)
+            if (!callRinging()) {
+                trace("call: ${if (answer) "answered" else "cut"} (no longer ringing)")
+                return r
+            }
+            trace("call: still ringing after $name")
+            last = ToolOutcome.Failed(if (answer) "फ़ोन अब भी बज रहा है — कॉल नहीं उठ पाई, खुद उठाइए।" else "फ़ोन अब भी बज रहा है — कॉल नहीं कट पाई।")
+        }
+        return last
     }
 
     /** Why answering / cutting a ringing call did not work, said out loud. */
@@ -4491,7 +4509,28 @@ class AssistantEngine(
     }
 
     /** Returns contacts, or null if permission was refused. Handles the permission prompt. */
+    /**
+     * Contacts for a spoken name. Spelled letters are joined first ("एन जेड एम" → NZM); when the whole name finds no
+     * one, shorter forms are tried ("साजिद शेख एन जेडम" → "साजिद शेख") — the person is always confirmed before a call
+     * or a message, so a near match is offered, never used silently.
+     */
     private suspend fun lookup(query: String): List<Contact>? {
+        val first = lookupExact(query) ?: return null
+        if (first.isNotEmpty()) return first
+        val collapsed = com.raju.aiassistant.domain.tools.SpokenLetters.collapse(query)
+        if (collapsed != query.trim()) {
+            val r = lookupExact(collapsed) ?: return null
+            if (r.isNotEmpty()) { trace("contacts: found with spelled letters joined"); return r }
+        }
+        for (shorter in com.raju.aiassistant.domain.tools.SpokenLetters.shorterForms(collapsed)) {
+            val r = lookupExact(shorter) ?: return null
+            if (r.size in 1..MAX_NEAR_MATCHES) { trace("contacts: found with a shorter form of the name (${r.size})"); return r }
+            if (r.size > MAX_NEAR_MATCHES) break // too many people share that part of the name
+        }
+        return emptyList()
+    }
+
+    private suspend fun lookupExact(query: String): List<Contact>? {
         repeat(2) {
             when (val r = tools.findContacts(query)) {
                 is ContactLookup.Found -> return distinctContacts(r.contacts)

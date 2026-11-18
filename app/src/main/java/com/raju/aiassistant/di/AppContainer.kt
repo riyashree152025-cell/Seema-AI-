@@ -361,6 +361,19 @@ class AppContainer(context: Context) {
     /** The soft chime when Seema starts listening for an answer (low volume, media stream). */
     private val micChime: android.media.ToneGenerator? by lazy { runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 22) }.getOrNull() }
 
+    /**
+     * The phone is ringing right now: the phone's own call state (needs the Phone permission), the audio mode, or a
+     * call notification that still offers Answer. Any one is enough — a "done" that left it ringing is not done.
+     */
+    @Suppress("DEPRECATION")
+    fun phoneRinging(): Boolean {
+        val byState = runCatching {
+            androidx.core.content.ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                appContext.getSystemService(android.telephony.TelephonyManager::class.java)?.callState == android.telephony.TelephonyManager.CALL_STATE_RINGING
+        }.getOrDefault(false)
+        return byState || audioInterruptions.ringing() || com.raju.aiassistant.notifications.IncomingCallActions.ringing()
+    }
+
     /** Riya's words (Riya mode), kept on the phone. */
     val kidWords by lazy { com.raju.aiassistant.data.prefs.KidWordsPrefs(appContext) }
 
@@ -467,7 +480,7 @@ class AppContainer(context: Context) {
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
-            callRinging = { audioInterruptions.ringing() || com.raju.aiassistant.notifications.IncomingCallActions.ringing() },
+            callRinging = { phoneRinging() },
             kidWords = kidWords,
             setKidMode = { on -> settingsRepository.setKidMode(on) },
             micOpenChime = { runCatching { micChime?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90) } },
