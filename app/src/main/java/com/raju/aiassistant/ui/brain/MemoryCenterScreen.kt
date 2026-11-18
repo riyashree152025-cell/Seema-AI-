@@ -135,6 +135,9 @@ fun MemoryCenterScreen(
                 }
             }
 
+            // Riya mode: the little one's own words.
+            com.raju.aiassistant.ui.kids.KidWordsCard()
+
             // 2. Top Card: Memory Status & Circular Progress Ring (4%)
             SciFiCard(modifier = Modifier.fillMaxWidth()) {
                 Row(

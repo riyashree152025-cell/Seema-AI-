@@ -218,7 +218,7 @@ class AppContainer(context: Context) {
                         engine.onCallRinging()
                         val s = currentSettings.value
                         // The ringtone down to ~20 % while she announces and listens; restored below.
-                        if (s.announceCalls && !s.assistantPaused && !s.safetyMode) ringDucker.duck()
+                        if (s.announceCalls && !s.assistantPaused && !s.safetyMode && !s.kidMode) ringDucker.duck()
                         announceRingingIfNobodyDid()
                     }
                     com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> {
@@ -317,7 +317,7 @@ class AppContainer(context: Context) {
             useDeepgram = {
                 // Without internet Deepgram cannot answer: the phone's own recogniser takes the turn, so
                 // the offline commands (torch, alarm, call…) still work by voice.
-                online.value &&
+                online.value && !currentSettings.value.kidMode &&
                 // Deepgram's models used here understand Hindi/Hinglish, not Bengali: Bengali uses the phone's recogniser.
                 (com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(currentSettings.value.speechLanguage) ?: conversationLanguage.value) !=
                     com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI &&
@@ -358,6 +358,9 @@ class AppContainer(context: Context) {
     val recentNotifications = com.raju.aiassistant.domain.notify.RecentNotifications()
     val callDeduper = CallDeduper()
 
+    /** Riya's words (Riya mode), kept on the phone. */
+    val kidWords by lazy { com.raju.aiassistant.data.prefs.KidWordsPrefs(appContext) }
+
     val ringDucker by lazy { com.raju.aiassistant.core.audio.RingDucker(appContext) }
 
     /** When a call was last announced (by the call-screening service, with the caller's name). */
@@ -373,7 +376,7 @@ class AppContainer(context: Context) {
             kotlinx.coroutines.delay(800) // the screening service, when it runs, announces first
             val s = currentSettings.value
             if (System.currentTimeMillis() - lastCallAnnouncedAt < 15_000) return@launch
-            if (!s.announceCalls || s.assistantPaused || s.safetyMode || !audioInterruptions.ringing()) return@launch
+            if (!s.announceCalls || s.assistantPaused || s.safetyMode || s.kidMode || !audioInterruptions.ringing()) return@launch
             lastCallAnnouncedAt = System.currentTimeMillis()
             android.util.Log.i("SeemaVoice", "call: announced without caller details (no call-screening role)")
             speaker.speak(com.raju.aiassistant.domain.notify.ringingAnnouncementText(s.userName) + " " + com.raju.aiassistant.domain.notify.ASK_TO_ANSWER)
@@ -462,6 +465,7 @@ class AppContainer(context: Context) {
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
             callRinging = { audioInterruptions.ringing() },
+            kidWords = kidWords,
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
                 if (p == null) false else {

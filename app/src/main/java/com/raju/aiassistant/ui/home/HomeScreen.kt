@@ -177,6 +177,9 @@ fun HomeScreen(
 
     onOpenSettings: () -> Unit = {},
 
+    /** Riya mode: Seema only for the little one (a parent leaves it). */
+    onOpenKidMode: () -> Unit = {},
+
     viewModel: HomeViewModel = viewModel(factory = RajuViewModelFactory),
 
 ) {
@@ -771,6 +774,19 @@ fun HomeScreen(
                 }
 
 
+
+                // Riya mode: one touch, and Seema is only for the little one until a parent leaves it.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .softGlass(shape = RoundedCornerShape(18.dp))
+                        .clickable(onClick = onOpenKidMode)
+                        .padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("👧  রিয়া মোড", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
 
                 // Armored Bottom Dock Status Bar (Flush with bottom edge, clickable to open Chat)
 

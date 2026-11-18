@@ -169,6 +169,8 @@ data class UserSettings(
     val safetyMode: Boolean = false,
     /** Floating Seema: a small glass card / eye bubble over other apps while Seema is in the background. */
     val floatingPopup: Boolean = true,
+    /** Riya mode: Seema talks only with the little one, in Bengali; no phone task works until a parent exits. */
+    val kidMode: Boolean = false,
     val assistantPaused: Boolean = false,
     val userName: String = "Raju",
     val userEmail: String = "ruhulamin16121998@gmail.com",
@@ -180,7 +182,7 @@ data class UserSettings(
     val autoListen: Boolean get() = voiceMode == VoiceMode.ALWAYS
 
     /** Notification announcements are allowed right now. */
-    val announcementsActive: Boolean get() = announceNotifications && !assistantPaused && !safetyMode
+    val announcementsActive: Boolean get() = announceNotifications && !assistantPaused && !safetyMode && !kidMode
 }
 
 /** Female voices of Sarvam Bulbul v3 (names are lowercase and case-sensitive). The first one is the default. */

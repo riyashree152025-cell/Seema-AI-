@@ -83,7 +83,7 @@ class RajuNotificationListener : NotificationListenerService() {
      */
     private fun announceMoneyIn(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
         val s = c.currentSettings.value
-        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode) return
+        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode || s.kidMode) return
         if (!com.raju.aiassistant.domain.sms.isMoneyApp(sbn.packageName)) return
         val n = sbn.notification ?: return
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return

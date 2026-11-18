@@ -2562,6 +2562,51 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun riyaModeNeverRunsAPhoneTaskAndSpeaksBengali() = runTest {
+        settings.value = settings.value.copy(kidMode = true)
+        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "1234567890")))
+        val e = engine(AiResult.Success("সোনা, মাকে আমি বলে দেব! <action>{\"type\":\"call\",\"contact\":\"Mom\"}</action>"))
+        e.submit("मम्मी को कॉल करो", fromVoice = true)
+        settle()
+        assertTrue(tools.dialed.isEmpty()) // no call, not even through the AI's action
+        assertNull(e.pending.value)
+        assertEquals("সোনা, মাকে আমি বলে দেব!", speaker.spoken.last())
+        assertTrue(provider.systems.last().contains("3-year-old"))
+        settings.value = settings.value.copy(kidMode = false)
+    }
+
+    @Test
+    fun riyasYesToSeemasGuessTeachesTheWord() = runTest {
+        settings.value = settings.value.copy(kidMode = true)
+        val words = com.raju.aiassistant.domain.kids.InMemoryKidWordStore()
+        provider = FakeProvider(ArrayDeque(listOf(
+            AiResult.Success("তুমি কি খীর মালাই খাবে? [ASK:মালু=মালাই]"),
+            AiResult.Success("ঠিক আছে সোনা, মালাই খাবো!"),
+            AiResult.Success("খীর মালাই কত মিষ্টি!"),
+        )))
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            kidWords = words,
+        )
+        e.submit("খীর মালু খাবো", fromVoice = true)
+        settle()
+        assertEquals("তুমি কি খীর মালাই খাবে?", speaker.spoken.last()) // the note is never read out
+        e.submit("হ্যাঁ", fromVoice = true)
+        settle()
+        val learned = words.all().single()
+        assertEquals("মালু" to "মালাই", learned.heard to learned.meaning)
+        assertEquals(com.raju.aiassistant.domain.kids.KidWord.Source.CONFIRMED, learned.source)
+        // Next time her word goes with the request.
+        e.submit("মালু দাও", fromVoice = true)
+        settle()
+        assertTrue(provider.systems.last().contains("মালু → মালাই"))
+        settings.value = settings.value.copy(kidMode = false)
+    }
+
+    @Test
     fun radheRadheIsAnsweredWithRadheRadheWithoutTheAi() = runTest {
         val e = engine()
         e.submit("राधे राधे", fromVoice = true)

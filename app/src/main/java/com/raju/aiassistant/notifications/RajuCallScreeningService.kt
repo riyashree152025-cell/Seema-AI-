@@ -31,7 +31,8 @@ class RajuCallScreeningService : CallScreeningService() {
         if (details.callDirection != Call.Details.DIRECTION_INCOMING) return
         val c = (applicationContext as? RajuApp)?.container ?: return
         val s = c.currentSettings.value
-        if (!s.announceCalls || s.assistantPaused || s.safetyMode) return
+        // Riya mode: no call is announced (her "হ্যাঁ" must never answer a call).
+        if (!s.announceCalls || s.assistantPaused || s.safetyMode || s.kidMode) return
         val number = details.handle?.schemeSpecificPart
         if (!c.callDeduper.shouldAnnounce(number, System.currentTimeMillis())) return
 
