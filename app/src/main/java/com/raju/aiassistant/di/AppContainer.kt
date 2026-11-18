@@ -483,6 +483,7 @@ class AppContainer(context: Context) {
             callRinging = { phoneRinging() },
             kidWords = kidWords,
             setKidMode = { on -> settingsRepository.setKidMode(on) },
+            contactAliases = com.raju.aiassistant.data.prefs.ContactAliasPrefs(appContext),
             micOpenChime = { runCatching { micChime?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90) } },
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value

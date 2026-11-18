@@ -303,6 +303,8 @@ class AssistantEngine(
     private val kidWords: com.raju.aiassistant.domain.kids.KidWordStore = com.raju.aiassistant.domain.kids.InMemoryKidWordStore(),
     /** Turns Riya mode on (saved in Settings; the app then shows only her screen). */
     private val setKidMode: suspend (Boolean) -> Unit = {},
+    /** How the user says names, learned from their own choices (on the phone only). */
+    private val contactAliases: com.raju.aiassistant.domain.tools.ContactAliasStore = com.raju.aiassistant.domain.tools.InMemoryContactAliases(),
     /** A soft, short chime when listening for an answer starts. */
     private val micOpenChime: () -> Unit = {},
 ) {
@@ -3962,7 +3964,28 @@ class AssistantEngine(
      * them and the user says the name or "पहला / दूसरा / 1 नंबर" (or taps one); for a call that choice is
      * the go-ahead, a message asks once more. Numbers are shown on the card, never read out. Returns null when the user said no or did not answer.
      */
+    /** [chooseContactInner], and the user's choice for the name they said is remembered for next time. */
     private suspend fun chooseContact(
+        title: String,
+        message: String,
+        candidates: List<Contact>,
+        query: String?,
+        speak: Boolean,
+        verbHi: String,
+        verbBn: String,
+        confirmSpokenPick: Boolean = true,
+    ): Contact? {
+        val chosen = chooseContactInner(title, message, candidates, query, speak, verbHi, verbBn, confirmSpokenPick) ?: return null
+        // Only a name that was hard to find (spelled letters, a shortened name) is remembered: "Rahul" that simply
+        // lists three Rahuls keeps asking which one.
+        if (query != null && query == nearMatchQuery && com.raju.aiassistant.domain.tools.ContactAliases.worthRemembering(query, chosen)) {
+            runCatching { contactAliases.put(query, chosen) }
+            trace("contacts: learned how this name is said")
+        }
+        return chosen
+    }
+
+    private suspend fun chooseContactInner(
         title: String,
         message: String,
         candidates: List<Contact>,
@@ -4514,17 +4537,26 @@ class AssistantEngine(
      * one, shorter forms are tried ("साजिद शेख एन जेडम" → "साजिद शेख") — the person is always confirmed before a call
      * or a message, so a near match is offered, never used silently.
      */
+    /** The last spoken name that was found only by a near match (it is worth remembering once confirmed). */
+    private var nearMatchQuery: String? = null
+
     private suspend fun lookup(query: String): List<Contact>? {
+        nearMatchQuery = null
+        // Said this way before and confirmed then: that contact first.
+        runCatching { contactAliases.get(query) }.getOrNull()?.let { known ->
+            trace("contacts: known from an earlier choice")
+            return listOf(known)
+        }
         val first = lookupExact(query) ?: return null
         if (first.isNotEmpty()) return first
         val collapsed = com.raju.aiassistant.domain.tools.SpokenLetters.collapse(query)
         if (collapsed != query.trim()) {
             val r = lookupExact(collapsed) ?: return null
-            if (r.isNotEmpty()) { trace("contacts: found with spelled letters joined"); return r }
+            if (r.isNotEmpty()) { trace("contacts: found with spelled letters joined"); nearMatchQuery = query; return r }
         }
         for (shorter in com.raju.aiassistant.domain.tools.SpokenLetters.shorterForms(collapsed)) {
             val r = lookupExact(shorter) ?: return null
-            if (r.size in 1..MAX_NEAR_MATCHES) { trace("contacts: found with a shorter form of the name (${r.size})"); return r }
+            if (r.size in 1..MAX_NEAR_MATCHES) { trace("contacts: found with a shorter form of the name (${r.size})"); nearMatchQuery = query; return r }
             if (r.size > MAX_NEAR_MATCHES) break // too many people share that part of the name
         }
         return emptyList()

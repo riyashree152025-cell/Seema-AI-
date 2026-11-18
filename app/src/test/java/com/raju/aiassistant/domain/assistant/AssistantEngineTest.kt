@@ -2781,6 +2781,35 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aHardNameIsRememberedAfterTheUserChoseTheContact() = runTest {
+        val saved = Contact("Sajid Shaikh NZM", "98000 00006")
+        var searches = 0
+        val byName = object : DeviceTools by tools {
+            override suspend fun findContacts(query: String): ContactLookup { searches++; return ContactLookup.Found(if (query == "साजिद शेख") listOf(saved) else emptyList()) }
+            override fun hasPaymentQr() = true
+            override fun sharePaymentQr(number: String, caption: String) = tools.sharePaymentQr(number, caption)
+        }
+        val aliases = com.raju.aiassistant.domain.tools.InMemoryContactAliases()
+        provider = FakeProvider(ArrayDeque())
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = byName,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            contactAliases = aliases,
+        )
+        e.submit("साजिद शेख एन जेडम को QR भेज दो", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+        assertEquals(saved, aliases.get("साजिद शेख एन जेडम")) // learned from the user's own yes
+        searches = 0
+        e.submit("साजिद शेख एन जेडम को फिर से QR भेज दो", fromVoice = true)
+        settle()
+        assertEquals(0, searches) // found straight from memory
+    }
+
+    @Test
     fun theSavedPaymentQrIsSentAfterTheYes() = runTest {
         tools.contacts = ContactLookup.Found(listOf(Contact("Rizwan", "98000 00004")))
         val e = engine()
