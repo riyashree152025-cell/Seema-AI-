@@ -80,9 +80,8 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
                 _listening.value = true
                 readyAt = SystemClock.elapsedRealtime()
                 log("stt ready")
-                // The start "trung" has played (silenced): notifications sound again while she listens.
-                handler.removeCallbacks(unmuteBriefRunnable)
-                handler.postDelayed(unmuteBriefRunnable, EARCON_MS)
+                // (The earcon streams stay silent for the whole turn: un-muting after the start sound let the
+                // phone's "trung" through again on Samsung.)
             }
             override fun onBeginningOfSpeech() {
                 if (id != session) return
@@ -238,9 +237,9 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
     }
 
     /**
-     * On many phones (Samsung) the recogniser's "trung / tiding" earcon plays on the notification stream. It is
-     * silenced only around the start and the end of listening (a moment each), never for the whole turn, so
-     * messages are still heard while she listens.
+     * On many phones (Samsung) the recogniser's "trung / tiding" earcon plays on the notification stream: it is
+     * silenced for the listening turn of the phone's recogniser (Bengali / offline) and given back right after.
+     * Deepgram (Hindi) plays no earcon and mutes nothing.
      */
     private var briefMuted = false
     private val unmuteBriefRunnable = Runnable { unmuteBrief() }
@@ -335,11 +334,11 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
          * notifications were muted too, for every listening turn: in hands-free (and Riya mode) the phone's
          * notifications and the user's media went silent most of the time.
          */
-        val BEEP_STREAMS = listOf(AudioManager.STREAM_SYSTEM)
+        val BEEP_STREAMS = listOf(AudioManager.STREAM_SYSTEM, AudioManager.STREAM_DTMF, STREAM_ACCESSIBILITY_COMPAT)
+        /** AudioManager.STREAM_ACCESSIBILITY (API 26): some phones play the earcon there. */
+        const val STREAM_ACCESSIBILITY_COMPAT = 10
         // (STREAM_MUSIC is added per turn when no media is playing; STREAM_NOTIFICATION is never muted.)
         const val KEY_MUTED = "muted_streams"
-        /** How long the start earcon takes after the recogniser is ready. */
-        const val EARCON_MS = 700L
         // SpeechRecognizer error codes added in Android 12 (API 31).
         const val ERROR_TOO_MANY_REQUESTS = 10
         const val ERROR_SERVER_DISCONNECTED = 11

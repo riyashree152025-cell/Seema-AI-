@@ -512,6 +512,9 @@ private fun parseAction(json: String): AssistantAction? {
             "previous", "prev" -> MediaCommand.PREVIOUS
             else -> null
         }?.let { AssistantAction.Media(it) }
+        // The user's saved payment QR / UPI ID shared on WhatsApp (no payment app is opened).
+        "send_qr" -> AssistantAction.SendPaymentQr(str("contact").orEmpty(), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
+        "send_upi" -> AssistantAction.SendUpiId(str("contact").orEmpty(), str("label"), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
         "sms" -> if (str("text") == null || (str("contact") == null && str("number") == null)) null
                  else AssistantAction.Sms(str("contact"), str("number"), str("text")!!)
         "add_event", "reminder" -> {

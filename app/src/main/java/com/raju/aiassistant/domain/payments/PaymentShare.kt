@@ -17,9 +17,10 @@ data class UpiRequest(val contact: String, val label: String?, val amountRupees:
  * engine finds the contact, confirms and sends.
  */
 object PaymentShare {
-    private const val QR = "(?:qr|q r|क्यूआर|क्यू आर|क्यूआर कोड|কিউআর|scanner|स्कैनर)"
+    // "QR" as recognisers write it, also Hindi in Bengali letters ("কি অর" = क्यू आर) and "barcode" / "scanner".
+    private const val QR = "(?:qr|q r|क्यूआर|क्यू आर|क्यू-आर|कि आर|कि अर|बारकोड|बार कोड|barcode|bar code|কিউআর|কিউ আর|কিউ অর|কি অর|কিঅর|বারকোড|বার কোড|scanner|स्कैनर|স্ক্যানার)"
     private const val UPI = "(?:upi|u p i|यूपीआई|यू पी आई|यूपीआय|ইউপিআই)"
-    private const val SEND = "(?:bhej|bhejo|bhejna|send|भेज|भेजो|भेजना|भेजिए|পাঠা|পাঠাও|দাও)"
+    private const val SEND = "(?:bhej|bhejo|bhejna|send|भेज|भेजो|भेजना|भेजिए|পাঠা|পাঠাও|পাঠি|দাও|ভেজ|ভেজো)"
     // "ko", and "usko / unko / उसको / उन्हें" after a name ("Sajid Shaikh, usko QR bhej do").
     private val TO = Regex("(?<![\\p{L}\\p{M}])(?:ko|को|কে|usko|isko|unko|inko|unhe|unhein|उसको|इसको|उनको|इनको|उन्हें|उन्हे|ওকে|তাকে)(?![\\p{L}\\p{M}])", RegexOption.IGNORE_CASE)
     private val AMOUNT = Regex("(?:₹|rs\\.?\\s*)(\\d{1,7})|(\\d{1,7})\\s*(?:rupaye|rupaiya|rupees|rupee|rs|रुपये|रुपए|रुपया|টাকা)", RegexOption.IGNORE_CASE)
@@ -29,7 +30,7 @@ object PaymentShare {
         "mera", "meri", "mere", "apna", "apni", "payment", "code", "id", "aaidi", "wala", "vala", "ka", "ki", "ke", "bhi", "zara", "jara",
         "seema", "please", "plz", "abhi", "jaldi", "do", "de", "dena", "karo", "whatsapp", "par", "pe", "on",
         "मेरा", "मेरी", "मेरे", "अपना", "पेमेंट", "कोड", "आईडी", "वाला", "का", "की", "के", "भी", "ज़रा", "सीमा", "अभी", "दो", "दे", "देना", "करो",
-        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা", "paytm", "phonepe", "gpay", "pe", "पेटीएम", "फोनपे", "फ़ोनपे", "वाला", "वाली",
+        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা", "আমার", "তোমার", "পাতা", "ওয়ালা", "তো", "paytm", "phonepe", "gpay", "pe", "पेटीएम", "फोनपे", "फ़ोनपे", "वाला", "वाली",
     )
 
     private fun hasWord(text: String, pattern: String) = Regex("(?<![\\p{L}\\p{M}])$pattern", RegexOption.IGNORE_CASE).containsMatchIn(text)
@@ -60,7 +61,8 @@ object PaymentShare {
 
     /** The person before "ko": up to three words, without the words around it ("mera QR", "UPI ID"). */
     fun contactBeforeKo(text: String): String? {
-        val t = text.replace(Regex("[,.!?।]"), " ").replace(Regex("\\s+"), " ").trim()
+        // Bengali writes "-কে" on the name ("জালাল ভাইকে"): split it off like "ko".
+        val t = BENGALI_KE.replace(text.replace(Regex("[,.!?।]"), " "), "$1 কে").replace(Regex("\\s+"), " ").trim()
         val m = TO.find(t) ?: return null
         val before = t.substring(0, m.range.first).trim().split(' ').filter { it.isNotBlank() }
         val name = mutableListOf<String>()
@@ -98,8 +100,11 @@ object PaymentShare {
         "contact", "कॉन्टैक्ट", "number", "नंबर", "se", "से", "wala", "वाला", "vala", "mein", "में", "ka", "का", "ki", "की", "bhai", "उसका",
     )
 
+    private val BENGALI_KE = Regex("([\\u0980-\\u09FF]{2,})কে(?![\\u0980-\\u09FF])")
+
     /** The person: before "ko"; only when there is no "ko" at all, the words after the send verb ("bhej do Rizwan bhai"). */
-    fun contactOf(text: String): String? = if (TO.containsMatchIn(text)) contactBeforeKo(text) else contactAfterVerb(text)
+    fun contactOf(text: String): String? =
+        if (TO.containsMatchIn(text) || BENGALI_KE.containsMatchIn(text)) contactBeforeKo(text) else contactAfterVerb(text)
 
     private val MONEY_WORD = Regex("^(?:rupaye|rupaiya|rupees|rupee|rs|रुपये|रुपए|रुपया|टका|টাকা|hazaar|hazar|हज़ार|हजार|sau|सौ|lakh|लाख)$", RegexOption.IGNORE_CASE)
 

@@ -280,6 +280,8 @@ object LocalCommands {
     private val ANSWER_CALL = Regex("^$PHONE (?:uthao|utha lo|utha do|uthaiye|receive karo|receive kar lo|pick karo|उठाओ|उठा लो|उठा दो|उठाइए|रिसीव करो|रिसीव कर लो)$")
     private val CALL_TO = Regex("^(.{1,40}?) (?:ko|को) $PHONE (?:karo|kar do|kar de|lagao|laga do|laga de|milao|mila do|करो|कर दो|कर दे|लगाओ|लगा दो|लगा दे|मिलाओ|मिला दो)$")
     private val CALL_EN = Regex("^(?:call|dial) ([a-z0-9 +]{1,40})$")
+    /** Bengali: "রিয়াকে কল দাও (তো)", "মাকে ফোন করো", "জালাল ভাই কে কল লাগাও". */
+    private val CALL_BN = Regex("^(.{1,40}?) ?কে (?:কল|ফোন|কॉল) (?:দাও|দে|করো|কর|লাগাও|লাগা)(?: তো| না)?$")
     private val NOT_A_NAME = Regex("(?:^| )(?:whatsapp|व्हाट्सएप|व्हाट्सऐप|video|वीडियो|aur|और|and|phir|फिर|then|mujhe|मुझे|kisi|किसी|usko|उसको|isko|इसको|unko|उनको|sabko|सबको|ise|use|उसे|इसे|karo|करो|lagao|लगाओ|kar|कर|back|me|him|her|dabao|daba|press|click|दबाओ)(?: |$)")
 
     private fun endCall(t: String): AssistantAction? = if (END_CALL.matches(t)) AssistantAction.EndCall else null
@@ -287,7 +289,7 @@ object LocalCommands {
     private fun answerCall(t: String): AssistantAction? = if (ANSWER_CALL.matches(t)) AssistantAction.AnswerCall else null
 
     private fun call(t: String): AssistantAction? {
-        val who = (CALL_TO.matchEntire(t) ?: CALL_EN.matchEntire(t))?.groupValues?.get(1)?.trim() ?: return null
+        val who = (CALL_TO.matchEntire(t) ?: CALL_EN.matchEntire(t) ?: CALL_BN.matchEntire(t))?.groupValues?.get(1)?.trim() ?: return null
         if (who.isEmpty() || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(who)) return null
         val digits = who.filter { it.isDigit() }
         return if (digits.length >= 7 && digits.length * 2 >= who.count { !it.isWhitespace() }) {
