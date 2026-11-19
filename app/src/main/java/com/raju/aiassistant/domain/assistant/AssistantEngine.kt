@@ -147,6 +147,8 @@ private const val NOTIFICATION_ASK_TTL_MS = 30_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
 /** How long a WhatsApp Send / Call press is waited for (slow networks, a dialog in between). */
 private const val AUTO_ACTION_WAIT_MS = 14_000L
+/** How long "Send dabao" still means the WhatsApp send that just failed. */
+private const val UNSENT_RETRY_MS = 3 * 60_000L
 /** How long a spoken "haan / nahi" is listened for after "ये बटन दबा दूँ?". */
 private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 /** Time the app on screen gets to react before Seema checks that the action really happened. */
@@ -1135,6 +1137,21 @@ class AssistantEngine(
                 }
             }
         }
+        // "Tum dabao / Send kar do" right after WhatsApp's Send could not be pressed: press it again for that same
+        // chat (already confirmed), never a new message or the AI guessing.
+        unsentShare?.let { u ->
+            if (clock() >= u.until) {
+                unsentShare = null
+            } else if (SendRetry.asksToPress(text) && LocalCommands.parse(text).let { a ->
+                    a == null || (a is AssistantAction.SendPaymentQr && a.contact.isBlank()) || (a is AssistantAction.SendUpiId && a.contact.isBlank())
+                }) {
+                unsentShare = null
+                retryUnsentShare(u, speak = fromVoice || s.autoSpeakReplies)
+                if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
+                finishTurn()
+                return
+            }
+        }
         // A parent teaching one of Riya's words from the normal mode: "रिया हुसू बोले तो मतलब पेशाब".
         com.raju.aiassistant.domain.kids.KidLexicon.teachCommand(text, requireName = true)?.let { (heard, meaning) ->
             runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.TAUGHT, clock())) }
@@ -1309,7 +1326,7 @@ class AssistantEngine(
         if (documents.isNotEmpty()) trace("knowledge: ${documents.size} passage(s)")
         val context = PromptContext(
             voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot(),
-            language = lang(), languageUnclear = languageUnclear, documents = documents,
+            language = lang(), languageUnclear = languageUnclear, documents = documents, savedPayment = savedPaymentLine(s),
         )
         // The mood the user's own words show, for this answer only (nothing is stored).
         val mood = moodOf(text)
@@ -2109,15 +2126,18 @@ class AssistantEngine(
             }
             null -> Unit
         }
-        val outcome = tools.sharePaymentQr(target.number, com.raju.aiassistant.domain.payments.PaymentShare.qrCaption(action.amountRupees))
+        val caption = com.raju.aiassistant.domain.payments.PaymentShare.qrCaption(action.amountRupees)
+        val outcome = tools.sharePaymentQr(target.number, caption)
         report(action, outcome)
         val sent = if (outcome is ToolOutcome.Done && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
         if (sent == false) report(action, ActionStatus.FAILED, "WhatsApp में Send नहीं दबा पाई — WhatsApp में खुद Send दबाइए।")
+        lastWhatsAppChat = target.name
+        unsentShare = if (sent == false) UnsentShare(action, target.name, target.number, caption, media = true, until = clock() + UNSENT_RETRY_MS) else null
         if (speak) say(
             when {
                 outcome !is ToolOutcome.Done -> phrase(lang(), "माफ़ कीजिए, QR नहीं भेज पाई — ${outcome.spokenReason()}", "দুঃখিত, QR পাঠাতে পারিনি।")
                 sent == true -> phrase(lang(), "हो गया, ${target.name} को Payment QR भेज दिया।", "হয়ে গেছে, ${target.name}-কে Payment QR পাঠিয়ে দিয়েছি।")
-                sent == false -> phrase(lang(), "QR WhatsApp में तैयार है, पर Send नहीं दब पाया — Send आप दबा दीजिए।", "QR হোয়াটসঅ্যাপে তৈরি, Send আপনি চাপুন।")
+                sent == false -> phrase(lang(), "QR WhatsApp में तैयार है, पर Send नहीं दब पाया। \"Send दबाओ\" बोलिए, मैं फिर से कोशिश करूँगी।", "QR হোয়াটসঅ্যাপে তৈরি, কিন্তু Send চাপতে পারিনি। \"Send চাপো\" বলুন, আবার চেষ্টা করব।")
                 else -> phrase(lang(), "QR WhatsApp में ${target.name} के लिए तैयार है — Send दबा दीजिए।", "QR হোয়াটসঅ্যাপে তৈরি — Send চাপুন।")
             },
         )
@@ -3150,6 +3170,48 @@ class AssistantEngine(
     private var bookingRepeats = 0
 
     /** "Kya likhun?" asked for a WhatsApp message: the contact, and until when the next sentence is the text. */
+    /** A WhatsApp send whose Send could not be pressed: "Send dabao" presses it again (see [SendRetry]). */
+    private class UnsentShare(val action: AssistantAction, val name: String, val number: String, val payload: String, val media: Boolean, val until: Long)
+    private var unsentShare: UnsentShare? = null
+    /** The chat Seema last sent something to, for "WhatsApp khol ke dikhao bheja ki nahi". */
+    private var lastWhatsAppChat: String? = null
+
+    /** For the AI: which payment details Seema holds (labels only, never the IDs themselves). */
+    private fun savedPaymentLine(s: UserSettings): String? {
+        val qr = runCatching { tools.hasPaymentQr() }.getOrDefault(false)
+        val labels = s.upiIds.map { it.label }.filter { it.isNotBlank() }
+        if (!qr && labels.isEmpty()) return null
+        return listOfNotNull(
+            if (qr) "the user's payment QR photo is saved" else null,
+            if (labels.isNotEmpty()) "UPI IDs saved: ${labels.joinToString(", ")}" else null,
+        ).joinToString("; ")
+    }
+
+    private suspend fun retryUnsentShare(u: UnsentShare, speak: Boolean) {
+        trace("send retry: ${if (u.media) "qr" else "text"}")
+        _state.value = AssistantState.Executing
+        if (speak) say(phrase(lang(), "ठीक है, ${u.name} के लिए फिर से भेज रही हूँ…", "আচ্ছা, ${u.name}-কে আবার পাঠাচ্ছি…"), allowBargeIn = false)
+        val outcome = if (u.media) tools.sharePaymentQr(u.number, u.payload) else tools.openWhatsApp(u.number, u.payload)
+        report(u.action, outcome)
+        val sent = if (outcome is ToolOutcome.Done && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
+        when (sent) {
+            true -> report(u.action, ActionStatus.SUCCESS, "WhatsApp: Send दबाया गया (पक्का भेजा गया)।")
+            false -> {
+                report(u.action, ActionStatus.FAILED, "WhatsApp में Send फिर भी नहीं दब पाया — WhatsApp में खुद Send दबाइए।")
+                unsentShare = UnsentShare(u.action, u.name, u.number, u.payload, u.media, clock() + UNSENT_RETRY_MS)
+            }
+            null -> Unit
+        }
+        if (speak) say(
+            when {
+                outcome !is ToolOutcome.Done -> phrase(lang(), "माफ़ कीजिए, नहीं भेज पाई — ${outcome.spokenReason()}", "দুঃখিত, পাঠাতে পারিনি।")
+                sent == true -> phrase(lang(), "हो गया, ${u.name} को भेज दिया।", "হয়ে গেছে, ${u.name}-কে পাঠিয়ে দিয়েছি।")
+                sent == false -> phrase(lang(), "फिर भी Send नहीं दब पाया। WhatsApp खुला है, Send का बटन आप एक बार दबा दीजिए।", "এবারও Send চাপতে পারিনি। হোয়াটসঅ্যাপ খোলা, Send বোতামটা একবার চাপুন।")
+                else -> phrase(lang(), "WhatsApp में तैयार है — Send दबा दीजिए।", "হোয়াটসঅ্যাপে তৈরি — Send চাপুন।")
+            },
+        )
+    }
+
     private var waAskContact: String? = null
     private var waAskUntil = 0L
 
@@ -4321,6 +4383,10 @@ class AssistantEngine(
         val sent = if (autoArmed) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
         if (sent == true) report(action, ActionStatus.SUCCESS, "WhatsApp: Send दबाया गया, मैसेज बॉक्स खाली हुआ (पक्का भेजा गया)।")
         if (sent == false) report(action, ActionStatus.FAILED, "WhatsApp में Send बटन नहीं दबा पाई — WhatsApp में खुद Send दबाइए।")
+        target?.let { t ->
+            lastWhatsAppChat = t.name
+            unsentShare = if (sent == false) UnsentShare(action, t.name, t.number, action.text, media = false, until = clock() + UNSENT_RETRY_MS) else null
+        }
         if (speak && outcome is ToolOutcome.Done) {
             // "Sent" only when it really goes out by itself (a known chat + Seema's accessibility service).
             val name = target?.name
@@ -4398,6 +4464,16 @@ class AssistantEngine(
         if (!com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) {
             val msg = phrase(lang(), "WhatsApp की चैट देखने के लिए Seema की Accessibility चालू करनी होगी।", "হোয়াটসঅ্যাপ চ্যাট দেখতে Seema-র Accessibility চালু করতে হবে।")
             report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        // "WhatsApp khol ke dikhao bheja ki nahi": the chat Seema last sent to, not a contact called "self".
+        if (SendRetry.meansNoChat(action.contact)) {
+            val last = lastWhatsAppChat
+            if (last != null) return whatsAppPeek(action.copy(contact = last), speak)
+            val outcome = tools.openApp("WhatsApp")
+            val msg = phrase(lang(), "WhatsApp खोल दिया है। किसकी चैट देखनी है, नाम बोलिए।", "হোয়াটসঅ্যাপ খুলে দিয়েছি। কার চ্যাট দেখব, নাম বলুন।")
+            report(action, if (outcome is ToolOutcome.Done) ActionStatus.SUCCESS else ActionStatus.FAILED, msg)
             if (speak) say(msg)
             return
         }

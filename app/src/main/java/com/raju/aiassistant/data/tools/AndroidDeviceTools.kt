@@ -285,7 +285,7 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
             .setPackage(pkg)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val autoSend = com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
-        if (autoSend) com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend(null)
+        if (autoSend) com.raju.aiassistant.accessibility.SeemaAccessibilityService.armWhatsAppAutoSend(caption, media = true)
         return start(
             intent,
             if (autoSend) "Payment QR WhatsApp पर भेजा जा रहा है।" else "Payment QR WhatsApp में तैयार है — Send आप दबाइए।",

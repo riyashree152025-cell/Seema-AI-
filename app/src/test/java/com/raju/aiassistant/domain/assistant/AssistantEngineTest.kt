@@ -2828,6 +2828,29 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aBengaliBarcodeRequestAsksWhomInsteadOfGoingToTheAi() = runTest {
+        val e = engine()
+        e.submit("বারকোড পাতা পাঠিয়ে দাও", fromVoice = true)
+        settle()
+        assertEquals(0, provider.calls.size)
+        assertTrue(tools.qrShares.isEmpty())
+    }
+
+    @Test
+    fun theAiIsToldThePaymentQrIsSavedSoItNeverDeniesIt() = runTest {
+        val e = engine(AiResult.Success("ঠিক আছে"))
+        e.submit("আমার পেমেন্টের কোড তোমার ভিতরে সেভ আছে")
+        settle()
+        assertTrue(provider.systems.last().contains("SAVED IN SEEMA: the user's payment QR photo is saved"))
+        tools.qrSaved = false
+        provider.replies.addLast(AiResult.Success("ঠিক আছে"))
+        e.submit("আচ্ছা অন্য কথা বলো")
+        settle()
+        assertTrue(!provider.systems.last().contains("SAVED IN SEEMA"))
+        tools.qrSaved = true
+    }
+
+    @Test
     fun riyaModeListensAgainAfterAPhoneCallAndLaughsWhileOnlyListening() = runTest {
         settings.value = settings.value.copy(kidMode = true)
         val e = engine()

@@ -59,7 +59,13 @@ class SeemaAccessibilityService : AccessibilityService() {
             // 0. Only in the chat Seema opened: the message box must hold the text the user confirmed. In any
             //    other WhatsApp screen (another chat, the chat list) nothing is pressed.
             val box = root.findAccessibilityNodeInfosByViewId("$pkg:id/entry").firstOrNull()?.text?.toString()
-            if (!com.raju.aiassistant.domain.screen.whatsAppDraftMatches(box, pendingSendText)) return
+            if (pendingMedia) {
+                // A shared photo (payment QR): WhatsApp's preview screen for the chat Seema named, recognised by
+                // the caption Seema put on it. A chat screen (message box) or the "send to…" list is never pressed.
+                if (!mediaPreviewShown(root, pkg)) return
+                val caption = pendingSendText?.trim()?.take(CAPTION_PREFIX).orEmpty()
+                if (!box.isNullOrBlank() && (caption.isEmpty() || !box.trim().startsWith(caption))) return
+            } else if (!com.raju.aiassistant.domain.screen.whatsAppDraftMatches(box, pendingSendText)) return
             // 1. WhatsApp's own Send button (the id carries the package, also for WhatsApp Business).
             var clicked = root.findAccessibilityNodeInfosByViewId("$pkg:id/send").any { clickNode(it) }
             // 2. A button described exactly as "Send" / "भेजें" — not anything merely containing "send".
@@ -71,6 +77,16 @@ class SeemaAccessibilityService : AccessibilityService() {
             }
             if (!clicked) return
             pendingWhatsAppAutoSend = false // never press twice
+            if (pendingMedia) {
+                // Verify: after a real send the preview (and its caption) closes.
+                handler.postDelayed({
+                    val still = rootInActiveWindow?.let { mediaPreviewShown(it, pkg) } == true
+                    pendingMedia = false
+                    finishAuto(!still)
+                    if (!still) returnToSeema()
+                }, 1_200)
+                return
+            }
             // Verify: after a real send WhatsApp empties its message box.
             handler.postDelayed({
                 val text = pendingSendText
@@ -80,6 +96,13 @@ class SeemaAccessibilityService : AccessibilityService() {
                 if (!stillThere) returnToSeema()
             }, 800)
         } catch (_: Exception) {}
+    }
+
+    /** WhatsApp's photo preview: its caption box, or the caption text Seema shared with the photo. */
+    private fun mediaPreviewShown(root: AccessibilityNodeInfo, pkg: String): Boolean {
+        if (listOf("caption", "media_caption", "caption_text").any { root.findAccessibilityNodeInfosByViewId("$pkg:id/$it").isNotEmpty() }) return true
+        val caption = pendingSendText?.trim()?.take(CAPTION_PREFIX)?.takeIf { it.isNotEmpty() } ?: return false
+        return walk(root).any { n -> n.isEditable && n.text?.toString()?.trim()?.startsWith(caption) == true }
     }
 
     // ------------------------------------------------------------------ WhatsApp call
@@ -314,6 +337,7 @@ class SeemaAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         pendingWhatsAppAutoSend = false
+        pendingMedia = false
         pendingWhatsAppCall = false
     }
 
@@ -350,6 +374,11 @@ class SeemaAccessibilityService : AccessibilityService() {
         @Volatile
         private var pendingSendText: String? = null
 
+        /** The armed send is a shared photo (its preview screen), not a typed message. */
+        @Volatile
+        private var pendingMedia: Boolean = false
+        private const val CAPTION_PREFIX = 20
+
         /** Result of the last armed WhatsApp send/call: true = done, false = not done, null = still waiting. */
         @Volatile
         var autoResult: Boolean? = null
@@ -380,14 +409,16 @@ class SeemaAccessibilityService : AccessibilityService() {
         }
 
         /** Presses Send in the WhatsApp chat Seema opens next with [text]; gives up after 15 s. */
-        fun armWhatsAppAutoSend(text: String? = null) {
+        fun armWhatsAppAutoSend(text: String? = null, media: Boolean = false) {
             val seq = ++armSeq
             pendingSendText = text
+            pendingMedia = media
             autoResult = null
             pendingWhatsAppAutoSend = true
             Handler(Looper.getMainLooper()).postDelayed({
                 if (seq == armSeq && pendingWhatsAppAutoSend) {
                     pendingWhatsAppAutoSend = false
+                    pendingMedia = false
                     autoResult = false
                 }
             }, 15_000)
