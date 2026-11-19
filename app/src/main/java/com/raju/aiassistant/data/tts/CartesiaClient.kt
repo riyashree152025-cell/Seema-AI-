@@ -8,6 +8,7 @@ import com.raju.aiassistant.data.ai.toRequestBody
 import com.raju.aiassistant.data.ai.withRetry
 import com.raju.aiassistant.domain.ai.AiResult
 import com.raju.aiassistant.domain.ai.FailureKind
+import com.raju.aiassistant.domain.voice.CartesiaControls
 import com.raju.aiassistant.domain.voice.CloudVoice
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -26,21 +27,29 @@ class CartesiaClient(
     private val apiKey: String,
     private val baseUrl: String = "https://api.cartesia.ai",
 ) {
-    suspend fun synthesize(text: String, voiceId: String, modelId: String, language: String, speed: Float, emotion: String?): AiResult<ByteArray> = withRetry {
+    suspend fun synthesize(text: String, voiceId: String, modelId: String, language: String, controls: CartesiaControls): AiResult<ByteArray> = withRetry {
         val payload = buildJsonObject {
             put("model_id", modelId)
             put("transcript", text)
-            putJsonObject("voice") { put("id", voiceId) }
+            putJsonObject("voice") {
+                put("mode", "id")
+                put("id", voiceId)
+                // Older Sonic models: speed and emotion tags live on the voice.
+                if (controls is CartesiaControls.Experimental) putJsonObject("__experimental_controls") {
+                    put("speed", controls.speed)
+                    if (controls.emotions.isNotEmpty()) put("emotion", JsonArray(controls.emotions.map { JsonPrimitive(it) }))
+                }
+            }
             putJsonObject("output_format") {
                 put("container", "wav")
                 put("encoding", "pcm_s16le")
                 put("sample_rate", 24000)
             }
             put("language", language)
-            // Speed, volume and emotion apply to Sonic 3 and newer; older models ignore them.
-            putJsonObject("generation_config") {
-                put("speed", Math.round(speed.coerceIn(0.6f, 1.5f) * 100) / 100.0)
-                if (!emotion.isNullOrBlank()) put("emotion", emotion)
+            // Sonic 3 and newer: speed and one emotion word.
+            if (controls is CartesiaControls.Generation) putJsonObject("generation_config") {
+                put("speed", controls.speed)
+                if (!controls.emotion.isNullOrBlank()) put("emotion", controls.emotion)
             }
         }
         val request = request("$baseUrl/tts/bytes").header("Accept", "audio/wav").post(payload.toRequestBody()).build()

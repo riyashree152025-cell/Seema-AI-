@@ -256,7 +256,7 @@ class AppContainer(context: Context) {
             ElevenLabsTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }) { v ->
                 settingsRepository.setElevenVoice(v.id, v.name)
             },
-            CartesiaTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }) { v ->
+            CartesiaTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }, mood = { speaker.mood.value }) { v ->
                 settingsRepository.setCartesiaVoice(v.id, v.name)
             },
             DeepgramTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }),

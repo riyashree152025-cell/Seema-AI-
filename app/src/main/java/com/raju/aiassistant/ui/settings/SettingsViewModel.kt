@@ -295,7 +295,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             ?: return AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, _voiceListMessage.value ?: "No Cartesia voice found.")
         var usedVoice = voice
         var usedName = s.cartesiaVoiceName
-        var r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", 1f, s.cartesiaMood)
+        // The same soft, warm controls her real replies use (warm mood, normal reading speed).
+        val controls = com.raju.aiassistant.domain.voice.CartesiaControls.forModel(
+            s.cartesiaModel, com.raju.aiassistant.domain.voice.VoiceMood.WARM.rate, VoiceCatalog.cartesiaEmotion(s.cartesiaMood), com.raju.aiassistant.domain.voice.VoiceMood.WARM,
+        )
+        var r = client.synthesize("हाय… मैं सीमा हूँ।", voice, s.cartesiaModel, "hi", controls)
         // The key works but the saved voice is gone (HTTP 404 "voice not found"): pick one from the
         // account's own list, save it, and test again — the user sees which voice is now used.
         var switchedFrom: String? = null
@@ -306,7 +310,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                 repo.setCartesiaVoice(replacement.id, replacement.name)
                 usedVoice = replacement.id
                 usedName = replacement.name
-                r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", replacement.id, s.cartesiaModel, "hi", 1f, s.cartesiaMood)
+                r = client.synthesize("हाय… मैं सीमा हूँ।", replacement.id, s.cartesiaModel, "hi", controls)
             } else {
                 return AiResult.Failure(r.kind, "Key सही है, पर चुनी हुई आवाज़ Cartesia पर अब नहीं है, और आपके account में कोई दूसरी आवाज़ नहीं मिली। \"आवाज़ चुनें\" में से कोई आवाज़ चुनिए।")
             }

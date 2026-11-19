@@ -36,6 +36,19 @@ class PromptAndTextTest {
     }
 
     @Test
+    fun sheStaysPresentWarmAndSpokenNeverAHelpDesk() {
+        val p = buildSystemPrompt(emptyList(), "today")
+        assertTrue(p.contains("never bring up being an AI yourself"))
+        assertFalse(p.contains("say honestly you are an AI"))
+        assertFalse(p.contains("you are an AI without feelings"))
+        assertTrue(p.contains("never detached"))
+        assertTrue(p.contains("\"हम्म…\"") && p.contains("अच्छा सुनो ना…") && p.contains("अरे पागल…"))
+        assertTrue(p.contains("never help-desk lines like \"मैं आपकी कैसे सहायता कर सकती हूँ\""))
+        assertTrue(p.contains("1-3 short spoken sentences"))
+        assertTrue(p.length < 9_500)
+    }
+
+    @Test
     fun sheMirrorsHindiOrBengaliWithoutASwitch() {
         val base = buildSystemPrompt(emptyList(), "today")
         assertTrue(base.contains("mirrored from him every turn without being asked"))

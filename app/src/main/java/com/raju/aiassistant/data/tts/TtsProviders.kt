@@ -80,6 +80,8 @@ class CartesiaTtsProvider(
     private val secret: suspend (SecretId) -> String?,
     private val isOnline: () -> Boolean,
     private val settings: () -> UserSettings,
+    /** The mood of the reply being spoken (warm, whisper, upset): chooses her emotion. */
+    private val mood: () -> com.raju.aiassistant.domain.voice.VoiceMood? = { null },
     private val rememberVoice: suspend (CloudVoice) -> Unit,
 ) : TtsProvider {
     override val engine = TtsEngine.CARTESIA
@@ -100,8 +102,11 @@ class CartesiaTtsProvider(
             }.getOrNull()
             ?: VoiceCatalog.defaultCartesiaVoices.first().id
         val language = languageTag.substringBefore('-').lowercase().ifBlank { "hi" }
-        val emotion = com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood)
-        val first = client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), voice, s.cartesiaModel, language, rate, emotion)
+        // Soft, warm, unhurried: speed and emotion in the form this model understands.
+        val emotion = com.raju.aiassistant.domain.voice.CartesiaControls.forModel(
+            s.cartesiaModel, rate, com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood), mood(),
+        )
+        val first = client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), voice, s.cartesiaModel, language, emotion)
         // The saved voice no longer exists (Cartesia: 404 "voice not found"): choose one from the
         // account's own list, remember it, and try once more instead of failing every sentence.
         if (first is AiResult.Failure && VoiceCatalog.isMissingVoice(first.message)) {
@@ -109,7 +114,7 @@ class CartesiaTtsProvider(
                 ?.let { VoiceCatalog.replacementVoice(it, voice) }
             if (replacement != null) {
                 rememberVoice(replacement)
-                return wavOrFailure(client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), replacement.id, s.cartesiaModel, language, rate, emotion), "Cartesia")
+                return wavOrFailure(client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), replacement.id, s.cartesiaModel, language, emotion), "Cartesia")
             }
         }
         return wavOrFailure(first, "Cartesia")

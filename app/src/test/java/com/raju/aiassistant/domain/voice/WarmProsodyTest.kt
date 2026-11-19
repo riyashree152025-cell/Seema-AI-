@@ -15,6 +15,21 @@ class WarmProsodyTest {
     }
 
     @Test
+    fun markdownBulletsAndHelpDeskLinesNeverReachHerVoice() {
+        assertEquals("खाना खा लिया?", WarmProsody.text("- **खाना** खा लिया? 😊"))
+        assertEquals("हम्म… बताओ ना, क्या हुआ?", WarmProsody.text("मैं आपकी कैसे सहायता कर सकती हूँ? हम्म… बताओ ना, क्या हुआ?"))
+        assertEquals("I am here for you.", WarmProsody.text("As an AI, I am here for you"))
+    }
+
+    @Test
+    fun aBreathComesBeforeATenderWordOnly() {
+        assertEquals("अच्छा… जान, अब आराम करो।", WarmProsody.text("अच्छा जान, अब आराम करो"))
+        assertEquals("ঠিক আছে… সোনা।", WarmProsody.text("ঠিক আছে সোনা"))
+        assertEquals("अब सोना है, कल जल्दी उठना है।", WarmProsody.text("अब सोना है, कल जल्दी उठना है")) // "to sleep": untouched
+        assertEquals("जान, सुनो ना।", WarmProsody.text("जान, सुनो ना")) // already at the start: no extra pause
+    }
+
+    @Test
     fun aQuietTailKeepsTheLastSyllable() {
         val pcm = PcmAudio(24_000, 1, ByteArray(480))
         val out = WarmProsody.withTail(pcm)
