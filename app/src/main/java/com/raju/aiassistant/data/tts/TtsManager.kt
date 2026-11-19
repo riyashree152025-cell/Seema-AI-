@@ -84,7 +84,7 @@ class TtsManager(
                     // The AI's mood tag (never read aloud), the mood asked for, or the default for the hour.
                     val parsed = com.raju.aiassistant.domain.voice.VoiceMoodParser.parse(text)
                     val mood = parsed.mood ?: nextMood
-                        ?: com.raju.aiassistant.domain.voice.VoiceMood.defaultFor(s.personality, java.time.LocalTime.now().hour)
+                        ?: com.raju.aiassistant.domain.voice.VoiceMood.defaultFor(java.time.LocalTime.now().hour)
                     nextMood = null
                     _mood.value = mood
                     activePitch = mood.pitch

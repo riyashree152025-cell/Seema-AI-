@@ -76,8 +76,8 @@ object VoiceCatalog {
 
     /** Cartesia Sonic 3 emotions that suit a friendly assistant. "" = natural (no emotion hint). */
     val cartesiaMoods = listOf(
-        "" to "Natural (सामान्य)",
-        "affectionate" to "Pyaar bhari (स्नेही)",
+        "" to "Warm (default, स्नेही)",
+        "natural" to "Natural (सामान्य)",
         "content" to "Khush (प्रसन्न)",
         "calm" to "Shaant (शांत)",
         "happy" to "Excited (उत्साहित)",
@@ -89,7 +89,9 @@ object VoiceCatalog {
      * and anything else unknown is not sent at all.
      */
     fun cartesiaEmotion(mood: String?): String? = when (val m = mood?.trim()?.lowercase().orEmpty()) {
-        "", "natural", "normal" -> null
+        // No choice made: her warm, affectionate voice.
+        "", "affectionate" -> "affectionate"
+        "natural", "normal" -> null
         "pyaar_bhari" -> "affectionate"
         "khush" -> "content"
         "shaant" -> "calm"

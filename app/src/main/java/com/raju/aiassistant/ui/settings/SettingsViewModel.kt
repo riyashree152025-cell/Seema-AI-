@@ -34,7 +34,6 @@ import com.raju.aiassistant.domain.ai.pickDefaultModel
 import com.raju.aiassistant.domain.model.ConnectionTest
 import com.raju.aiassistant.domain.model.MusicService
 import com.raju.aiassistant.domain.model.SecretId
-import com.raju.aiassistant.domain.model.Personality
 import com.raju.aiassistant.domain.model.SttEngine
 import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.domain.voice.CloudVoice
@@ -414,7 +413,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         repo.setAutoListen(v)
         if (!v) c.engine.stop()
     }
-    fun setPersonality(v: Personality) = launch { repo.setPersonality(v) }
     fun setBargeIn(v: Boolean) = launch { repo.setBargeIn(v) }
 
     /** Encrypted backup to the file the user picked; [done] gets the message to show. */
@@ -459,7 +457,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setAskBeforeReading(v: Boolean) = launch { repo.setAskBeforeReading(v) }
     fun setAnnounceCalls(v: Boolean) = launch { repo.setAnnounceCalls(v) }
     fun setAnnounceMoneyIn(v: Boolean) = launch { repo.setAnnounceMoneyIn(v) }
-    fun setKidMode(v: Boolean) = launch { repo.setKidMode(v) }
     fun setSpeakCallerNumber(v: Boolean) = launch { repo.setSpeakCallerNumber(v) }
     fun setAnnounceAppCalls(v: Boolean) = launch { repo.setAnnounceAppCalls(v) }
     fun setDirectCalling(v: Boolean) = launch { repo.setDirectCalling(v) }

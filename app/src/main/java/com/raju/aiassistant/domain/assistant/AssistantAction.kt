@@ -64,11 +64,6 @@ sealed interface AssistantAction {
         override val label get() = "UPI ID"
     }
 
-    /** "Riya mode chalu karo": Seema only for the little one (a parent leaves it on the screen). */
-    data object KidModeOn : AssistantAction {
-        override val label get() = "Riya mode"
-    }
-
     /** "Radhe radhe" → "राधे राधे": a devotional greeting answered with the same greeting. */
     data class Greeting(val reply: String) : AssistantAction {
         override val label get() = "Greeting"

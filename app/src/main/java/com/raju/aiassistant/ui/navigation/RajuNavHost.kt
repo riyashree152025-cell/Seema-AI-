@@ -188,12 +188,6 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
     }
     val hudEffects = HudEffects.forMotion(animate = !settings.reducedMotion && systemAnimations, lowPower = settings.lowPowerMode)
 
-    // Riya mode: only her screen, nothing else can be opened until a parent leaves the mode.
-    if (settings.kidMode) {
-        com.raju.aiassistant.ui.kids.KidModeScreen()
-        return
-    }
-
     CompositionLocalProvider(LocalHudEffects provides hudEffects) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -226,10 +220,6 @@ fun RajuNavHost(navController: NavHostController = rememberNavController()) {
                     onOpenVoiceControl = { navController.navigate(SubRoutes.VOICE_CONTROL) },
                     onOpenAiBrain = { navController.navigate(SubRoutes.AI_BRAIN) },
                     onOpenMemoryCenter = { navController.navigate(SubRoutes.MEMORY_CENTER) },
-                    onOpenKidMode = {
-                        container.engine.stop()
-                        scope.launch { container.settingsRepository.setKidMode(true) }
-                    },
                 )
             }
             composable(Destination.Chat.route) {

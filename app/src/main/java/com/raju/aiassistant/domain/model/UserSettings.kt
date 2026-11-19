@@ -18,14 +18,6 @@ enum class TtsEngine(val label: String, val hint: String) {
 }
 
 /** How Seema talks. Changes only the tone; honesty and safety rules stay the same. */
-enum class Personality(val label: String, val hint: String) {
-    COMPANION("Humsafar / Girlfriend", "♥ caring, loving, deeply personal, attentive & thoughtful"),
-    MASTI("Masti / Fun", "★ witty, playful, a little filmy — never boring"),
-    DOST("Dost / Friendly", "warm and caring, light humour"),
-    PRO("Professional", "short, clear and to the point"),
-    TAPORI("Tapori / यार दोस्त", "😎 dosti wali chutki aur mazaak — gaali bilkul nahi"),
-}
-
 /** Speech input (listening) engines. */
 enum class SttEngine(val label: String, val hint: String) {
     ANDROID("Android / Google (free)", "Built in; works well for clear Hindi or English"),
@@ -150,7 +142,6 @@ data class UserSettings(
     val thermalProtection: Boolean = true,
     /** Which AI core the Home screen shows. */
     val coreAppearance: CoreAppearance = CoreAppearance.LEGACY,
-    val personality: Personality = Personality.COMPANION,
     val announceNotifications: Boolean = true,
     val announceApps: Set<String> = AnnounceApp.entries.map { it.packageName }.toSet(),
     /** Say only who wrote, and read the message only after the user taps Read. */
@@ -169,8 +160,6 @@ data class UserSettings(
     val safetyMode: Boolean = false,
     /** Floating Seema: a small glass card / eye bubble over other apps while Seema is in the background. */
     val floatingPopup: Boolean = true,
-    /** Riya mode: Seema talks only with the little one, in Bengali; no phone task works until a parent exits. */
-    val kidMode: Boolean = false,
     /** Saved UPI IDs for "X ko UPI ID bhej do" (Apps & Tools → Payment QR & UPI IDs). */
     val upiIds: List<com.raju.aiassistant.domain.payments.UpiEntry> = emptyList(),
     /** The name written under the UPI ID in the WhatsApp message. */
@@ -186,7 +175,7 @@ data class UserSettings(
     val autoListen: Boolean get() = voiceMode == VoiceMode.ALWAYS
 
     /** Notification announcements are allowed right now. */
-    val announcementsActive: Boolean get() = announceNotifications && !assistantPaused && !safetyMode && !kidMode
+    val announcementsActive: Boolean get() = announceNotifications && !assistantPaused && !safetyMode
 }
 
 /** Female voices of Sarvam Bulbul v3 (names are lowercase and case-sensitive). The first one is the default. */

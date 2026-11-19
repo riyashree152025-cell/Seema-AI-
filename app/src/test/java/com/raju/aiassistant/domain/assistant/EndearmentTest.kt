@@ -1,7 +1,6 @@
 package com.raju.aiassistant.domain.assistant
 
 import com.raju.aiassistant.domain.language.SeemaLanguage
-import com.raju.aiassistant.domain.model.Personality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,34 +24,33 @@ class EndearmentTest {
     @Test
     fun mostLinesCarryNoNameAndPetNamesVary() {
         val e = Endearment()
-        val lines = (1..30).map { e.personalize("हो गया राजू, भेज दिया।", Personality.COMPANION, SeemaLanguage.HINDI) }
+        val lines = (1..40).map { e.personalize("हो गया राजू, भेज दिया।", SeemaLanguage.HINDI) }
         lines.forEach { assertFalse(it, it.contains("राजू")) }
         val pets = lines.filter { it != "हो गया, भेज दिया।" }
-        assertTrue("pet names: ${pets.size}", pets.size in 8..12) // about one line in three
+        assertEquals("pet names: ${pets.size}", 10, pets.size) // one line in four: never forced
         val words = pets.map { it.removePrefix("हो गया ").substringBefore(",") }
-        assertTrue(words.toSet().size >= 4) // बाबू, सोना, जान, जानू, बेबी …
+        assertTrue(words.toSet().size >= 3) // जान, सोना, बाबू
         words.zipWithNext().forEach { (a, b) -> assertTrue("$a twice", a != b) }
     }
 
     @Test
-    fun bengaliHasItsOwnWordsAndProStaysPlain() {
-        val bn = Endearment.petNames(Personality.COMPANION, SeemaLanguage.BENGALI)
+    fun bengaliHasItsOwnWords() {
+        val bn = Endearment.petNames(SeemaLanguage.BENGALI)
         assertTrue(bn.contains("সোনা") && bn.contains("বাবু"))
         assertTrue(bn.none { it.any { c -> c in 'ऀ'..'ॿ' } }) // no Hindi letters in Bengali
-        assertTrue(Endearment.petNames(Personality.PRO, SeemaLanguage.HINDI).isEmpty())
         val e = Endearment()
-        repeat(9) { assertEquals("हो गया, भेज दिया।", e.personalize("हो गया राजू, भेज दिया।", Personality.PRO, SeemaLanguage.HINDI)) }
+        val lines = (1..8).map { e.personalize("হয়ে গেছে রাজু, পাঠিয়ে দিয়েছি।", SeemaLanguage.BENGALI) }
+        lines.forEach { assertFalse(it, it.contains("রাজু")) }
+        assertTrue(lines.none { it.any { c -> c in 'ऀ'..'ॣ' } }) // (the danda । is shared by both scripts)
     }
 
     @Test
     fun herInstructionsNoLongerTeachHerToSayTheName() {
-        Personality.entries.forEach { p ->
-            val prompt = buildSystemPrompt(emptyList(), "now", p)
-            assertFalse("${p.name} still has the Hindi name in an example", prompt.contains("राजू"))
-            assertFalse("${p.name} still has the Bengali name in an example", prompt.contains("রাজু"))
-        }
-        val gf = buildSystemPrompt(emptyList(), "now", Personality.COMPANION)
-        assertTrue(gf.contains("almost never say it"))
-        assertTrue(gf.contains("সোনা") && gf.contains("बाबू"))
+        val prompt = buildSystemPrompt(emptyList(), "now")
+        assertFalse("the Hindi name is in an example", prompt.contains("राजू"))
+        assertFalse("the Bengali name is in an example", prompt.contains("রাজু"))
+        assertTrue(prompt.contains("almost never say his name"))
+        assertTrue(prompt.contains("সোনা") && prompt.contains("बाबू"))
+        assertTrue(prompt.contains("never \"haan babu\" as a habit"))
     }
 }

@@ -107,22 +107,6 @@ class EndpointDetector(
  */
 object TurnPacing {
     @Volatile var quick: Boolean = false
-    /** Riya mode: the phone recogniser listens for a toddler (Bengali + Hindi, short phrases). Set by the engine. */
-    @Volatile var toddler: Boolean = false
-    /** Riya mode: a pause this long ends her phrase (short, so a half phrase does not hang). */
-    const val TODDLER_SILENCE_MS = 1_300L
-    /** Riya mode: listening starts again this long after "no speech" (never a rapid loop)… */
-    const val TODDLER_RELISTEN_MS = 400L
-    /** …and this long after several instant failures in a row (the speech service is struggling). */
-    const val TODDLER_BACKOFF_MS = 2_500L
-    const val TODDLER_FAST_FAILS = 3
-    /** Riya mode: after her answer, the microphone opens this long later (audio focus released first). */
-    const val KID_AFTER_SPEECH_MS = 200L
-
-    /** How long Riya mode waits before listening again after nothing clear was heard. */
-    fun toddlerRelistenMs(consecutiveFastFails: Int): Long =
-        if (consecutiveFastFails >= TODDLER_FAST_FAILS) TODDLER_BACKOFF_MS else TODDLER_RELISTEN_MS
-
     fun detector(frameMs: Int): EndpointDetector =
         // A ringing call: the ringtone (ducked, but still there) must not raise the bar above the user's "uthao":
         // the room level follows it, so a voice only has to be a little louder than the ring.

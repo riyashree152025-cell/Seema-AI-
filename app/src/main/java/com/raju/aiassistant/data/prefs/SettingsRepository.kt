@@ -15,7 +15,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.raju.aiassistant.domain.ai.ProviderId
 import com.raju.aiassistant.domain.model.ConnectionTest
 import com.raju.aiassistant.domain.model.MusicService
-import com.raju.aiassistant.domain.model.Personality
 import com.raju.aiassistant.domain.model.SttEngine
 import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.domain.model.UserSettings
@@ -84,7 +83,6 @@ class SettingsRepository(private val context: Context) {
             smartPower = this[Keys.SMART_POWER] ?: d.smartPower,
             thermalProtection = this[Keys.THERMAL_PROTECTION] ?: d.thermalProtection,
             coreAppearance = this[Keys.CORE_APPEARANCE]?.let { v -> CoreAppearance.entries.firstOrNull { it.name == v } } ?: d.coreAppearance,
-            personality = enumOr(this[Keys.PERSONALITY], d.personality),
             announceNotifications = this[Keys.ANNOUNCE] ?: d.announceNotifications,
             announceApps = this[Keys.ANNOUNCE_APPS] ?: d.announceApps,
             askBeforeReading = this[Keys.ASK_BEFORE_READING] ?: d.askBeforeReading,
@@ -97,7 +95,6 @@ class SettingsRepository(private val context: Context) {
             memoryEnabled = this[Keys.MEMORY] ?: d.memoryEnabled,
             safetyMode = this[Keys.SAFETY] ?: d.safetyMode,
             floatingPopup = this[Keys.FLOATING_POPUP] ?: d.floatingPopup,
-            kidMode = this[Keys.KID_MODE] ?: d.kidMode,
             upiIds = com.raju.aiassistant.domain.payments.PaymentShare.decode(this[Keys.UPI_IDS]),
             upiPayeeName = this[Keys.UPI_PAYEE] ?: d.upiPayeeName,
             assistantPaused = this[Keys.PAUSED] ?: d.assistantPaused,
@@ -156,7 +153,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHybridBrain(v: Boolean) = edit { it[Keys.HYBRID_BRAIN] = v }
     suspend fun setAppLock(v: Boolean) = edit { it[Keys.APP_LOCK] = v }
     suspend fun setBusinessReminders(v: Boolean) = edit { it[Keys.BUSINESS_REMINDERS] = v }
-    suspend fun setPersonality(v: Personality) = edit { it[Keys.PERSONALITY] = v.name }
     suspend fun setAnnounce(v: Boolean) = edit { it[Keys.ANNOUNCE] = v }
     suspend fun setAnnounceApp(pkg: String, enabled: Boolean) = edit {
         val current = it[Keys.ANNOUNCE_APPS] ?: UserSettings().announceApps
@@ -172,7 +168,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setMemoryEnabled(v: Boolean) = edit { it[Keys.MEMORY] = v }
     suspend fun setSafetyMode(v: Boolean) = edit { it[Keys.SAFETY] = v }
     suspend fun setFloatingPopup(v: Boolean) = edit { it[Keys.FLOATING_POPUP] = v }
-    suspend fun setKidMode(v: Boolean) = edit { it[Keys.KID_MODE] = v }
     suspend fun setUpiIds(list: List<com.raju.aiassistant.domain.payments.UpiEntry>) = edit { it[Keys.UPI_IDS] = com.raju.aiassistant.domain.payments.PaymentShare.encode(list) }
     suspend fun setUpiPayeeName(v: String) = edit { it[Keys.UPI_PAYEE] = v.trim() }
     suspend fun setAssistantPaused(v: Boolean) = edit { it[Keys.PAUSED] = v }
@@ -232,7 +227,6 @@ class SettingsRepository(private val context: Context) {
         val HYBRID_BRAIN = booleanPreferencesKey("hybrid_brain")
         val APP_LOCK = booleanPreferencesKey("app_lock")
         val BUSINESS_REMINDERS = booleanPreferencesKey("business_reminders")
-        val PERSONALITY = stringPreferencesKey("personality")
         val ANNOUNCE = booleanPreferencesKey("announce_notifications")
         val ANNOUNCE_APPS = stringSetPreferencesKey("announce_apps")
         val DIRECT_CALLING = booleanPreferencesKey("direct_calling")
@@ -245,7 +239,6 @@ class SettingsRepository(private val context: Context) {
         val MEMORY = booleanPreferencesKey("memory_enabled")
         val SAFETY = booleanPreferencesKey("safety_mode")
         val FLOATING_POPUP = booleanPreferencesKey("floating_popup")
-        val KID_MODE = booleanPreferencesKey("kid_mode")
         val UPI_IDS = stringPreferencesKey("upi_ids")
         val UPI_PAYEE = stringPreferencesKey("upi_payee_name")
         val PAUSED = booleanPreferencesKey("assistant_paused")

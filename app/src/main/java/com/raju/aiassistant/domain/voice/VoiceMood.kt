@@ -1,7 +1,5 @@
 package com.raju.aiassistant.domain.voice
 
-import com.raju.aiassistant.domain.model.Personality
-
 /**
  * Seema's three speaking moods. Every feeling is mapped onto one of these clean profiles so her voice
  * never cracks on a phone speaker: no high-pitched shouting for anger, a lower and calmer voice instead.
@@ -11,18 +9,14 @@ import com.raju.aiassistant.domain.model.Personality
 enum class VoiceMood(val pitch: Float, val rate: Float, val gain: Float, val eyeArgb: Long) {
     /** Love, happy, playful, normal: smooth, clear, sweet. */
     WARM(pitch = 1.03f, rate = 0.93f, gain = 1.0f, eyeArgb = 0xFF18FFFF),
-    /** Anger, scolding, Tapori, sadness, complaint: calm, deep and grounded instead of loud. */
+    /** Anger, scolding, sadness, complaint: calm, deep and grounded instead of loud. */
     CONTROLLED_UPSET(pitch = 0.90f, rate = 0.88f, gain = 1.0f, eyeArgb = 0xFFE53950),
     /** Late night or a soft secret: slower and quieter. */
     WHISPER(pitch = 0.96f, rate = 0.84f, gain = 0.65f, eyeArgb = 0xFF5C7CFA);
 
     companion object {
-        /** The mood when the reply names none: a whisper late at night, Tapori's grounded tone, warm otherwise. */
-        fun defaultFor(personality: Personality, hour: Int): VoiceMood = when {
-            hour >= 22 || hour < 6 -> WHISPER
-            personality == Personality.TAPORI -> CONTROLLED_UPSET
-            else -> WARM
-        }
+        /** The mood when the reply names none: a soft whisper late at night, warm otherwise. */
+        fun defaultFor(hour: Int): VoiceMood = if (hour >= 22 || hour < 6) WHISPER else WARM
     }
 }
 

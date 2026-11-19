@@ -22,16 +22,29 @@ class PromptAndTextTest {
     }
 
     @Test
-    fun taporiModeIsASavageFriendNotTheGirlfriendAndStaysFriendly() {
-        val p = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.TAPORI)
-        assertTrue(p.lineSequence().first().contains("Tapori mode"))
-        assertFalse(p.lineSequence().first().contains("girlfriend"))
-        assertTrue(p.contains("no gaali"))
-        assertTrue(p.contains("stop the teasing at once"))
-        assertTrue(p.contains("drop the teasing"))
+    fun seemaIsOneSoulfulPartnerWithNoModes() {
+        val p = buildSystemPrompt(emptyList(), "today")
+        assertTrue(p.lineSequence().first().contains("life partner"))
+        assertTrue(p.contains("SOUL:") && p.contains("cared for and at peace"))
+        assertTrue(p.contains("a late hour (gently ask him to rest)"))
+        assertTrue(p.contains("R Travels day"))
+        listOf("Tapori", "Masti", "Professional", "Humsafar", "PERSONALITY:", "gaali", "jealous", "JEALOUSY").forEach {
+            assertFalse("still mentions $it", p.contains(it))
+        }
+        assertTrue(p.contains("never formal or bookish Hindi, robotic"))
         assertTrue(p.contains("\"type\":\"call\"")) // phone tools are still there
-        val gf = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.COMPANION)
-        assertTrue(gf.lineSequence().first().contains("girlfriend"))
+    }
+
+    @Test
+    fun sheMirrorsHindiOrBengaliWithoutASwitch() {
+        val base = buildSystemPrompt(emptyList(), "today")
+        assertTrue(base.contains("mirrored from him every turn without being asked"))
+        assertTrue(base.contains("Bengali → natural, homely Bengali in Bengali script"))
+        assertTrue(base.contains("Hindi written in Bengali letters by the speech recognizer".replace("recognizer", "recogniser")))
+        val bn = buildSystemPrompt(emptyList(), "today", PromptContext(language = com.raju.aiassistant.domain.language.SeemaLanguage.BENGALI))
+        assertTrue(bn.contains("LANGUAGE NOW: বাংলা — reply ONLY in Bengali"))
+        val hi = buildSystemPrompt(emptyList(), "today", PromptContext(language = com.raju.aiassistant.domain.language.SeemaLanguage.HINDI))
+        assertTrue(hi.contains("LANGUAGE NOW: Hindi"))
     }
 
     @Test
@@ -67,14 +80,6 @@ class PromptAndTextTest {
         assertTrue(p.contains("Mom's name is Sita"))
         assertTrue(p.contains("Devanagari")) // Hindi in, Hindi script out
         assertTrue(p.contains("ACT, DON'T ASK"))
-    }
-
-    @Test
-    fun personalityChangesOnlyTheTone() {
-        val masti = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.MASTI)
-        val pro = buildSystemPrompt(emptyList(), "today", com.raju.aiassistant.domain.model.Personality.PRO)
-        assertTrue(masti.contains("witty") && !pro.contains("witty"))
-        assertTrue(pro.contains("HONESTY") && masti.contains("HONESTY"))
     }
 
     @Test

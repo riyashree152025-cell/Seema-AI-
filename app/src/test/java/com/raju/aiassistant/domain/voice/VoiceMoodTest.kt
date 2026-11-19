@@ -1,7 +1,6 @@
 package com.raju.aiassistant.domain.voice
 
 import com.raju.aiassistant.core.audio.PcmAudio
-import com.raju.aiassistant.domain.model.Personality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -46,11 +45,11 @@ class VoiceMoodTest {
     }
 
     @Test
-    fun theDefaultFollowsTheHourAndPersonality() {
-        assertEquals(VoiceMood.WHISPER, VoiceMood.defaultFor(Personality.COMPANION, 23))
-        assertEquals(VoiceMood.WHISPER, VoiceMood.defaultFor(Personality.TAPORI, 2))
-        assertEquals(VoiceMood.CONTROLLED_UPSET, VoiceMood.defaultFor(Personality.TAPORI, 15))
-        assertEquals(VoiceMood.WARM, VoiceMood.defaultFor(Personality.COMPANION, 10))
+    fun theDefaultFollowsTheHour() {
+        assertEquals(VoiceMood.WHISPER, VoiceMood.defaultFor(23))
+        assertEquals(VoiceMood.WHISPER, VoiceMood.defaultFor(2))
+        assertEquals(VoiceMood.WARM, VoiceMood.defaultFor(15)) // one warm voice by day, no grounded "Tapori" tone
+        assertEquals(VoiceMood.WARM, VoiceMood.defaultFor(10))
     }
 
     private fun pcm(vararg samples: Int): PcmAudio {

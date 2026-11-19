@@ -44,8 +44,8 @@ class VoiceCatalogTest {
 
     @Test
     fun onlyEmotionsCartesiaKnowsAreSent() {
-        assertEquals(null, VoiceCatalog.cartesiaEmotion(""))
-        assertEquals(null, VoiceCatalog.cartesiaEmotion("natural")) // older "Normal" button
+        assertEquals("affectionate", VoiceCatalog.cartesiaEmotion("")) // no choice: her warm voice
+        assertEquals(null, VoiceCatalog.cartesiaEmotion("natural")) // "Natural" chosen: no emotion sent
         assertEquals("affectionate", VoiceCatalog.cartesiaEmotion("pyaar_bhari"))
         assertEquals("content", VoiceCatalog.cartesiaEmotion("khush"))
         assertEquals("calm", VoiceCatalog.cartesiaEmotion("shaant"))

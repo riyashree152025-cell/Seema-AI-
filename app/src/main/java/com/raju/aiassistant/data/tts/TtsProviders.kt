@@ -26,8 +26,8 @@ class SarvamTtsProvider(
 
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
         val key = secret(SecretId.SARVAM_API_KEY) ?: return AiResult.Failure(FailureKind.NOT_CONFIGURED, "Sarvam API key is not set")
-        return when (val r = SarvamTtsClient(http, key).synthesize(text, speaker(), languageTag, rate)) {
-            is AiResult.Success -> parseWav(r.value)?.let { AiResult.Success(it) }
+        return when (val r = SarvamTtsClient(http, key).synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), speaker(), languageTag, rate)) {
+            is AiResult.Success -> parseWav(r.value)?.let { AiResult.Success(com.raju.aiassistant.domain.voice.WarmProsody.withTail(it)) }
                 ?: AiResult.Failure(FailureKind.UNKNOWN, "Sarvam returned audio in an unsupported format")
             is AiResult.Failure -> r
         }
@@ -35,7 +35,7 @@ class SarvamTtsProvider(
 }
 
 private fun wavOrFailure(r: AiResult<ByteArray>, provider: String): AiResult<PcmAudio> = when (r) {
-    is AiResult.Success -> parseWav(r.value)?.let { AiResult.Success(it) }
+    is AiResult.Success -> parseWav(r.value)?.let { AiResult.Success(com.raju.aiassistant.domain.voice.WarmProsody.withTail(it)) }
         ?: AiResult.Failure(FailureKind.UNKNOWN, "$provider returned audio in an unsupported format")
     is AiResult.Failure -> r
 }
@@ -65,10 +65,10 @@ class ElevenLabsTtsProvider(
         if (languageTag.startsWith("bn") && !s.elevenModel.startsWith("eleven_v3")) {
             return AiResult.Failure(FailureKind.UNKNOWN, "model ${s.elevenModel} does not speak Bengali")
         }
-        val result = client.synthesize(text, voice, s.elevenModel, rate)
+        val result = client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), voice, s.elevenModel, rate)
         // A Voice Library voice on the free plan → speak with a default voice instead of falling back to Android.
         if (result is AiResult.Failure && voice != VoiceCatalog.ELEVEN_FALLBACK_VOICE && VoiceCatalog.isPaidVoiceError(result.message)) {
-            return wavOrFailure(client.synthesize(text, VoiceCatalog.ELEVEN_FALLBACK_VOICE, s.elevenModel, rate), "ElevenLabs")
+            return wavOrFailure(client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), VoiceCatalog.ELEVEN_FALLBACK_VOICE, s.elevenModel, rate), "ElevenLabs")
         }
         return wavOrFailure(result, "ElevenLabs")
     }
@@ -101,7 +101,7 @@ class CartesiaTtsProvider(
             ?: VoiceCatalog.defaultCartesiaVoices.first().id
         val language = languageTag.substringBefore('-').lowercase().ifBlank { "hi" }
         val emotion = com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood)
-        val first = client.synthesize(text, voice, s.cartesiaModel, language, rate, emotion)
+        val first = client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), voice, s.cartesiaModel, language, rate, emotion)
         // The saved voice no longer exists (Cartesia: 404 "voice not found"): choose one from the
         // account's own list, remember it, and try once more instead of failing every sentence.
         if (first is AiResult.Failure && VoiceCatalog.isMissingVoice(first.message)) {
@@ -109,7 +109,7 @@ class CartesiaTtsProvider(
                 ?.let { VoiceCatalog.replacementVoice(it, voice) }
             if (replacement != null) {
                 rememberVoice(replacement)
-                return wavOrFailure(client.synthesize(text, replacement.id, s.cartesiaModel, language, rate, emotion), "Cartesia")
+                return wavOrFailure(client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), replacement.id, s.cartesiaModel, language, rate, emotion), "Cartesia")
             }
         }
         return wavOrFailure(first, "Cartesia")

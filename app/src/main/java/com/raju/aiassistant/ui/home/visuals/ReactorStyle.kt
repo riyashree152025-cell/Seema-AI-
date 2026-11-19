@@ -43,41 +43,7 @@ private const val RED = 0xFFFF5C7A
 private const val GREY = 0xFF5D7083
 private const val GREY_LIGHT = 0xFF8FA9BF
 
-private const val DEVIL_RED = 0xFFFF2A2A
-private const val CRIMSON = 0xFFB0102A
-private const val EMBER = 0xFFFF6A2B
-private const val TAPORI_CYAN = 0xFF00E5FF
-private const val ICE_BLUE = 0xFF7FDBFF
-private const val DEEP_PURPLE = 0xFF9D00FF
-/** Cyan at 60 %: Tapori's calm glow when she is not listening, thinking or speaking. */
-private const val CALM_CYAN = 0x9900E5FF
-private const val PLUM = 0xFF4A0E8F
 
-/**
- * Tapori mode's main colour for a state: cyan while listening, purple while thinking, red while
- * speaking, a calm 60 % cyan otherwise. Used by the reactor and the face alike.
- */
-fun taporiAccentArgb(state: AssistantState): Long = when (state) {
-    AssistantState.Listening -> TAPORI_CYAN
-    AssistantState.Thinking -> DEEP_PURPLE
-    AssistantState.Speaking -> DEVIL_RED
-    else -> CALM_CYAN
-}
-
-/**
- * Tapori mode: the same reactor and the same per-state motion, coloured by [taporiAccentArgb].
- * Offline stays grey, so "no internet" is still visible.
- */
-fun ReactorStyle.tapori(state: AssistantState): ReactorStyle {
-    if (state == AssistantState.Offline) return this
-    val palette = when (state) {
-        AssistantState.Listening -> listOf(TAPORI_CYAN, ICE_BLUE, TAPORI_CYAN, DEVIL_RED, ICE_BLUE)
-        AssistantState.Thinking -> listOf(DEEP_PURPLE, PLUM, MAGENTA, DEEP_PURPLE, PLUM)
-        AssistantState.Speaking -> listOf(DEVIL_RED, CRIMSON, EMBER, DEVIL_RED, CRIMSON)
-        else -> listOf(CALM_CYAN, ICE_BLUE, TAPORI_CYAN, CALM_CYAN, ICE_BLUE)
-    }
-    return copy(paletteArgb = palette, glow = (glow + 0.1f).coerceAtMost(1f))
-}
 
 fun reactorStyleFor(state: AssistantState): ReactorStyle = when (state) {
     AssistantState.Idle -> ReactorStyle(listOf(CYAN, BLUE, VIOLET, MAGENTA, CYAN), glow = 0.7f, rotationSpeed = 0.06f, bpm = 64f)

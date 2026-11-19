@@ -1,7 +1,6 @@
 package com.raju.aiassistant.domain.assistant
 
 import com.raju.aiassistant.domain.ai.FailureKind
-import com.raju.aiassistant.domain.model.Personality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,10 +12,8 @@ class PromptBudgetTest {
     @Test
     fun theSystemPromptStaysSmall() {
         // Before the compaction the stable part alone was over 12 000 characters (about 3 200 tokens).
-        for (p in Personality.entries) {
-            val prompt = buildSystemPrompt(emptyList(), "Saturday 9 PM", p)
-            assertTrue("${p.name}: ${prompt.length} chars", prompt.length < 9_500)
-        }
+        val prompt = buildSystemPrompt(emptyList(), "Saturday 9 PM")
+        assertTrue("${prompt.length} chars", prompt.length < 9_500)
     }
 
     @Test

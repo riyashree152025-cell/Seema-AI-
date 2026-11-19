@@ -370,11 +370,6 @@ class AssistantEngineTest {
         assertEquals(1, chimes) // listening for the yes starts with the chime
         voice.onResult!!("nahi")
         settle()
-        settings.value = settings.value.copy(kidMode = true)
-        e.startKidListening()
-        runCurrent()
-        assertEquals(1, chimes) // Riya mode: never
-        settings.value = settings.value.copy(kidMode = false)
     }
 
     @Test
@@ -2129,6 +2124,21 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun seemaFollowsHindiAndBengaliBothWaysWithoutAToggle() = runTest {
+        val e = engine(AiResult.Success("ভালো আছি সোনা।"), AiResult.Success("मैं ठीक हूँ।"))
+        e.submit("তুমি কেমন আছো?")
+        settle()
+        assertTrue(provider.systems.last().contains("LANGUAGE NOW: বাংলা"))
+        e.submit("तुम कैसी हो?")
+        settle()
+        assertEquals(com.raju.aiassistant.domain.language.SeemaLanguage.HINDI, e.language.value)
+        assertTrue(provider.systems.last().contains("LANGUAGE NOW: Hindi"))
+        e.startVoice()
+        runCurrent()
+        assertEquals("hi-IN", voice.lastLanguage) // the microphone follows him back to Hindi
+    }
+
+    @Test
     fun aFixedLanguageInSettingsWins() = runTest {
         settings.value = settings.value.copy(speechLanguage = "hi-IN")
         val e = engine(AiResult.Success("ठीक है"))
@@ -2638,54 +2648,6 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun riyaModeNeverRunsAPhoneTaskAndSpeaksBengali() = runTest {
-        settings.value = settings.value.copy(kidMode = true)
-        tools.contacts = ContactLookup.Found(listOf(Contact("Mom", "1234567890")))
-        val e = engine(AiResult.Success("সোনা, মাকে আমি বলে দেব! <action>{\"type\":\"call\",\"contact\":\"Mom\"}</action>"))
-        e.submit("मम्मी को कॉल करो", fromVoice = true)
-        settle()
-        assertTrue(tools.dialed.isEmpty()) // no call, not even through the AI's action
-        assertNull(e.pending.value)
-        assertEquals("সোনা, মাকে আমি বলে দেব!", speaker.spoken.last())
-        assertTrue(provider.systems.last().contains("3-year-old"))
-        settings.value = settings.value.copy(kidMode = false)
-    }
-
-    @Test
-    fun riyaModeListensHandsFreeAndRecoversFromSilenceWithoutRapidLooping() = runTest {
-        settings.value = settings.value.copy(kidMode = true)
-        val e = engine(AiResult.Success("হ্যাঁ সোনা!"))
-        e.startKidListening()
-        runCurrent()
-        assertEquals(1, voice.starts) // no button press needed
-        assertEquals("bn-IN", voice.lastLanguage)
-        // "No speech was heard": listens again after a short pause, not at once.
-        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
-        advanceTimeBy(300); runCurrent()
-        assertEquals(1, voice.starts)
-        advanceTimeBy(200); runCurrent()
-        assertEquals(2, voice.starts)
-        // Instant failures again and again: a longer pause (the speech service is not hammered).
-        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
-        advanceTimeBy(500); runCurrent()
-        voice.onError!!(VoiceError("Speech was heard but no words were recognised.", unclear = true))
-        advanceTimeBy(500); runCurrent()
-        val before = voice.starts
-        voice.onError!!(VoiceError("No speech was heard.", noSpeech = true))
-        advanceTimeBy(1_000); runCurrent()
-        assertEquals(before, voice.starts)
-        advanceTimeBy(2_000); runCurrent()
-        assertEquals(before + 1, voice.starts)
-        // She speaks: answered, then the microphone opens again by itself.
-        voice.onResult!!("খীর মালু খাবো")
-        settle()
-        assertEquals("হ্যাঁ সোনা!", speaker.spoken.last())
-        assertTrue(voice.starts > before + 1)
-        assertTrue(provider.calls.last().last().text.contains("(sounds:")) // her words also in plain letters
-        settings.value = settings.value.copy(kidMode = false)
-    }
-
-    @Test
     fun rukoSiyaNahiRiyaInTheStopWindowCallsRiyaInstead() = runTest {
         tools.contacts = ContactLookup.Found(listOf(Contact("Siya", "98000 00001")))
         val e = engine()
@@ -2851,71 +2813,15 @@ class AssistantEngineTest {
     }
 
     @Test
-    fun riyaModeListensAgainAfterAPhoneCallAndLaughsWhileOnlyListening() = runTest {
-        settings.value = settings.value.copy(kidMode = true)
+    fun hindiWrittenInBengaliLettersStillRunsTheSmsQuestionWithoutTheAi() = runTest {
+        val before = settings.value.speechLanguage
+        settings.value = settings.value.copy(speechLanguage = "auto")
         val e = engine()
-        e.startKidListening()
-        runCurrent()
-        e.pauseForCall()
-        runCurrent()
-        val before = voice.starts
-        e.resumeAfterCall()
-        runCurrent()
-        assertEquals(before + 1, voice.starts) // no tap needed after the call
-        // Tickled while the microphone only waits: the laugh is said, then listening resumes.
-        voice.listening.value = true
-        e.kidReact("হাহা, সুড়সুড়ি লাগছে!")
-        settle()
-        assertEquals("হাহা, সুড়সুড়ি লাগছে!", speaker.spoken.last())
-        assertTrue(voice.starts > before + 1)
-        voice.listening.value = false
-        settings.value = settings.value.copy(kidMode = false)
-    }
-
-    @Test
-    fun afterRiyaModeSeemaTalksWithTheParentInHindiAgain() = runTest {
-        settings.value = settings.value.copy(kidMode = true, speechLanguage = "auto")
-        val e = engine(AiResult.Success("হ্যাঁ সোনা!"))
-        e.submit("আমি খেলবো", fromVoice = true)
-        settle()
-        settings.value = settings.value.copy(kidMode = false)
-        e.onKidModeExit()
-        assertEquals(com.raju.aiassistant.domain.language.SeemaLanguage.HINDI, e.language.value)
-        // The parent's question works at once (no AI), even if the recogniser wrote it in Bengali letters.
+        // The phone's Bengali recogniser writes Hindi speech in Bengali letters: still the bank SMS question.
         e.submit("আজ কিতনা কিতনা ডেবিট হুয়া মেসেজ দেখো", fromVoice = true)
         settle()
-        assertEquals(1, provider.calls.size) // only Riya's turn went to the AI
-    }
-
-    @Test
-    fun riyasYesToSeemasGuessTeachesTheWord() = runTest {
-        settings.value = settings.value.copy(kidMode = true)
-        val words = com.raju.aiassistant.domain.kids.InMemoryKidWordStore()
-        provider = FakeProvider(ArrayDeque(listOf(
-            AiResult.Success("তুমি কি খীর মালাই খাবে? [ASK:মালু=মালাই]"),
-            AiResult.Success("ঠিক আছে সোনা, মালাই খাবো!"),
-            AiResult.Success("খীর মালাই কত মিষ্টি!"),
-        )))
-        val e = AssistantEngine(
-            scope = backgroundScope, settings = settings, secret = { keys[it] },
-            providerFor = { _, _ -> provider }, searchFor = { search },
-            history = store, memories = store, actionLog = store, tools = tools,
-            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
-            kidWords = words,
-        )
-        e.submit("খীর মালু খাবো", fromVoice = true)
-        settle()
-        assertEquals("তুমি কি খীর মালাই খাবে?", speaker.spoken.last()) // the note is never read out
-        e.submit("হ্যাঁ", fromVoice = true)
-        settle()
-        val learned = words.all().single()
-        assertEquals("মালু" to "মালাই", learned.heard to learned.meaning)
-        assertEquals(com.raju.aiassistant.domain.kids.KidWord.Source.CONFIRMED, learned.source)
-        // Next time her word goes with the request.
-        e.submit("মালু দাও", fromVoice = true)
-        settle()
-        assertTrue(provider.systems.last().contains("মালু → মালাই"))
-        settings.value = settings.value.copy(kidMode = false)
+        assertEquals(0, provider.calls.size)
+        settings.value = settings.value.copy(speechLanguage = before)
     }
 
     @Test

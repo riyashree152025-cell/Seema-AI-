@@ -73,7 +73,7 @@ class RajuNotificationListener : NotificationListenerService() {
         if (!c.announcementDeduper.shouldAnnounce(item.packageName, item.sender.orEmpty() + item.group.orEmpty(), (item.preview ?: "") + item.isCall, now)) return
 
         if (item.isCall) {
-            if (settings.announceAppCalls && !settings.kidMode && !settings.assistantPaused) c.appScope.launch {
+            if (settings.announceAppCalls && !settings.assistantPaused) c.appScope.launch {
                 // "Raju, Mummy ka WhatsApp call aa raha hai. Uthaun ki nahi?" — and "uthao / kaato" presses the call
                 // notification's own Answer / Decline button (WhatsApp, Telegram… are not phone calls for Android).
                 val canAnswer = com.raju.aiassistant.notifications.IncomingCallActions.ringing()
@@ -92,7 +92,7 @@ class RajuNotificationListener : NotificationListenerService() {
      */
     private fun announceMoneyIn(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
         val s = c.currentSettings.value
-        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode || s.kidMode) return
+        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode) return
         if (!com.raju.aiassistant.domain.sms.isMoneyApp(sbn.packageName)) return
         val n = sbn.notification ?: return
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return

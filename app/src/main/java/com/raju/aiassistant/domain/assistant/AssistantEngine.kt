@@ -137,11 +137,6 @@ private const val UPI_ASK_MS = 10_000L
 private const val MAX_NEAR_MATCHES = 5
 /** Between "X mil gaya, ab call laga rahi hoon" and the call / send: time to say "ruko" or the right name. */
 private const val SAFETY_WINDOW_MS = 2_500L
-/** Riya mode: her name in Seema's words, how much of the talk goes with a request, and how long a guess waits. */
-private const val KID_NAME = "রিয়া"
-private const val KID_HISTORY_LINES = 10
-private const val KID_GUESS_MS = 60_000L
-private const val KID_AI_TIMEOUT_MS = 15_000L
 /** "Padh ke sunau kya?" stays open this long: a "haan sunao" in standby needs no "Hey Seema". */
 private const val NOTIFICATION_ASK_TTL_MS = 30_000L
 /** How long Seema waits to see whether WhatsApp's Send/Call button was really pressed. */
@@ -301,10 +296,6 @@ class AssistantEngine(
     private val headphones: () -> Boolean = { true },
     /** A phone call is still ringing (the audio mode says so): an answer / cut that changed nothing is retried on the screen. */
     private val callRinging: () -> Boolean = { false },
-    /** Riya's own words (Riya mode): learned from her "হ্যাঁ", from the talk, or taught by a parent. */
-    private val kidWords: com.raju.aiassistant.domain.kids.KidWordStore = com.raju.aiassistant.domain.kids.InMemoryKidWordStore(),
-    /** Turns Riya mode on (saved in Settings; the app then shows only her screen). */
-    private val setKidMode: suspend (Boolean) -> Unit = {},
     /** How the user says names, learned from their own choices (on the phone only). */
     private val contactAliases: com.raju.aiassistant.domain.tools.ContactAliasStore = com.raju.aiassistant.domain.tools.InMemoryContactAliases(),
     /** A soft, short chime when listening for an answer starts. */
@@ -313,18 +304,16 @@ class AssistantEngine(
     /** The language Seema is speaking now (Settings choice, or detected from the user in Auto). */
     val language: StateFlow<SeemaLanguage> = conversationLanguage.asStateFlow()
     private fun lang(): SeemaLanguage =
-        // Riya mode: Bengali only (she speaks Bengali), whatever the main setting is.
-        if (settings.value.kidMode) SeemaLanguage.BENGALI
-        else SeemaLanguage.fromTag(settings.value.speechLanguage) ?: conversationLanguage.value
+        SeemaLanguage.fromTag(settings.value.speechLanguage) ?: conversationLanguage.value
 
     private val endearment = Endearment()
 
     /**
      * Her own fixed lines in the conversation's language. She knows the user's name but does not keep
-     * saying it: the name in a line becomes a pet name now and then (by her personality), or is left out.
+     * saying it: the name in a line becomes a soft pet name now and then, or is left out.
      */
     private fun phrase(language: SeemaLanguage, hindi: String, bengali: String): String =
-        endearment.personalize(com.raju.aiassistant.domain.language.phrase(language, hindi, bengali), settings.value.personality, language)
+        endearment.personalize(com.raju.aiassistant.domain.language.phrase(language, hindi, bengali), language)
     /** The last message mixed Hindi and Bengali evenly: ask which language instead of guessing. */
     private var languageUnclear = false
 
@@ -456,10 +445,7 @@ class AssistantEngine(
         lastActivityAt = clock()
         cancelWork()
         lastUserText = trimmed
-        // Riya mode speaks Bengali by itself; her words must not switch the parent's language after the mode.
-        if (!settings.value.kidMode) {
-            conversationLanguage.value = nextConversationLanguage(settings.value.speechLanguage, conversationLanguage.value, trimmed)
-        }
+        conversationLanguage.value = nextConversationLanguage(settings.value.speechLanguage, conversationLanguage.value, trimmed)
         languageUnclear = settings.value.speechLanguage == LANGUAGE_AUTO && detectScript(trimmed) == Detection.MIXED
         trace("submit ${if (fromVoice) "voice" else "typed"} (${trimmed.length} chars)")
         job = scope.launch { handleUserMessage(trimmed, fromVoice) }
@@ -698,15 +684,14 @@ class AssistantEngine(
         }
         trace("[SeemaVoice] listening, microphone free")
         // A soft 90 ms chime when she starts listening for an answer (after her name or a question), so it is
-        // clear from across the room that she is listening. Never in Riya mode (it would start her own loop).
+        // clear from across the room that she is listening.
         if (chimeOnNextListen) {
             chimeOnNextListen = false
-            if (!settings.value.kidMode) runCatching { micOpenChime() }
+            runCatching { micOpenChime() }
         }
         val gen = ++listenGen
         // A ringing call or a "haan / nahi" question: a short answer, cut quickly.
         com.raju.aiassistant.domain.voice.TurnPacing.quick = clock() < callCommandUntil || voiceConfirmOpen()
-        com.raju.aiassistant.domain.voice.TurnPacing.toddler = settings.value.kidMode
         _state.value = AssistantState.Listening
         _heard.value = null
         _hint.value = null
@@ -742,19 +727,6 @@ class AssistantEngine(
                     return@start
                 }
                 if (correctionWait != null) return@start // the stop window: silence means "go ahead"
-                if (settings.value.kidMode && !err.permissionDenied && !paused()) {
-                    // Riya mode listens hands-free all the time: a toddler never presses a button first. Silence or
-                    // an unclear sound starts the listening again after a short pause (the recogniser was cancelled
-                    // and destroyed), and backs off when it keeps failing at once — never a rapid loop.
-                    val fast = clock() - listenStartedAt < FAST_NO_SPEECH_MS
-                    kidFastFails = if (fast) kidFastFails + 1 else 0
-                    val wait = com.raju.aiassistant.domain.voice.TurnPacing.toddlerRelistenMs(kidFastFails)
-                    trace("riya: nothing clear (${if (err.noSpeech) "silence" else if (err.unclear) "unclear" else "recogniser error"}), listening again in $wait ms")
-                    _voiceSession.value = true
-                    val g = listenGen
-                    scope.launch { delay(wait); if (g == listenGen && settings.value.kidMode && job?.isActive != true) listen() }
-                    return@start
-                }
                 if (clock() < callCommandUntil) {
                     // While it rings: "utha lo / kaat do" heard unsurely still counts (never an SMS from
                     // unsure words); silence or noise → listen again for the rest of the ring.
@@ -1102,11 +1074,6 @@ class AssistantEngine(
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
 
-        // Riya mode: only her conversation. No phone command, no action, no AI tool runs here.
-        if (s.kidMode) {
-            kidTurn(text, fromVoice)
-            return
-        }
         // "QR kisko bhejna hai?" → "Rizwan ko" / "Rizwan".
         pendingPayTo?.let { pay ->
             pendingPayTo = null
@@ -1151,16 +1118,6 @@ class AssistantEngine(
                 finishTurn()
                 return
             }
-        }
-        // A parent teaching one of Riya's words from the normal mode: "रिया हुसू बोले तो मतलब पेशाब".
-        com.raju.aiassistant.domain.kids.KidLexicon.teachCommand(text, requireName = true)?.let { (heard, meaning) ->
-            runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.TAUGHT, clock())) }
-            trace("riya: word taught")
-            val line = phrase(lang(), "ठीक है, याद रख लिया: रिया \"$heard\" बोले तो मतलब \"$meaning\"।", com.raju.aiassistant.domain.kids.KidPrompt.learnedLine(heard, meaning))
-            record(ChatRole.ASSISTANT, line)
-            if (fromVoice || s.autoSpeakReplies) say(line)
-            finishTurn()
-            return
         }
 
         // Simple phone commands ("torch on karo", "Mummy ko call karo", "5 minute ka timer") run on
@@ -1331,7 +1288,7 @@ class AssistantEngine(
         // The mood the user's own words show, for this answer only (nothing is stored).
         val mood = moodOf(text)
         if (mood != null) trace("mood: ${mood.name.lowercase()}")
-        val system = buildSystemPrompt(memoryTexts, nowDescription(), s.personality, context) +
+        val system = buildSystemPrompt(memoryTexts, nowDescription(), context) +
             (mood?.let { "\nMOOD NOW: ${it.instruction}" } ?: "")
         screenQuestion?.let { action ->
             readScreenAction(action, provider, model, system, speak = fromVoice || s.autoSpeakReplies)
@@ -1490,7 +1447,7 @@ class AssistantEngine(
             turnActive = true
             try {
                 val rest = spokenHead?.let { remainderAfter(parsed.text, it) } ?: parsed.text
-                // The AI's mood for this answer (or the default for the hour and personality).
+                // The AI's mood for this answer (or the default for the hour).
                 speaker.setMood(parsed.mood)
                 if (rest.isNotBlank()) say(rest)
             } finally {
@@ -1789,10 +1746,6 @@ class AssistantEngine(
             is AssistantAction.Greeting -> {
                 trace("offline command: greeting")
                 informational(action, action.reply, speak)
-            }
-            AssistantAction.KidModeOn -> {
-                trace("offline command: riya mode")
-                kidModeOn(action, speak)
             }
             AssistantAction.OpenSetupCheck -> {
                 trace("offline command: setup check")
@@ -2241,155 +2194,6 @@ class AssistantEngine(
         return c
     }
 
-    // ---------------------------------------------------------------- Riya mode
-
-    /** The last lines of Riya's conversation (her own, never the main chat's history). */
-    private val kidHistory = ArrayDeque<Turn>()
-    /** Riya mode: instant recogniser failures in a row (a struggling speech service gets a longer pause). */
-    private var kidFastFails = 0
-
-    /**
-     * Riya mode opened (or came back on screen): listen at once, hands-free — she will not press a button.
-     * Nothing happens while Seema is already listening, thinking or speaking.
-     */
-    /**
-     * A parent left Riya mode: her conversation is over, and Seema talks with the parent again in their
-     * language (Hindi in Auto), with the parent's recogniser — not in Riya's Bengali.
-     */
-    fun onKidModeExit() {
-        kidHistory.clear()
-        kidGuess = null
-        com.raju.aiassistant.domain.voice.TurnPacing.toddler = false
-        if (SeemaLanguage.fromTag(settings.value.speechLanguage) == null) conversationLanguage.value = SeemaLanguage.HINDI
-        trace("riya: mode left")
-    }
-
-    /**
-     * Riya tickled the face: a short laugh line. Allowed while the microphone only waits (passive listening);
-     * the listening is paused for the line (so her microphone does not hear Seema's laugh as Riya's words)
-     * and opens again right after. Never over Seema's own answer or a running turn.
-     */
-    fun kidReact(line: String) {
-        if (!settings.value.kidMode || paused() || job?.isActive == true || _state.value == AssistantState.Speaking) return
-        if (voice.listening.value && voice.partial.value.isNotBlank()) return // she is talking right now
-        listenGen++
-        voice.stop()
-        job = scope.launch {
-            say(line, allowBargeIn = false)
-            delay(com.raju.aiassistant.domain.voice.TurnPacing.KID_AFTER_SPEECH_MS)
-            if (settings.value.kidMode) {
-                _voiceSession.value = true
-                listen()
-            }
-        }
-    }
-
-    fun startKidListening() {
-        if (!settings.value.kidMode || paused() || !voice.isAvailable()) return
-        if (voice.listening.value || job?.isActive == true || _state.value == AssistantState.Speaking) return
-        kidFastFails = 0
-        leaveSleep()
-        _voiceSession.value = true
-        trace("riya: listening hands-free")
-        listen()
-    }
-    /** Seema asked "তুমি কি মালাই খাবে?" about one of her words: her "হ্যাঁ" teaches it. */
-    private var kidGuess: Pair<String, String>? = null
-    private var kidGuessUntil = 0L
-
-    /**
-     * One turn with Riya: a parent's "মালু মানে মালাই" teaches a word; her "হ্যাঁ" to Seema's guess teaches it;
-     * the rest goes to the AI with her words and the last lines of the talk, and the answer is spoken softly in
-     * Bengali. The AI's [LEARN:…] notes are kept as guessed words, its [ASK:…] waits for her yes.
-     */
-    private suspend fun kidTurn(text: String, fromVoice: Boolean) {
-        val speak = fromVoice || settings.value.autoSpeakReplies
-        val now = clock()
-        com.raju.aiassistant.domain.kids.KidLexicon.teachCommand(text)?.let { (heard, meaning) ->
-            runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.TAUGHT, now)) }
-            trace("riya: word taught")
-            kidAnswer(com.raju.aiassistant.domain.kids.KidPrompt.learnedLine(heard, meaning), speak)
-            return
-        }
-        val words = runCatching { kidWords.all() }.getOrDefault(emptyList())
-        // Her "হ্যাঁ" to "তুমি কি মালাই খাবে?": now Seema knows that word.
-        kidGuess?.takeIf { now < kidGuessUntil }?.let { (heard, meaning) ->
-            when (com.raju.aiassistant.domain.kids.KidLexicon.answer(text)) {
-                true -> {
-                    runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.CONFIRMED, now)) }
-                    trace("riya: word learned from her yes")
-                }
-                false -> trace("riya: the guess was wrong")
-                null -> Unit
-            }
-        }
-        kidGuess = null
-        // Words she still uses stay fresh (the unused ones fade out of the prompt after weeks).
-        com.raju.aiassistant.domain.kids.KidLexicon.inText(text, words).forEach { w ->
-            runCatching { kidWords.put(w.copy(lastUsedAt = now, uses = w.uses + 1)) }
-        }
-        _state.value = AssistantState.Thinking
-        val system = com.raju.aiassistant.domain.kids.KidPrompt.system(
-            KID_NAME, com.raju.aiassistant.domain.kids.KidLexicon.forPrompt(text, words, now), partOfDay(hourOfDay()),
-        )
-        kidHistory.addLast(Turn(TurnRole.USER, com.raju.aiassistant.domain.kids.KidPrompt.userLine(text)))
-        while (kidHistory.size > KID_HISTORY_LINES) kidHistory.removeFirst()
-        val reply = kidAsk(system, kidHistory.toList())
-        if (reply == null) {
-            kidHistory.removeLast()
-            kidAnswer(com.raju.aiassistant.domain.kids.KidPrompt.SORRY, speak)
-            return
-        }
-        val notes = com.raju.aiassistant.domain.kids.KidLexicon.notes(reply)
-        val known = words.associateBy { com.raju.aiassistant.domain.kids.KidLexicon.key(it.heard) }
-        notes.learned.forEach { (heard, meaning) ->
-            // A word a parent taught or she confirmed is never overwritten by a guess.
-            val old = known[com.raju.aiassistant.domain.kids.KidLexicon.key(heard)]
-            if (old == null || old.source == com.raju.aiassistant.domain.kids.KidWord.Source.GUESSED) {
-                runCatching { kidWords.put(com.raju.aiassistant.domain.kids.KidWord(heard, meaning, com.raju.aiassistant.domain.kids.KidWord.Source.GUESSED, now)) }
-                trace("riya: word guessed from the talk")
-            }
-        }
-        notes.ask?.let { kidGuess = it; kidGuessUntil = now + KID_GUESS_MS }
-        val line = notes.text.ifBlank { com.raju.aiassistant.domain.kids.KidPrompt.AGAIN }
-        kidHistory.addLast(Turn(TurnRole.ASSISTANT, line))
-        kidAnswer(line, speak)
-    }
-
-    private suspend fun kidModeOn(action: AssistantAction, speak: Boolean) {
-        report(action, ActionStatus.SUCCESS, "Riya mode on.")
-        if (speak) say("ঠিক আছে, এখন রিয়া মোড। রিয়া সোনা, কথা বলো!")
-        setKidMode(true)
-    }
-
-    private suspend fun kidAnswer(line: String, speak: Boolean) {
-        record(ChatRole.ASSISTANT, line)
-        if (speak) {
-            speaker.setMood(com.raju.aiassistant.domain.voice.VoiceMood.WARM)
-            say(line)
-        }
-        if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
-        finishTurn()
-    }
-
-    /** The chosen AI, then the others with a saved key; null when none answers. */
-    private suspend fun kidAsk(system: String, turns: List<Turn>): String? {
-        val order = (listOf(settings.value.defaultProvider) + fallbackProviders()).distinct()
-        for (id in order) {
-            if ((providerCooldown[id] ?: 0L) > clock()) continue
-            val key = keyFor(id)?.takeIf { it.isNotBlank() } ?: continue
-            val provider = providerFor(id, key)
-            val model = (resolveModel(id, key, provider) as? AiResult.Success)?.value ?: continue
-            val r = withTimeoutOrNull(KID_AI_TIMEOUT_MS) { runCatching { provider.chat(model, system, turns) }.getOrNull() }
-            if (r is AiResult.Success && r.value.isNotBlank()) {
-                trace("riya: answered by ${id.shortName}")
-                return r.value
-            }
-            trace("riya: ${id.shortName} did not answer")
-        }
-        return null
-    }
-
     private fun finishTurn() {
         val s = settings.value
         val wasVoice = voiceTurn
@@ -2401,15 +2205,8 @@ class AssistantEngine(
             val asked = lastSpoken?.trimEnd()?.let { it.endsWith("?") || it.endsWith("？") } == true && clock() - lastSpokeAt < 5_000L
             // A conversation she was woken into by name goes on (until the quiet timer), even over another app.
             if (asked || wakeConversation()) listen() else goToSleep()
-        } else if ((_voiceSession.value || upiQuestionOpen()) && (s.continuousConversation || handsFree || s.kidMode || upiQuestionOpen()) && !s.assistantPaused) {
-            // Riya mode: a short pause first, so her voice's audio focus is released before the microphone opens.
-            if (s.kidMode) {
-                val g = listenGen
-                scope.launch {
-                    delay(com.raju.aiassistant.domain.voice.TurnPacing.KID_AFTER_SPEECH_MS)
-                    if (g == listenGen && _voiceSession.value && settings.value.kidMode) listen()
-                }
-            } else listen()
+        } else if ((_voiceSession.value || upiQuestionOpen()) && (s.continuousConversation || handsFree || upiQuestionOpen()) && !s.assistantPaused) {
+            listen()
         } else {
             _voiceSession.value = false
             if (_state.value == AssistantState.Error) scheduleErrorReset()
@@ -2888,11 +2685,6 @@ class AssistantEngine(
         handsFreeBeforeCall = false
         trace("phone call ended")
         if (settings.value.assistantPaused) return
-        // Riya mode: the call is over, she plays on — the microphone opens again by itself.
-        if (settings.value.kidMode) {
-            startKidListening()
-            return
-        }
         if (wasHandsFree && handsFree && !inBackground) startHandsFree() else returnToStandby()
     }
 
@@ -2935,7 +2727,6 @@ class AssistantEngine(
             is AssistantAction.SetLanguage -> switchLanguage(action, speak)
             AssistantAction.GoToSleep -> sleepNow(action, speak)
             is AssistantAction.Greeting -> informational(action, action.reply, speak)
-            AssistantAction.KidModeOn -> kidModeOn(action, speak)
             is AssistantAction.SendPaymentQr -> sendPaymentQr(action, speak)
             is AssistantAction.SendUpiId -> sendUpiId(action, speak)
             is AssistantAction.Battery -> {
@@ -4859,12 +4650,11 @@ class AssistantEngine(
     private suspend fun narrated(action: AssistantAction, speak: Boolean, run: suspend () -> Unit) {
         // Live camera is a quick back-and-forth: each question gets only its answer.
         if (action is AssistantAction.LookCamera && clock() < liveCameraUntil) return run()
-        val personality = settings.value.personality
-        if (speak) TwoStageNarration.plan(action, personality)?.let { say(phrase(lang(), it.hindi, it.bengali)) }
+        if (speak) TwoStageNarration.plan(action)?.let { say(phrase(lang(), it.hindi, it.bengali)) }
         lastReportStatus = null
         run()
         if (speak && lastReportStatus == ActionStatus.SUCCESS) {
-            TwoStageNarration.checkIn(action, personality)?.let {
+            TwoStageNarration.checkIn(action)?.let {
                 val q = phrase(lang(), it.hindi, it.bengali)
                 // In the conversation too, so "haan" is understood as the answer to this question.
                 record(ChatRole.ASSISTANT, q)

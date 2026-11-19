@@ -177,9 +177,6 @@ fun HomeScreen(
 
     onOpenSettings: () -> Unit = {},
 
-    /** Riya mode: Seema only for the little one (a parent leaves it). */
-    onOpenKidMode: () -> Unit = {},
-
     viewModel: HomeViewModel = viewModel(factory = RajuViewModelFactory),
 
 ) {
@@ -291,12 +288,11 @@ fun HomeScreen(
                 richEffects = profile.richEffects,
                 waveCenterY = 0.42f,
                 // While she speaks the eye takes the colour of her voice's mood (warm cyan, grounded crimson,
-                // whisper blue); Tapori keeps its tone colours (orange roast, pink joke) unless she is upset.
+                // whisper blue).
                 // The eye fades between colours by itself (animateColorAsState), so a change is never a jump.
                 accentArgb = when {
                     assistantState != com.raju.aiassistant.domain.model.AssistantState.Speaking -> com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
                     voiceMood == com.raju.aiassistant.domain.voice.VoiceMood.CONTROLLED_UPSET || voiceMood == com.raju.aiassistant.domain.voice.VoiceMood.WHISPER -> voiceMood!!.eyeArgb
-                    state.tapori -> com.raju.aiassistant.ui.home.visuals.taporiRimArgb(assistantState, com.raju.aiassistant.ui.home.visuals.taporiMoodFor(state.lastReply))
                     else -> voiceMood?.eyeArgb ?: com.raju.aiassistant.ui.home.visuals.eyeAccentArgb(assistantState)
                 },
                 eyeArea = { eyeBounds.value?.translate(-canvasOrigin.value) },
@@ -774,20 +770,6 @@ fun HomeScreen(
                 }
 
 
-
-                // Riya mode: one touch, and Seema is only for the little one until a parent leaves it.
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Brush.horizontalGradient(listOf(Color(0xFFFF6B9A), Color(0xFFFFA94D))))
-                        .clickable(onClick = onOpenKidMode)
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("👧  রিয়া মোড  (Riya Mode)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
 
                 // Armored Bottom Dock Status Bar (Flush with bottom edge, clickable to open Chat)
 

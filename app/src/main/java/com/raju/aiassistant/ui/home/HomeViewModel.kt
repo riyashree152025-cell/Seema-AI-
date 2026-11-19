@@ -56,8 +56,6 @@ data class HomeUiState(
     /** Hindi or Bengali, as Seema is speaking right now. */
     val language: SeemaLanguage = SeemaLanguage.HINDI,
     val userName: String = "Dinesh Kumar",
-    /** Tapori / savage friend personality: red reactor with a face. */
-    val tapori: Boolean = false,
     /** "EYE" or "GLASS": which of Home's two looks is shown. */
     val homeStyle: String = "EYE",
 )
@@ -120,7 +118,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 smartPower = settings.smartPower,
                 thermalProtection = settings.thermalProtection,
                 userName = settings.userName,
-                tapori = settings.personality == com.raju.aiassistant.domain.model.Personality.TAPORI,
                 homeStyle = settings.homeStyle,
             )
         }.combine(voiceStatus) { ui, (heard, hint) -> ui.copy(heard = heard, hint = hint) }

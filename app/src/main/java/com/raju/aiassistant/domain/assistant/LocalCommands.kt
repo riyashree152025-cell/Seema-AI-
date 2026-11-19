@@ -30,7 +30,6 @@ object LocalCommands {
     private fun parseOnce(said: String): AssistantAction? {
         val text = com.raju.aiassistant.domain.language.fixCommonMishearings(said)
         DevotionalGreeting.reply(text)?.let { return AssistantAction.Greeting(it) }
-        if (KID_MODE_ON.containsMatchIn(text) && text.length <= 80) return AssistantAction.KidModeOn
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
         languageSwitch(text)?.let { return it }
         if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep
@@ -347,11 +346,6 @@ object LocalCommands {
     )
     private val FILE_REQUEST = Regex(
         "^(?:[\\p{L}\\p{M}\\p{N}_.-]+ ){0,4}(?:wali |waali |vali |wala |waala |वाली |वाला )?(?:pdf|file|document|doc|फाइल|फ़ाइल|पीडीएफ|डॉक्यूमेंट)$",
-        RegexOption.IGNORE_CASE,
-    )
-    /** "Riya mode chalu karo", "रिया मोड", "রিয়া মোড চালু করো", "बेटी वाला मोड", "kids mode". */
-    private val KID_MODE_ON = Regex(
-        "(?:riya|रिया|রিয়া|beti|बेटी|kid|kids|bachchon|बच्चों|bacche|बच्चे)\\S*\\s*(?:wala|वाला|ka|का)?\\s*(?:mode|मोड|মোড)",
         RegexOption.IGNORE_CASE,
     )
 

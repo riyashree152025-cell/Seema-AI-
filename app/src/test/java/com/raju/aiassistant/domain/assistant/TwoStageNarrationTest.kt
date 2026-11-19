@@ -1,6 +1,5 @@
 package com.raju.aiassistant.domain.assistant
 
-import com.raju.aiassistant.domain.model.Personality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -11,33 +10,26 @@ class TwoStageNarrationTest {
 
     @Test
     fun slowReadingTasksGetAPlanFirst() {
-        val pnr = TwoStageNarration.plan(AssistantAction.PnrStatus("4512345678"), Personality.COMPANION)!!
+        val pnr = TwoStageNarration.plan(AssistantAction.PnrStatus("4512345678"))!!
         assertTrue(pnr.hindi, pnr.hindi.contains("PNR") && pnr.hindi.contains("बताती हूँ"))
         assertTrue(pnr.bengali.contains("PNR"))
-        assertNotNull(TwoStageNarration.plan(AssistantAction.LookCamera(false, "ye kya hai"), Personality.COMPANION))
-        assertNotNull(TwoStageNarration.plan(AssistantAction.ReadTicket, Personality.COMPANION))
-        assertNotNull(TwoStageNarration.plan(AssistantAction.WhatsAppPeek("Anand"), Personality.COMPANION))
-    }
-
-    @Test
-    fun taporiKeepsItsStyleAndProStaysShort() {
-        assertTrue(TwoStageNarration.plan(AssistantAction.PnrStatus("1"), Personality.TAPORI)!!.hindi.contains("भिड़ू"))
-        assertEquals("PNR देख रही हूँ।", TwoStageNarration.plan(AssistantAction.PnrStatus("1"), Personality.PRO)!!.hindi)
-        assertNull(TwoStageNarration.checkIn(AssistantAction.PnrStatus("1"), Personality.PRO))
+        assertNotNull(TwoStageNarration.plan(AssistantAction.LookCamera(false, "ye kya hai")))
+        assertNotNull(TwoStageNarration.plan(AssistantAction.ReadTicket))
+        assertNotNull(TwoStageNarration.plan(AssistantAction.WhatsAppPeek("Anand")))
     }
 
     @Test
     fun quickOrChangingTasksGetNoPlan() {
         // Calls, messages and money ask for confirmation first and say their own result.
-        assertNull(TwoStageNarration.plan(AssistantAction.Call("Mummy", null), Personality.COMPANION))
-        assertNull(TwoStageNarration.plan(AssistantAction.Battery, Personality.COMPANION))
+        assertNull(TwoStageNarration.plan(AssistantAction.Call("Mummy", null)))
+        assertNull(TwoStageNarration.plan(AssistantAction.Battery))
     }
 
     @Test
     fun aCaringQuestionFollowsResultsWorthSharing() {
-        assertTrue(TwoStageNarration.checkIn(AssistantAction.PnrStatus("1"), Personality.COMPANION)!!.hindi.contains("WhatsApp"))
-        assertTrue(TwoStageNarration.checkIn(AssistantAction.ReadTicket, Personality.COMPANION)!!.hindi.contains("WhatsApp"))
-        assertNull(TwoStageNarration.checkIn(AssistantAction.WhatsAppPeek("Anand"), Personality.COMPANION))
+        assertTrue(TwoStageNarration.checkIn(AssistantAction.PnrStatus("1"))!!.hindi.contains("WhatsApp"))
+        assertTrue(TwoStageNarration.checkIn(AssistantAction.ReadTicket)!!.hindi.contains("WhatsApp"))
+        assertNull(TwoStageNarration.checkIn(AssistantAction.WhatsAppPeek("Anand")))
     }
 
     @Test
