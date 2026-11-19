@@ -251,16 +251,29 @@ class ProvidersTest {
     @Test
     fun cartesiaSpeaksWithVersionHeaderVoiceAndMood() = runBlocking {
         enqueueBytes(wavBytes)
-        val r = CartesiaClient(http, "ck", url).synthesize("Namaste", "v-hi", "sonic-3", "hi", 1f, "content") as AiResult.Success
+        val controls = com.raju.aiassistant.domain.voice.CartesiaControls.Generation(0.86, "affectionate")
+        val r = CartesiaClient(http, "ck", url).synthesize("Namaste", "v-hi", "sonic-3", "hi", controls) as AiResult.Success
         assertTrue(r.value.contentEquals(wavBytes))
         val req = server.takeRequest()
         assertEquals("Bearer ck", req.getHeader("Authorization"))
         assertEquals(CartesiaClient.API_VERSION, req.getHeader("Cartesia-Version"))
         assertTrue(req.path!!.endsWith("/tts/bytes"))
         val body = req.body.readUtf8()
-        assertTrue(body.contains("\"voice\":{\"id\":\"v-hi\"}"))
+        assertTrue(body.contains("\"voice\":{\"mode\":\"id\",\"id\":\"v-hi\"}"))
         assertTrue(body.contains("\"container\":\"wav\"") && body.contains("\"encoding\":\"pcm_s16le\""))
-        assertTrue(body.contains("\"language\":\"hi\"") && body.contains("\"emotion\":\"content\""))
+        // Sonic 3: soft speed and the affectionate emotion in generation_config, no experimental controls.
+        assertTrue(body, body.contains("\"generation_config\":{\"speed\":0.86,\"emotion\":\"affectionate\"}"))
+        assertTrue(body.contains("\"language\":\"hi\"") && !body.contains("__experimental_controls"))
+    }
+
+    @Test
+    fun olderCartesiaModelsGetSlowWarmExperimentalControls() = runBlocking {
+        enqueueBytes(wavBytes)
+        val controls = com.raju.aiassistant.domain.voice.CartesiaControls.Experimental("slow", listOf("positivity:high"))
+        CartesiaClient(http, "ck", url).synthesize("Namaste", "v-hi", "sonic-2", "hi", controls) as AiResult.Success
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body, body.contains("\"__experimental_controls\":{\"speed\":\"slow\",\"emotion\":[\"positivity:high\"]}"))
+        assertTrue(!body.contains("generation_config"))
     }
 
     @Test
