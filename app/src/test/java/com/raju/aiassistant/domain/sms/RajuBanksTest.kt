@@ -68,12 +68,12 @@ class RajuBanksTest {
         val events = moneyEvents(day, emptyList())
         val each = parseMoneyQuestion("आज कितना कितना पैसा कटा है", today) as MoneyAsk.Amounts
         assertEquals(MoneyFlow.OUT, each.flow)
-        assertEquals("आज 5 बार पैसा कटा: 1, 8,985, 3,022, 2,570 और 2,400 रुपये — कुल 16,977 रुपये।", spokenMoneyAmounts(each, events, today, SeemaLanguage.HINDI))
+        assertEquals("आज पाँच बार पैसा कटा: 1 रुपये, 8,985 रुपये, 3,022 रुपये, 2,570 रुपये और 2,400 रुपये — कुल 16,977 रुपये।", spokenMoneyAmounts(each, events, today, SeemaLanguage.HINDI))
         val total = parseMoneyQuestion("ठीक है सब रुको, सब मिला के बोलो आज कितना पैसा कटा है", today) as MoneyAsk.Amounts
         assertTrue(total.totalOnly)
-        assertEquals("आज कुल 16,977 रुपये कटे — 5 बार में।", spokenMoneyAmounts(total, events, today, SeemaLanguage.HINDI))
+        assertEquals("आज कुल 16,977 रुपये कटे — पाँच बार में।", spokenMoneyAmounts(total, events, today, SeemaLanguage.HINDI))
         val credits = parseMoneyQuestion("आज कितना कितना पैसा आया", today) as MoneyAsk.Amounts
-        assertEquals("आज 2 पेमेंट आए: 4,654 और 5,700 रुपये — कुल 10,354 रुपये।", spokenMoneyAmounts(credits, events, today, SeemaLanguage.HINDI))
+        assertEquals("आज दो पेमेंट आए: 4,654 रुपये और 5,700 रुपये — कुल 10,354 रुपये।", spokenMoneyAmounts(credits, events, today, SeemaLanguage.HINDI))
     }
 
     @Test
@@ -82,7 +82,7 @@ class RajuBanksTest {
         val ask = parseMoneyQuestion("2 घंटे में कितना पैसा कटा", today) as MoneyAsk.Amounts
         val w = windowOf(ask.time, now, zone)
         val events = moneyEvents(day.filter { it.atMillis in w.fromMillis until w.untilMillis }, emptyList())
-        assertEquals("पिछले 2 घंटे में 2 बार पैसा कटा: 2,570 और 2,400 रुपये — कुल 4,970 रुपये।", spokenMoneyAmounts(ask, events, today, SeemaLanguage.HINDI))
+        assertEquals("पिछले 2 घंटे में दो बार पैसा कटा: 2,570 रुपये और 2,400 रुपये — कुल 4,970 रुपये।", spokenMoneyAmounts(ask, events, today, SeemaLanguage.HINDI))
     }
 
     @Test

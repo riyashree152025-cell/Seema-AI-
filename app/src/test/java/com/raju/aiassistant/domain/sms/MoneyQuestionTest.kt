@@ -50,6 +50,16 @@ class MoneyQuestionTest {
     }
 
     @Test
+    fun hisBengaliDebitQuestionsFromTheScreenshot() {
+        val today = MoneyAsk.Amounts(MoneyFlow.OUT, MoneyTime.Day(this.today))
+        assertEquals(today, ask("আজকে কত করে টাকা কাটছে")) // went to the AI ("খাতা খুলে দেখছি") before
+        assertEquals(today, ask("আজকে কত কত টাকা ডেবিট হয়েছে আমার"))
+        assertEquals(today, ask("আজকে কত করে টাকা কাটছে আমার ডেবিট হল"))
+        assertEquals(today, ask("आज कितना पैसा कट रहा है"))
+        assertTrue(LocalCommands.parse("আজকে কত করে টাকা কাটছে") is AssistantAction.MoneyQuestion)
+    }
+
+    @Test
     fun anyDate() {
         assertEquals(MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(LocalDate.of(2026, 11, 15))), ask("15 तारीख को कितना पैसा आया"))
         assertEquals(MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(LocalDate.of(2026, 10, 3), DayPart.MORNING)), ask("3 अक्टूबर की सुबह कितना पैसा आया"))
@@ -159,8 +169,8 @@ class MoneyQuestionTest {
     @Test
     fun onlyTheAmounts() {
         val yesterday = MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(today.minusDays(1)))
-        assertEquals("कल 2 पेमेंट आए: 2,400 और 3,630 रुपये — कुल 6,030 रुपये।", spokenMoneyAmounts(yesterday, events(yesterday.time), today, SeemaLanguage.HINDI))
-        assertEquals("গতকাল 2টা পেমেন্ট এসেছে: 2,400 আর 3,630 টাকা — মোট 6,030 টাকা।", spokenMoneyAmounts(yesterday, events(yesterday.time), today, SeemaLanguage.BENGALI))
+        assertEquals("कल दो पेमेंट आए: 2,400 रुपये और 3,630 रुपये — कुल 6,030 रुपये।", spokenMoneyAmounts(yesterday, events(yesterday.time), today, SeemaLanguage.HINDI))
+        assertEquals("গতকাল দুইটা পেমেন্ট এসেছে: 2,400 টাকা আর 3,630 টাকা — মোট 6,030 টাকা।", spokenMoneyAmounts(yesterday, events(yesterday.time), today, SeemaLanguage.BENGALI))
         val hour = MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.LastMinutes(60))
         assertEquals("पिछले 1 घंटे में एक पेमेंट आया: 1,200 रुपये।", spokenMoneyAmounts(hour, events(hour.time), today, SeemaLanguage.HINDI))
         val morning = MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(today, DayPart.MORNING))
@@ -179,7 +189,7 @@ class MoneyQuestionTest {
     fun manyAmountsAreCountedAfterTen() {
         val many = (1..13).map { MoneyEvent(10_000L * it, MoneyFlow.IN, at(20, 10, it), null) }
         val said = spokenMoneyAmounts(MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(today)), many, today, SeemaLanguage.HINDI)
-        assertTrue(said, said.startsWith("आज 13 पेमेंट आए: 100, 200"))
+        assertTrue(said, said.startsWith("आज तेरह पेमेंट आए: 100 रुपये, 200 रुपये"))
         assertTrue(said, said.endsWith("और 3 — सब मिलाकर कुल 9,100 रुपये।"))
     }
 

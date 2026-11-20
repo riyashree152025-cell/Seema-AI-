@@ -60,14 +60,16 @@ private val MONEY = Regex(
 private val CAME = Regex(
     word(
         "aaya|aaye|aayi|aya|aye|ayi|aaya hai|jama|credit|credited|received|mila|mile|आया|आए|आये|आई|आयी|जमा|क्रेडिट|मिला|मिले|" +
-            "এসেছে|এলো|এল|আসছে|জমা|ক্রেডিট|পেলাম|পেয়েছি",
+            "aa raha|aa rahe|आ रहा|आ रहे|आ गया|आ गए|" +
+            "এসেছে|এলো|এল|আসছে|এসেছিল|ঢুকেছে|ঢুকল|জমা|ক্রেডিট|পেলাম|পেয়েছি",
     ),
     RegexOption.IGNORE_CASE,
 )
 private val WENT = Regex(
     word(
         "bheja|bheje|gaya|gaye|kata|kate|kaata|debit|debited|sent|paid|diya|diye|भेजा|भेजे|भेजी|गया|गए|गये|कटा|कटे|डेबिट|दिया|दिए|दिये|" +
-            "পাঠিয়েছি|পাঠালাম|পাঠিয়েছে|গেছে|গেল|কেটেছে|কাটা|ডেবিট|দিয়েছি",
+            "kat raha|kat rahe|kat gaya|kat gaye|कट रहा|कट रहे|कट गया|कट गए|कटी|" +
+            "পাঠিয়েছি|পাঠালাম|পাঠিয়েছে|গেছে|গেল|কেটেছে|কাটছে|কাটল|কাটলো|কাটা গেছে|কেটে গেছে|কেটেছিল|খরচ হয়েছে|ডেবিট|দিয়েছি",
     ),
     RegexOption.IGNORE_CASE,
 )
@@ -78,7 +80,7 @@ private val HOW_MUCH = Regex(
 /** "किसने / किसका" — from whom (money in). */
 private val WHO_FROM = Regex(word("kisne|kiska|kiske|kiski|kisse|kis se|किसने|किसका|किसके|किसकी|किससे|किस से|कौन|kaun|whose|who|কার|কার থেকে|কে পাঠাল|কে পাঠিয়েছে|কে দিল|কে দিয়েছে"), RegexOption.IGNORE_CASE)
 /** Words that are about money by themselves (unlike "आया" or "भेजा"). */
-private val MONEY_VERB = Regex(word("jama|credit|credited|debit|debited|kata|kate|kaata|जमा|क्रेडिट|डेबिट|कटा|कटे|জমা|ক্রেডিট|ডেবিট|কেটেছে"), RegexOption.IGNORE_CASE)
+private val MONEY_VERB = Regex(word("jama|credit|credited|debit|debited|kata|kate|kaata|जमा|क्रेडिट|डेबिट|कटा|कटे|कट रहा|জমা|ক্রেডিট|ডেবিট|কেটেছে|কাটছে|কাটল|কাটলো"), RegexOption.IGNORE_CASE)
 /** "किसको / किसे" — to whom (money out). */
 private val WHO_TO = Regex(word("kisko|kise|kisku|किसको|किसे|किस को|to whom|কাকে|কাকে কাকে"), RegexOption.IGNORE_CASE)
 /** Messages, inbox: the older "SMS count" report answers those (it also names the bank). */
@@ -340,6 +342,9 @@ fun windowOf(time: MoneyTime, nowMillis: Long, zone: ZoneId): MoneyWindow = when
 
 private val BENGALI_MONTHS = listOf("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")
 
+/** A small count in words ("पाँच", "পাঁচ"). */
+private fun count(n: Int, bengali: Boolean): String = com.raju.aiassistant.domain.language.NumberWords.words(n.toLong(), bengali) ?: n.toString()
+
 private fun count(n: Double): String = if (n == n.toLong().toDouble()) n.toLong().toString() else n.toString()
 
 /** "पिछले 2 घंटे में", "आज सुबह", "कल शाम", "15 नवंबर को" — and the Bengali. */
@@ -415,28 +420,29 @@ private fun amountsLine(events: List<MoneyEvent>, flow: MoneyFlow, withNames: Bo
     val n = events.size
     // "सब मिला के बोलो": only the total (and how many times).
     if (totalOnly) return when (flow) {
-        MoneyFlow.OUT -> if (bengali) "$label মোট $total টাকা কেটেছে — ${n} বারে।" else "$label कुल $total रुपये कटे — $n बार में।"
-        else -> if (bengali) "$label মোট $total টাকা এসেছে — ${n}টা পেমেন্টে।" else "$label कुल $total रुपये आए — $n पेमेंट में।"
+        MoneyFlow.OUT -> if (bengali) "$label মোট $total টাকা কেটেছে — ${count(n, true)} বারে।" else "$label कुल $total रुपये कटे — ${count(n, false)} बार में।"
+        else -> if (bengali) "$label মোট $total টাকা এসেছে — ${count(n, true)}টা পেমেন্টে।" else "$label कुल $total रुपये आए — ${count(n, false)} पेमेंट में।"
     }
     val shown = events.take(MAX_SPOKEN_AMOUNTS)
     val more = n - shown.size
+    // Each amount with its own "रुपये / টাকা" ("730 रुपये, 1,250 रुपये …"), as Raju wants to hear them.
     val items = shown.map { e ->
         val amount = spokenRupees(e.paise)
-        if (!withNames) amount
+        if (!withNames) (if (bengali) "$amount টাকা" else "$amount रुपये")
         else when {
             e.who == null -> if (bengali) "$amount টাকা (নাম নেই)" else "$amount रुपये (नाम नहीं)"
             flow == MoneyFlow.OUT -> if (bengali) "$amount টাকা ${e.who}-কে" else "$amount रुपये ${e.who} को"
             else -> if (bengali) "$amount টাকা ${e.who} থেকে" else "$amount रुपये ${e.who} से"
         }
     }
-    val unit = if (withNames) "" else if (bengali) " টাকা" else " रुपये"
+    val times = com.raju.aiassistant.domain.language.NumberWords.words(n.toLong(), bengali) ?: n.toString()
     val head = when (flow) {
-        MoneyFlow.OUT -> if (bengali) "$label ${n} বার টাকা কেটেছে" else if (n == 1) "$label एक बार पैसा कटा" else "$label $n बार पैसा कटा"
-        else -> if (bengali) "$label ${n}টা পেমেন্ট এসেছে" else if (n == 1) "$label एक पेमेंट आया" else "$label $n पेमेंट आए"
+        MoneyFlow.OUT -> if (bengali) "$label $times বার টাকা কেটেছে" else if (n == 1) "$label एक बार पैसा कटा" else "$label $times बार पैसा कटा"
+        else -> if (bengali) "$label ${times}টা পেমেন্ট এসেছে" else if (n == 1) "$label एक पेमेंट आया" else "$label $times पेमेंट आए"
     }
-    val body = joinAmounts(items, bengali) + unit
+    val body = joinAmounts(items, bengali)
     val tail = when {
-        more > 0 -> if (bengali) "। আরও ${more}টা — সব মিলিয়ে $total টাকা।" else "। और $more — सब मिलाकर कुल $total रुपये।"
+        more > 0 -> if (bengali) "। আরও ${more}টা — সব মিলিয়ে মোট $total টাকা।" else "। और $more — सब मिलाकर कुल $total रुपये।"
         n > 1 -> if (bengali) " — মোট $total টাকা।" else " — कुल $total रुपये।"
         else -> "।"
     }

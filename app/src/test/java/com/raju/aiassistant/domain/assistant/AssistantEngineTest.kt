@@ -2687,7 +2687,7 @@ class AssistantEngineTest {
         notes.add(com.raju.aiassistant.domain.sms.MoneyNote(363000, com.raju.aiassistant.domain.sms.MoneyFlow.IN, at(18, 41), "Pappu Yadav"))
         val e = moneyEngine(java.time.LocalDate.now(zone).atTime(15, 0).atZone(zone).toInstant().toEpochMilli(), notes = notes)
         e.submit("अच्छा सीमा चेक करो कल कितना कितना पैसा आया है", fromVoice = true)
-        assertEquals("कल 2 पेमेंट आए: 2,400 और 3,630 रुपये — कुल 6,030 रुपये।", speaker.spoken.last())
+        assertEquals("कल दो पेमेंट आए: 2,400 रुपये और 3,630 रुपये — कुल 6,030 रुपये।", speaker.spoken.last())
         e.submit("3630 किसका आया", fromVoice = true)
         assertEquals("3,630 रुपये कल शाम 6:40 बजे Pappu Yadav ने भेजे।", speaker.spoken.last())
         assertEquals(0, provider.calls.size) // all on the phone
@@ -2696,7 +2696,7 @@ class AssistantEngineTest {
         e.submit("कल कितना कितना पैसा कटा", fromVoice = true)
         assertEquals("कल एक बार पैसा कटा: 500 रुपये।", speaker.spoken.last())
         e.submit("ठीक है रुको, सब मिला के बोलो", fromVoice = true)
-        assertEquals("कल कुल 500 रुपये कटे — 1 बार में।", speaker.spoken.last())
+        assertEquals("कल कुल 500 रुपये कटे — एक बार में।", speaker.spoken.last())
         assertEquals(0, provider.calls.size)
     }
 

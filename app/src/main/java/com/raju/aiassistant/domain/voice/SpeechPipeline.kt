@@ -108,7 +108,8 @@ class SpeechPipeline(
         /** Loudness of this utterance (a whisper is quieter); the limiter then keeps every peak clean. */
         gain: Float = 1f,
     ): SpeakResult {
-        val chunks = chunkForSpeech(text)
+        // Amounts are said in words ("आठ हज़ार नौ सौ पचासी रुपये"), never digit by digit.
+        val chunks = chunkForSpeech(com.raju.aiassistant.domain.language.NumberWords.amountsInWords(text))
         if (chunks.isEmpty()) return SpeakResult(true, "none")
         val usable = providers.filter { runCatching { it.isAvailable() }.getOrDefault(false) }.toMutableList()
         if (usable.isEmpty()) return SpeakResult(false, "none", "No text-to-speech engine is available.")
