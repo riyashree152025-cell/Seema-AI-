@@ -110,14 +110,14 @@ fun parseInboxQuestion(text: String, today: LocalDate = LocalDate.now()): InboxQ
  * "कॉल का" / "call ka" (a short "kal" heard long, only when "का/के/की" follows), "kal", "बीते कल",
  * "पिछले दिन", Bengali "গতকাল" / "কাল".
  */
-private val YESTERDAY_SAID = Regex(
+internal val YESTERDAY_SAID = Regex(
     "\\b(kal|kall|yesterday)\\b|\\b(kaal|call)\\s+(ka|ke|ki)\\b|${hindiWord("कल")}|${hindiWord("कल्ह")}|" +
         "(?<![\\p{L}\\p{M}])कल(?:का|के|की)(?![\\p{L}\\p{M}])|(?<![\\p{L}\\p{M}])(?:काल|कॉल|कोल)\\s+(?:का|के|की)(?![\\p{L}\\p{M}])|" +
         "पिछले\\s+दिन|${hindiWord("গতকাল")}|${hindiWord("কাল")}|${hindiWord("কালকের")}",
 )
 
 /** A whole Devanagari word: Java's \\b does not see Hindi letters, and "कल" is inside "निकला". */
-private fun hindiWord(w: String) = "(?<![\\p{L}\\p{M}])$w(?![\\p{L}\\p{M}])"
+internal fun hindiWord(w: String) = "(?<![\\p{L}\\p{M}])$w(?![\\p{L}\\p{M}])"
 
 /** Where the search starts: the start of today, of yesterday, or N days back. */
 fun inboxSince(period: InboxPeriod, today: LocalDate, zone: ZoneId, date: LocalDate? = null): Long = when (period) {

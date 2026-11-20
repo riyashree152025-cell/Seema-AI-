@@ -40,6 +40,7 @@ class RajuNotificationListener : NotificationListenerService() {
         sbn.notification?.let { n -> if (IncomingCallActions.isCallNotification(n, sbn.packageName)) IncomingCallActions.remember(sbn.key, n) }
         val c = container ?: return
         val settings = c.currentSettings.value
+        noteMoney(c, sbn)
         announceMoneyIn(c, sbn)
         if (!settings.announcementsActive) return
         if (sbn.packageName !in settings.announceApps) return
@@ -90,6 +91,30 @@ class RajuNotificationListener : NotificationListenerService() {
      * message announcements; never while Seema is OFF, in safety mode or during a phone call. Said after
      * whatever she is saying now, once per payment. Nothing is logged.
      */
+    /**
+     * A payment notification (UPI app, bank app, SMS app): its amount, side and person are noted on the phone, so
+     * "3630 किसका आया?" can name the person later. Only those three things and the time are kept.
+     */
+    private fun noteMoney(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
+        if (!com.raju.aiassistant.domain.sms.isMoneyApp(sbn.packageName)) return
+        val n = sbn.notification ?: return
+        if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
+        val extras = n.extras ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()
+        val now = System.currentTimeMillis()
+        val note = com.raju.aiassistant.domain.sms.moneyCreditIn(title, text)
+            ?.let { com.raju.aiassistant.domain.sms.MoneyNote(it.paise, com.raju.aiassistant.domain.sms.MoneyFlow.IN, now, it.from) }
+            ?: com.raju.aiassistant.domain.sms.moneyPaidOut(title, text)?.copy(atMillis = now)
+            ?: return
+        // The same app re-posting the same payment within 2 minutes is one note. Two apps (the SMS app and PhonePe)
+        // are both kept: the answer counts the payment once and takes the name from whichever has it.
+        val side = if (note.flow == com.raju.aiassistant.domain.sms.MoneyFlow.IN) note.paise else -note.paise
+        val key = (sbn.packageName.hashCode().toLong() shl 32) + side
+        if (!c.moneyNoteDeduper.shouldSay(key, now)) return
+        c.appScope.launch { runCatching { c.moneyNotes.add(note) } }
+    }
+
     private fun announceMoneyIn(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
         val s = c.currentSettings.value
         if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode) return

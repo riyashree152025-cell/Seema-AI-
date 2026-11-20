@@ -376,6 +376,11 @@ class AppContainer(context: Context) {
     /** A SIM call is up: Seema does not listen to it (the call's own voices are not requests to her). */
     fun phoneInCall(): Boolean = com.raju.aiassistant.domain.notify.RingState.inCall(audioInterruptions.simState())
 
+    /** UPI payment notifications (amount, person, time), on the phone only, for "3630 किसका आया?". */
+    val moneyNotes by lazy { com.raju.aiassistant.data.prefs.MoneyNotesPrefs(appContext) }
+    /** The same payment's notification posted again (or by two apps) is noted once. */
+    val moneyNoteDeduper = com.raju.aiassistant.domain.sms.MoneyAlertDeduper(windowMs = 2 * 60_000L)
+
     val ringDucker by lazy { com.raju.aiassistant.core.audio.RingDucker(appContext) }
 
     /** When a call was last announced (by the call-screening service, with the caller's name). */
@@ -479,6 +484,8 @@ class AppContainer(context: Context) {
             business = businessRepository,
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
+            setAnnounceMoneyIn = { on -> settingsRepository.setAnnounceMoneyIn(on) },
+            moneyNotes = moneyNotes,
             callRinging = { phoneRinging() },
             inPhoneCall = { phoneInCall() },
             contactAliases = com.raju.aiassistant.data.prefs.ContactAliasPrefs(appContext),

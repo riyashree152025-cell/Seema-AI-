@@ -55,7 +55,7 @@ fun moneyCreditIn(title: String?, text: String?): MoneyIn? {
 private val FROM_NAME = Regex("\\b(?:from|by)\\s+(?:mr\\.?|ms\\.?|mrs\\.?)?\\s*([A-Za-z][A-Za-z .]{1,40}?)(?=\\s+(?:on|via|to|ref|upi|in|at|for|a/?c)\\b|[.,;(\\n]|$)", RegexOption.IGNORE_CASE)
 private val NOT_A_NAME = Regex("\\b(upi|imps|neft|rtgs|vpa|a/?c|account|bank|ref|txn|transfer|you|your|nach|ach|atm|cash|salary|interest)\\b", RegexOption.IGNORE_CASE)
 
-private fun cleanName(s: String): String? {
+internal fun cleanName(s: String): String? {
     val n = s.trim().trim('.', ',', ':', '-').replace(Regex("\\s+"), " ")
     if (n.isEmpty() || n.length > 30 || n.any { it.isDigit() || it == '@' || it == '₹' } || NOT_A_NAME.containsMatchIn(n)) return null
     if (n.split(' ').size > 3) return null

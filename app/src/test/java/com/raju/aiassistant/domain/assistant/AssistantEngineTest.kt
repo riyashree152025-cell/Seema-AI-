@@ -2663,6 +2663,48 @@ class AssistantEngineTest {
         inCall = false
     }
 
+    private fun moneyEngine(now: Long, alertOn: (Boolean) -> Unit = {}, notes: com.raju.aiassistant.domain.sms.MoneyNotes = com.raju.aiassistant.domain.sms.InMemoryMoneyNotes()): AssistantEngine =
+        AssistantEngine(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined), settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
+            setAnnounceMoneyIn = { alertOn(it) }, moneyNotes = notes,
+        )
+
+    @Test
+    fun yesterdaysMoneyIsSaidAsAmountsOnlyWithoutTheAi() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        val zone = java.time.ZoneId.systemDefault()
+        val yesterday = java.time.LocalDate.now(zone).minusDays(1)
+        fun at(h: Int, m: Int) = yesterday.atStartOfDay(zone).plusHours(h.toLong()).plusMinutes(m.toLong()).toInstant().toEpochMilli()
+        tools.inboxSms = listOf(
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.2,400.00 credited to your A/c XX12 by RAHUL on date", at(10, 5)),
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.3,630.00 credited to your A/c XX12. UPI Ref 445566", at(18, 40)),
+            com.raju.aiassistant.domain.sms.SmsMessage("AX-SBIINB", "Rs.500.00 debited from A/c XX12 trf to AMIT Refno 1", at(19, 0)),
+        )
+        val notes = com.raju.aiassistant.domain.sms.InMemoryMoneyNotes()
+        notes.add(com.raju.aiassistant.domain.sms.MoneyNote(363000, com.raju.aiassistant.domain.sms.MoneyFlow.IN, at(18, 41), "Pappu Yadav"))
+        val e = moneyEngine(java.time.LocalDate.now(zone).atTime(15, 0).atZone(zone).toInstant().toEpochMilli(), notes = notes)
+        e.submit("अच्छा सीमा चेक करो कल कितना कितना पैसा आया है", fromVoice = true)
+        assertEquals("कल 2 पेमेंट आए: 2,400 और 3,630 रुपये — कुल 6,030 रुपये।", speaker.spoken.last())
+        e.submit("3630 किसका आया", fromVoice = true)
+        assertEquals("3,630 रुपये कल शाम 6:40 बजे Pappu Yadav ने भेजे।", speaker.spoken.last())
+        assertEquals(0, provider.calls.size) // all on the phone
+        assertTrue(store.logs.none { it.second == ActionStatus.FAILED })
+    }
+
+    @Test
+    fun paisaAayeToBatanaTurnsTheMoneyAlertOn() = runTest {
+        provider = FakeProvider(ArrayDeque())
+        var on: Boolean? = null
+        val e = moneyEngine(0L, alertOn = { on = it })
+        e.submit("अच्छा ठीक है, कोई पैसा आता है तो मेरे को बोल के बताना", fromVoice = true)
+        assertEquals(true, on)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().startsWith("ठीक है, अब जब भी पैसा आएगा"))
+        assertEquals(0, provider.calls.size)
+    }
+
     @Test
     fun theLoudspeakerGoesOnHalfASecondAfterTheCallIsAnswered() = runTest {
         phoneRingsUntilAnsweredOrCut()

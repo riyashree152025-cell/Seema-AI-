@@ -64,6 +64,16 @@ sealed interface AssistantAction {
         override val label get() = "UPI ID"
     }
 
+    /** "कल कितना कितना पैसा आया?", "1 घंटे में किसको भेजा?", "3630 किसका आया?" — from the phone's bank SMS. */
+    data class MoneyQuestion(val ask: com.raju.aiassistant.domain.sms.MoneyAsk) : AssistantAction {
+        override val label get() = "Money check"
+    }
+
+    /** "पैसा आए तो बोलकर बताना": the spoken money-in alert is turned on. */
+    data object MoneyAlertOn : AssistantAction {
+        override val label get() = "Money alert on"
+    }
+
     /** "Radhe radhe" → "राधे राधे": a devotional greeting answered with the same greeting. */
     data class Greeting(val reply: String) : AssistantAction {
         override val label get() = "Greeting"

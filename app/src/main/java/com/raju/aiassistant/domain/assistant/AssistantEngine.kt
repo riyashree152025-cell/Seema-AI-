@@ -257,6 +257,10 @@ class AssistantEngine(
     private val releaseMic: () -> Unit = {},
     /** Saves the conversation language chosen by voice ("bn-IN", "hi-IN" or "auto"), so it stays after a restart. */
     private val setSpeechLanguage: suspend (String) -> Unit = {},
+    /** Turns the spoken money-in alert on or off (saved in Settings). */
+    private val setAnnounceMoneyIn: suspend (Boolean) -> Unit = {},
+    /** Payments the UPI apps' notifications showed (amount, person, time), kept on the phone for "3630 किसका आया?". */
+    private val moneyNotes: com.raju.aiassistant.domain.sms.MoneyNotes = com.raju.aiassistant.domain.sms.InMemoryMoneyNotes(),
     /** A yes / no for the message question that is waiting ("padh ke sunau?"); true when there was one. */
     private val answerAnnouncement: (Boolean) -> Boolean = { false },
     /** Switched ON again: the microphone may be used again (MicHub.unmute). */
@@ -1897,6 +1901,21 @@ class AssistantEngine(
                 trace("offline command: tatkal opening")
                 informational(action, com.raju.aiassistant.domain.tatkal.spokenTatkalWindows(Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()), speak)
             }
+            is AssistantAction.MoneyQuestion -> {
+                trace("offline command: money question")
+                _state.value = AssistantState.Executing
+                moneyQuestion(action, speak)
+            }
+            AssistantAction.MoneyAlertOn -> {
+                trace("offline command: money alert on")
+                runCatching { setAnnounceMoneyIn(true) }
+                informational(
+                    action,
+                    phrase(lang(), "ठीक है, अब जब भी पैसा आएगा, मैं बोलकर बता दूँगी।", "ঠিক আছে, এখন থেকে টাকা এলেই বলে দেব।") +
+                        " " + phrase(lang(), "(इसके लिए Seema को Notification access चाहिए।)", "(এর জন্য Seema-র Notification access লাগবে।)"),
+                    speak,
+                )
+            }
             is AssistantAction.InboxCheck -> {
                 trace("offline command: inbox check")
                 _state.value = AssistantState.Executing
@@ -2872,6 +2891,8 @@ class AssistantEngine(
             is AssistantAction.BookingNoteWith -> startBooking(action, speak)
             is AssistantAction.PaymentCheck -> paymentCheck(action, speak)
             is AssistantAction.InboxCheck -> inboxCheck(action, speak)
+            is AssistantAction.MoneyQuestion -> moneyQuestion(action, speak)
+            AssistantAction.MoneyAlertOn -> { runCatching { setAnnounceMoneyIn(true) }; report(action, ActionStatus.SUCCESS, "Money alert on.") }
             is AssistantAction.AppSearch -> report(action, tools.openWebPage(appSearchUrl(action.app, action.query)))
             is AssistantAction.WhatsAppAskText -> { waAskContact = action.contact; waAskUntil = clock() + WA_ASK_MS; informational(action, phrase(lang(), "${action.contact} को WhatsApp पर क्या लिखूँ?", "${action.contact}-কে WhatsApp-এ কী লিখব?"), speak) }
             is AssistantAction.TatkalReminder -> tatkalReminder(action, speak)
@@ -2990,6 +3011,36 @@ class AssistantEngine(
             }
             is com.raju.aiassistant.domain.sms.SmsInbox.Failed -> return report(action, ActionStatus.FAILED, inbox.message).also { if (speak) say(inbox.message) }
             is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)
+        }
+        informational(action, text, speak)
+    }
+
+    /**
+     * "कल कितना कितना पैसा आया?", "1 घंटे में किसको भेजा?", "3630 किसका आया?": the bank SMS of that time (plus the
+     * UPI notes for names), read and answered on the phone. Only amounts and names are said, never account numbers.
+     */
+    private suspend fun moneyQuestion(action: AssistantAction.MoneyQuestion, speak: Boolean) {
+        val z = zone()
+        val now = clock()
+        val today = today()
+        val window = when (val a = action.ask) {
+            is com.raju.aiassistant.domain.sms.MoneyAsk.Amounts -> com.raju.aiassistant.domain.sms.windowOf(a.time, now, z)
+            is com.raju.aiassistant.domain.sms.MoneyAsk.Who -> a.time?.let { com.raju.aiassistant.domain.sms.windowOf(it, now, z) }
+                ?: com.raju.aiassistant.domain.sms.MoneyWindow(now - com.raju.aiassistant.domain.sms.WHO_SEARCH_DAYS * 86_400_000L, now + 1)
+        }
+        val inbox = readSmsInbox(action, window.fromMillis) ?: return
+        val sms = when (inbox) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> inbox.list
+            is com.raju.aiassistant.domain.sms.SmsInbox.Failed -> return report(action, ActionStatus.FAILED, inbox.message).also { if (speak) say(inbox.message) }
+            is com.raju.aiassistant.domain.sms.SmsInbox.NeedsPermission -> return report(action, ActionStatus.FAILED, inbox.reason)
+        }.filter { it.atMillis >= window.fromMillis && it.atMillis < window.untilMillis }
+        val notes = runCatching { moneyNotes.since(window.fromMillis) }.getOrDefault(emptyList()).filter { it.atMillis < window.untilMillis }
+        val events = com.raju.aiassistant.domain.sms.moneyEvents(sms, notes)
+        // Privacy: only counts in the log.
+        trace("money question: ${sms.size} SMS, ${notes.size} notes, ${events.size} payments")
+        val text = when (val a = action.ask) {
+            is com.raju.aiassistant.domain.sms.MoneyAsk.Amounts -> com.raju.aiassistant.domain.sms.spokenMoneyAmounts(a, events, today, lang())
+            is com.raju.aiassistant.domain.sms.MoneyAsk.Who -> com.raju.aiassistant.domain.sms.spokenMoneyWho(a, events, today, z, lang())
         }
         informational(action, text, speak)
     }
