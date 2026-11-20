@@ -29,7 +29,7 @@ sealed interface MoneyTime {
 
 sealed interface MoneyAsk {
     /** "कितना कितना आया" — amounts only; [withNames] for "किसको भेजा / किसने भेजा". */
-    data class Amounts(val flow: MoneyFlow, val time: MoneyTime, val withNames: Boolean = false) : MoneyAsk
+    data class Amounts(val flow: MoneyFlow, val time: MoneyTime, val withNames: Boolean = false, val totalOnly: Boolean = false) : MoneyAsk
 
     /** "3630 किसका आया?" — who that payment was from (or to). [time] null: the last [WHO_SEARCH_DAYS] days. */
     data class Who(val paise: Long, val flow: MoneyFlow, val time: MoneyTime? = null) : MoneyAsk
@@ -83,6 +83,8 @@ private val MONEY_VERB = Regex(word("jama|credit|credited|debit|debited|kata|kat
 private val WHO_TO = Regex(word("kisko|kise|kisku|किसको|किसे|किस को|to whom|কাকে|কাকে কাকে"), RegexOption.IGNORE_CASE)
 /** Messages, inbox: the older "SMS count" report answers those (it also names the bank). */
 private val INBOX_TALK = Regex("inbox|इनबॉक्स|ইনবক্স|message|messages|msg|मैसेज|मेसेज|संदेश|sms|एसएमएस|মেসেজ|এসএমএস", RegexOption.IGNORE_CASE)
+/** "सब मिला के बोलो", "टोटल कितना", "कुल कितना": only the total. */
+private val TOTAL_ONLY = Regex(word("sab mila ke|sab milake|sab milakar|sab mila kar|total|kul|सब मिला के|सब मिलाके|सब मिलाकर|सब मिला कर|मिला के|मिलाकर|कुल|टोटल|টোটাল|মোট|সব মিলিয়ে|সব মিলে"), RegexOption.IGNORE_CASE)
 /** An order, not a question ("Rahul ko 500 bhej do"). */
 private val ORDER = Regex(word("bhej do|bhejo|bhejiye|bhejna hai|भेज दो|भेजो|भेजिए|भेजना है|send karo|पाठाओ|পাঠাও|পাঠিয়ে দাও|de do|दे दो"), RegexOption.IGNORE_CASE)
 
@@ -159,7 +161,8 @@ private fun paiseOf(raw: String): Long? {
 fun parseMoneyQuestion(text: String, today: LocalDate = LocalDate.now()): MoneyAsk? {
     val t = asciiDigitsOf(text).trim()
     if (t.isEmpty() || t.length > 160 || ORDER.containsMatchIn(t)) return null
-    val came = CAME.containsMatchIn(t)
+    // "सब मिला के बोलो" is "add it all up", not "मिला" (received).
+    val came = CAME.containsMatchIn(TOTAL_ONLY.replace(t, " "))
     val went = WENT.containsMatchIn(t)
     val from = WHO_FROM.containsMatchIn(t)
     val to = WHO_TO.containsMatchIn(t)
@@ -181,12 +184,12 @@ fun parseMoneyQuestion(text: String, today: LocalDate = LocalDate.now()): MoneyA
     }
     if (amounts.isNotEmpty()) return null // "500 aaya kya?" is the payment check
     if (!(came || went)) return null
-    val asks = HOW_MUCH.containsMatchIn(t) || from || to
+    val asks = HOW_MUCH.containsMatchIn(t) || from || to || TOTAL_ONLY.containsMatchIn(t)
     if (!asks) return null
     val partOrHours = time is MoneyTime.LastMinutes || (time as? MoneyTime.Day)?.part != null
     // Clearly about money: a money word ("पैसा", "टाका", "payment"), a money verb ("जमा", "डेबिट"), or "कितना"
     // with hours / a part of the day ("1 घंटे में कितना आया"). "last call kiski aayi thi" is not.
-    val aboutMoney = money || MONEY_VERB.containsMatchIn(t) || (partOrHours && HOW_MUCH.containsMatchIn(t))
+    val aboutMoney = money || MONEY_VERB.containsMatchIn(t) || (partOrHours && HOW_MUCH.containsMatchIn(t)) || TOTAL_ONLY.containsMatchIn(t)
     if (!aboutMoney) return null
     // "मैसेज / इनबॉक्स" questions for a whole day keep the inbox report (SMS count and banks).
     if (INBOX_TALK.containsMatchIn(t) && !partOrHours && !from && !to) return null
@@ -197,7 +200,16 @@ fun parseMoneyQuestion(text: String, today: LocalDate = LocalDate.now()): MoneyA
         went && !came -> MoneyFlow.OUT
         else -> MoneyFlow.BOTH
     }
-    return MoneyAsk.Amounts(flow, time ?: MoneyTime.Day(today), withNames = from || to)
+    return MoneyAsk.Amounts(flow, time ?: MoneyTime.Day(today), withNames = from || to, totalOnly = TOTAL_ONLY.containsMatchIn(t) && !from && !to)
+}
+
+/**
+ * "ठीक है रुको, सब मिला के बोलो" said right after a list of amounts: the same question, total only. Short, no
+ * amount and no other question in it.
+ */
+fun asksTotalOnly(text: String): Boolean {
+    val t = asciiDigitsOf(text).trim()
+    return t.length <= 60 && TOTAL_ONLY.containsMatchIn(t) && AMOUNT.find(t) == null
 }
 
 /** "पैसा आए तो बताना", "koi payment aaye to bol dena": turn on the spoken money-in alert. */
@@ -253,10 +265,10 @@ private fun personName(raw: String?): String? {
     return cleanName(n)
 }
 
-/** "rahul.k@okaxis" is said as "rahul.k (UPI ID)" — never the bank's handle part. */
+/** "rahul.k@okaxis" is said as "UPI ID rahul.k" — never the bank's handle part. */
 private fun upiOf(body: String): String? {
     val id = VPA.find(body)?.groupValues?.get(1) ?: return null
-    return id.substringBefore('@') + " (UPI ID)"
+    return "UPI ID " + id.substringBefore('@')
 }
 
 /** Who a bank SMS's payment was from ([flow] IN) or to (OUT): a name, a UPI ID, or null when the SMS names nobody. */
@@ -394,16 +406,22 @@ private fun joinAmounts(list: List<String>, bengali: Boolean): String = when (li
     else -> list.dropLast(1).joinToString(", ") + (if (bengali) " আর " else " और ") + list.last()
 }
 
-private fun amountsLine(events: List<MoneyEvent>, flow: MoneyFlow, withNames: Boolean, label: String, bengali: Boolean): String {
-    val total = rupees(events.sumOf { it.paise })
+private fun amountsLine(events: List<MoneyEvent>, flow: MoneyFlow, withNames: Boolean, totalOnly: Boolean, label: String, bengali: Boolean): String {
+    val total = spokenRupees(events.sumOf { it.paise })
     if (events.isEmpty()) return when (flow) {
-        MoneyFlow.OUT -> if (bengali) "$label কোনো টাকা পাঠানো বা কাটার মেসেজ পাইনি।" else "$label कोई पैसा भेजने या कटने का संदेश नहीं मिला।"
+        MoneyFlow.OUT -> if (bengali) "$label কোনো টাকা কাটার বা পাঠানোর মেসেজ পাইনি।" else "$label कोई पैसा कटने या भेजने का संदेश नहीं मिला।"
         else -> if (bengali) "$label কোনো টাকা আসার মেসেজ পাইনি।" else "$label कोई पैसा आने का संदेश नहीं मिला।"
     }
+    val n = events.size
+    // "सब मिला के बोलो": only the total (and how many times).
+    if (totalOnly) return when (flow) {
+        MoneyFlow.OUT -> if (bengali) "$label মোট $total টাকা কেটেছে — ${n} বারে।" else "$label कुल $total रुपये कटे — $n बार में।"
+        else -> if (bengali) "$label মোট $total টাকা এসেছে — ${n}টা পেমেন্টে।" else "$label कुल $total रुपये आए — $n पेमेंट में।"
+    }
     val shown = events.take(MAX_SPOKEN_AMOUNTS)
-    val more = events.size - shown.size
+    val more = n - shown.size
     val items = shown.map { e ->
-        val amount = rupees(e.paise)
+        val amount = spokenRupees(e.paise)
         if (!withNames) amount
         else when {
             e.who == null -> if (bengali) "$amount টাকা (নাম নেই)" else "$amount रुपये (नाम नहीं)"
@@ -412,14 +430,13 @@ private fun amountsLine(events: List<MoneyEvent>, flow: MoneyFlow, withNames: Bo
         }
     }
     val unit = if (withNames) "" else if (bengali) " টাকা" else " रुपये"
-    val n = events.size
     val head = when (flow) {
-        MoneyFlow.OUT -> if (bengali) "$label ${n}টা পেমেন্ট গেছে" else if (n == 1) "$label एक पेमेंट गया" else "$label $n पेमेंट गए"
+        MoneyFlow.OUT -> if (bengali) "$label ${n} বার টাকা কেটেছে" else if (n == 1) "$label एक बार पैसा कटा" else "$label $n बार पैसा कटा"
         else -> if (bengali) "$label ${n}টা পেমেন্ট এসেছে" else if (n == 1) "$label एक पेमेंट आया" else "$label $n पेमेंट आए"
     }
     val body = joinAmounts(items, bengali) + unit
     val tail = when {
-        more > 0 -> if (bengali) "। আরও ${more}টা — সব মিলিয়ে $total টাকা।" else "। और $more पेमेंट — सब मिलाकर कुल $total रुपये।"
+        more > 0 -> if (bengali) "। আরও ${more}টা — সব মিলিয়ে $total টাকা।" else "। और $more — सब मिलाकर कुल $total रुपये।"
         n > 1 -> if (bengali) " — মোট $total টাকা।" else " — कुल $total रुपये।"
         else -> "।"
     }
@@ -433,18 +450,19 @@ fun spokenMoneyAmounts(ask: MoneyAsk.Amounts, events: List<MoneyEvent>, today: L
     val ins = events.filter { it.flow == MoneyFlow.IN }
     val outs = events.filter { it.flow == MoneyFlow.OUT }
     return when (ask.flow) {
-        MoneyFlow.IN -> amountsLine(ins, MoneyFlow.IN, ask.withNames, label, bn)
-        MoneyFlow.OUT -> amountsLine(outs, MoneyFlow.OUT, ask.withNames, label, bn)
-        MoneyFlow.BOTH -> amountsLine(ins, MoneyFlow.IN, ask.withNames, label, bn) + " " +
-            amountsLine(outs, MoneyFlow.OUT, ask.withNames, if (bn) "আর" else "और", bn)
+        MoneyFlow.IN -> amountsLine(ins, MoneyFlow.IN, ask.withNames, ask.totalOnly, label, bn)
+        MoneyFlow.OUT -> amountsLine(outs, MoneyFlow.OUT, ask.withNames, ask.totalOnly, label, bn)
+        MoneyFlow.BOTH -> amountsLine(ins, MoneyFlow.IN, ask.withNames, ask.totalOnly, label, bn) + " " +
+            amountsLine(outs, MoneyFlow.OUT, ask.withNames, ask.totalOnly, if (bn) "আর" else "और", bn)
     }
 }
 
 /** What Seema says for "3630 किसका आया?". [events]: the payments looked through. */
 fun spokenMoneyWho(ask: MoneyAsk.Who, events: List<MoneyEvent>, today: LocalDate, zone: ZoneId, language: SeemaLanguage): String {
     val bn = language == SeemaLanguage.BENGALI
-    val amount = rupees(ask.paise)
-    val matches = events.filter { it.paise == ask.paise && (ask.flow == MoneyFlow.BOTH || it.flow == ask.flow) }.sortedByDescending { it.atMillis }
+    val amount = spokenRupees(ask.paise)
+    // Said in whole rupees ("4654 किसका आया" finds Rs 4654.01).
+    val matches = events.filter { (it.paise + 50) / 100 == (ask.paise + 50) / 100 && (ask.flow == MoneyFlow.BOTH || it.flow == ask.flow) }.sortedByDescending { it.atMillis }
     val scope = ask.time?.let { timeLabel(it, today, bn) } ?: if (bn) "গত $WHO_SEARCH_DAYS দিনে" else "पिछले $WHO_SEARCH_DAYS दिनों में"
     val e = matches.firstOrNull() ?: return when (ask.flow) {
         MoneyFlow.OUT -> if (bn) "$scope $amount টাকা পাঠানোর কোনো মেসেজ পাইনি।" else "$scope $amount रुपये भेजने का कोई संदेश नहीं मिला।"

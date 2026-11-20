@@ -39,7 +39,8 @@ private val PAID_YOU = Regex("\\b(?:paid|sent|transferred)\\s+you\\b", RegexOpti
 fun moneyCreditIn(title: String?, text: String?): MoneyIn? {
     val raw = listOfNotNull(title, text).joinToString(" \n ").trim()
     if (raw.isEmpty() || raw.length > 600) return null
-    val body = asciiDigitsOf(raw)
+    // Union Bank ends every SMS with "Never Share OTP/PIN/CVV": that line is not part of the payment.
+    val body = withoutSafetyLine(asciiDigitsOf(raw))
     if (isOtp(body) || NOT_MONEY_IN.containsMatchIn(body)) return null
     val paidYou = PAID_YOU.find(body)
     val normalized = if (paidYou != null) body.replace(PAID_YOU, "received") else body
@@ -48,12 +49,16 @@ fun moneyCreditIn(title: String?, text: String?): MoneyIn? {
     // The payer: "Rahul paid you" (the words before), or "from Rahul" / "by Rahul" (not a VPA or an account).
     val from = (paidYou?.let { cleanName(body.substring(0, it.range.first).substringAfterLast('\n')) }
         ?: FROM_NAME.find(body)?.groupValues?.get(1)?.let { cleanName(it) })
-    val bank = BANKS.firstOrNull { (re, _) -> re.containsMatchIn(body) }?.second
+    // The bank by its own name, not by a payer's UPI handle ("anand@okaxis" is not an Axis Bank account).
+    // (Read on the whole SMS: Union Bank signs it inside the "Never Share OTP…-Union Bank of India" line.)
+    val withoutUpiIds = Regex("[\\w.-]+@[A-Za-z][A-Za-z0-9]*").replace(asciiDigitsOf(raw), " ")
+    val bank = BANKS.firstOrNull { (re, _) -> re.containsMatchIn(withoutUpiIds) }?.second
     return MoneyIn(paise, from, bank)
 }
 
-private val FROM_NAME = Regex("\\b(?:from|by)\\s+(?:mr\\.?|ms\\.?|mrs\\.?)?\\s*([A-Za-z][A-Za-z .]{1,40}?)(?=\\s+(?:on|via|to|ref|upi|in|at|for|a/?c)\\b|[.,;(\\n]|$)", RegexOption.IGNORE_CASE)
-private val NOT_A_NAME = Regex("\\b(upi|imps|neft|rtgs|vpa|a/?c|account|bank|ref|txn|transfer|you|your|nach|ach|atm|cash|salary|interest)\\b", RegexOption.IGNORE_CASE)
+// A word right before "@" is a UPI ID ("from poweraccess.ppsl2533@axisbank"), not a person's name.
+private val FROM_NAME = Regex("\\b(?:from|by)\\s+(?:mr\\.?|ms\\.?|mrs\\.?)?\\s*([A-Za-z][A-Za-z .]{1,40}?)(?![\\w.-]*@)(?=\\s+(?:on|via|to|ref|upi|in|at|for|a/?c)\\b|[.,;(\\n]|$)", RegexOption.IGNORE_CASE)
+private val NOT_A_NAME = Regex("\\b(upi|imps|neft|rtgs|vpa|a/?c|account|bank|bk|mob|mobile|ref|txn|transfer|you|your|nach|ach|atm|cash|salary|interest|rs|inr|branch)\\b", RegexOption.IGNORE_CASE)
 
 internal fun cleanName(s: String): String? {
     val n = s.trim().trim('.', ',', ':', '-').replace(Regex("\\s+"), " ")
@@ -74,7 +79,7 @@ private val BANKS = listOf(
 
 /** What Seema says. [name]: the user's name (the line is theirs), or empty. */
 fun spokenMoneyIn(m: MoneyIn, name: String, language: SeemaLanguage): String {
-    val amount = rupees(m.paise)
+    val amount = spokenRupees(m.paise)
     val who = name.trim().takeIf { it.isNotEmpty() }?.let { "$it, " } ?: ""
     return if (language == SeemaLanguage.BENGALI) {
         val where = m.bank?.let { "আপনার $it অ্যাকাউন্টে" } ?: "আপনার অ্যাকাউন্টে"

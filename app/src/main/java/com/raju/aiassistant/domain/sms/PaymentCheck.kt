@@ -69,11 +69,16 @@ private fun toPaise(raw: String): Long? {
 private val AMOUNT_IN_SMS = Regex("(?:rs\\.?|inr|₹|amt\\.?|amount)\\s*:?\\s*(\\d{1,3}(?:,\\d{2,3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)", RegexOption.IGNORE_CASE)
 private val CREDIT = Regex("\\b(credited|credit(?:ed)? to|refund(?:ed)?|reversed|reversal|received|deposited|cr\\.?)\\b|जमा|प्राप्त|রিফান্ড|জমা", RegexOption.IGNORE_CASE)
 private val DEBIT = Regex("\\b(debited|debit(?:ed)? from|spent|paid|withdrawn|sent|dr\\.?|purchase)\\b|डेबिट|কাটা", RegexOption.IGNORE_CASE)
-private val OTP = Regex("\\b(otp|one[ -]time password|verification code|do not share)\\b|ओटीपी", RegexOption.IGNORE_CASE)
+private val OTP = Regex("\\b(otp|one[ -]time password|verification code)\\b|ओटीपी", RegexOption.IGNORE_CASE)
+/**
+ * The bank's safety line at the end of a real transaction SMS ("Never Share OTP/PIN/CVV - Union Bank of India",
+ * "Do not share your OTP with anyone"): it does not make the message an OTP message.
+ */
+private val OTP_WARNING = Regex("(?:never|do\\s*not|don'?t|pls\\s+do\\s+not|please\\s+do\\s+not|dont)\\s+share\\b[^.\\n]*", RegexOption.IGNORE_CASE)
 
 /** The bank messages with exactly this amount, newest first, each marked as money in or out. */
 fun findPayments(messages: List<SmsMessage>, query: PaymentQuery): List<PaymentHit> = messages
-    .filter { !OTP.containsMatchIn(it.body) }
+    .filter { !isOtp(it.body) }
     .mapNotNull { m ->
         val body = asciiDigits(m.body)
         val has = AMOUNT_IN_SMS.findAll(body).any { toPaise(it.groupValues[1]) == query.amountPaise }
@@ -98,7 +103,10 @@ internal fun directionOf(body: String): MoneyDirection? {
     }
 }
 
-internal fun isOtp(body: String): Boolean = OTP.containsMatchIn(body)
+internal fun isOtp(body: String): Boolean = OTP.containsMatchIn(withoutSafetyLine(body))
+
+/** The bank's "never share OTP / PIN" line taken out (it is not part of the transaction). */
+internal fun withoutSafetyLine(body: String): String = OTP_WARNING.replace(body, " ")
 
 /** The transaction amount of a bank SMS in paise: the first amount that is not the balance or a limit. */
 internal fun transactionPaise(body: String): Long? = AMOUNT_IN_SMS.findAll(body).firstOrNull { m ->
@@ -109,6 +117,12 @@ internal fun transactionPaise(body: String): Long? = AMOUNT_IN_SMS.findAll(body)
 internal fun asciiDigitsOf(s: String): String = asciiDigits(s)
 
 internal val HINDI_MONTHS get() = MONTHS
+
+/**
+ * An amount as Seema says it: whole rupees with Indian grouping, never a decimal point ("4,654.01" → "4,654",
+ * "8,984.50" → "8,985"). The exact paise stay in the SMS; Raju wants "2400, 5700" spoken, not "दशमलव".
+ */
+fun spokenRupees(paise: Long): String = rupees(((paise + 50) / 100) * 100)
 
 /** "3,750.75" for speaking and showing (Indian grouping). */
 fun rupees(paise: Long): String {

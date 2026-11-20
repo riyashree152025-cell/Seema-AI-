@@ -2692,6 +2692,12 @@ class AssistantEngineTest {
         assertEquals("3,630 रुपये कल शाम 6:40 बजे Pappu Yadav ने भेजे।", speaker.spoken.last())
         assertEquals(0, provider.calls.size) // all on the phone
         assertTrue(store.logs.none { it.second == ActionStatus.FAILED })
+        // The debits one by one, then "ruko, sab mila ke bolo": the same question, the total only.
+        e.submit("कल कितना कितना पैसा कटा", fromVoice = true)
+        assertEquals("कल एक बार पैसा कटा: 500 रुपये।", speaker.spoken.last())
+        e.submit("ठीक है रुको, सब मिला के बोलो", fromVoice = true)
+        assertEquals("कल कुल 500 रुपये कटे — 1 बार में।", speaker.spoken.last())
+        assertEquals(0, provider.calls.size)
     }
 
     @Test

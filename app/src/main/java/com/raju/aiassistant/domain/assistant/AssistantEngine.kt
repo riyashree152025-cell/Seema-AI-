@@ -144,6 +144,8 @@ private const val NOTIFICATION_ASK_TTL_MS = 30_000L
 private const val AUTO_ACTION_WAIT_MS = 14_000L
 /** How long "Send dabao" still means the WhatsApp send that just failed. */
 private const val UNSENT_RETRY_MS = 3 * 60_000L
+/** How long "सब मिला के बोलो" still means the money question just answered. */
+private const val MONEY_FOLLOW_UP_MS = 3 * 60_000L
 /** How long a spoken "haan / nahi" is listened for after "ये बटन दबा दूँ?". */
 private const val SCREEN_CONFIRM_WINDOW_MS = 12_000L
 /** Time the app on screen gets to react before Seema checks that the action really happened. */
@@ -1125,6 +1127,18 @@ class AssistantEngine(
                     finishTurn()
                     return
                 }
+            }
+        }
+        // "ठीक है रुको, सब मिला के बोलो" right after a list of amounts: the same question, the total only.
+        lastMoneyAsk?.let { last ->
+            if (clock() - lastMoneyAskAt <= MONEY_FOLLOW_UP_MS && com.raju.aiassistant.domain.sms.asksTotalOnly(text) &&
+                LocalCommands.parse(text) !is AssistantAction.MoneyQuestion
+            ) {
+                val again = when (last) {
+                    is com.raju.aiassistant.domain.sms.MoneyAsk.Amounts -> last.copy(totalOnly = true, withNames = false)
+                    else -> null
+                }
+                if (again != null && runLocalCommand(AssistantAction.MoneyQuestion(again), speak = fromVoice || s.autoSpeakReplies)) return
             }
         }
         // "Tum dabao / Send kar do" right after WhatsApp's Send could not be pressed: press it again for that same
@@ -3020,6 +3034,8 @@ class AssistantEngine(
      * UPI notes for names), read and answered on the phone. Only amounts and names are said, never account numbers.
      */
     private suspend fun moneyQuestion(action: AssistantAction.MoneyQuestion, speak: Boolean) {
+        lastMoneyAsk = action.ask
+        lastMoneyAskAt = clock()
         val z = zone()
         val now = clock()
         val today = today()
@@ -3053,6 +3069,10 @@ class AssistantEngine(
     private var bookingRepeats = 0
 
     /** "Kya likhun?" asked for a WhatsApp message: the contact, and until when the next sentence is the text. */
+    /** The last money question, for "सब मिला के बोलो" right after it. */
+    private var lastMoneyAsk: com.raju.aiassistant.domain.sms.MoneyAsk? = null
+    private var lastMoneyAskAt = 0L
+
     /** A WhatsApp send whose Send could not be pressed: "Send dabao" presses it again (see [SendRetry]). */
     private class UnsentShare(val action: AssistantAction, val name: String, val number: String, val payload: String, val media: Boolean, val until: Long)
     private var unsentShare: UnsentShare? = null

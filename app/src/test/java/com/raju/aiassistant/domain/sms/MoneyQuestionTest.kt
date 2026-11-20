@@ -107,17 +107,17 @@ class MoneyQuestionTest {
         assertEquals("Rahul Kumar", counterpartyOf("Rs.3,630.00 credited to your A/c XX12 by RAHUL KUMAR on 19-11-26. UPI Ref 123456", MoneyFlow.IN))
         assertEquals("Rahul Kumar", counterpartyOf("INR 3630.00 received from RAHUL KUMAR via UPI. Avl bal INR 9000", MoneyFlow.IN))
         assertEquals("Sunil Das", counterpartyOf("Your A/c XX12 is credited with Rs 3630.00 Info: UPI/CR/432112345678/SUNIL DAS/SBIN/sunil@oksbi", MoneyFlow.IN))
-        assertEquals("rahul.k (UPI ID)", counterpartyOf("Rs 3630 credited to a/c XX12 from VPA rahul.k@okaxis on 19-11", MoneyFlow.IN))
+        assertEquals("UPI ID rahul.k", counterpartyOf("Rs 3630 credited to a/c XX12 from VPA rahul.k@okaxis on 19-11", MoneyFlow.IN))
         assertEquals("Shree Travels", counterpartyOf("A/c XX12 debited by 2400.0 on 19Nov26 trf to SHREE TRAVELS Refno 4321. -SBI", MoneyFlow.OUT))
         assertEquals("Amit", counterpartyOf("Dear Customer, your A/c X1234 has been debited for Rs.500.00 on 19-11-26; AMIT credited. UPI ref 123", MoneyFlow.OUT))
-        assertEquals("shop (UPI ID)", counterpartyOf("INR 500.00 debited from A/c XX99 to VPA shop@upi. Avl bal INR 2,000", MoneyFlow.OUT))
+        assertEquals("UPI ID shop", counterpartyOf("INR 500.00 debited from A/c XX99 to VPA shop@upi. Avl bal INR 2,000", MoneyFlow.OUT))
         // The big banks' own formats.
-        assertEquals("9876543210 (UPI ID)", counterpartyOf("Money Received - INR 3630.00 in your HDFC Bank A/c xx1234 on 19-11-26 by A/c linked to VPA 9876543210@ybl (UPI Ref No 432112345678).", MoneyFlow.IN))
+        assertEquals("UPI ID 9876543210", counterpartyOf("Money Received - INR 3630.00 in your HDFC Bank A/c xx1234 on 19-11-26 by A/c linked to VPA 9876543210@ybl (UPI Ref No 432112345678).", MoneyFlow.IN))
         assertEquals("Rahul Kumar", counterpartyOf("Sent Rs.500.00 From HDFC Bank A/C x1234 To RAHUL KUMAR On 19/11/26 Ref 432112345678 Not You? Call 18002586161", MoneyFlow.OUT))
         assertEquals("Rahul Kumar", counterpartyOf("ICICI Bank Acct XX123 debited for Rs 500.00 on 19-Nov-26; RAHUL KUMAR credited. UPI:432112345678.", MoneyFlow.OUT))
         assertEquals("Rahul Kumar", counterpartyOf("Dear Customer, Acct XX123 is credited with Rs 3630.00 on 19-Nov-26 from RAHUL KUMAR. UPI:432112345678-ICICI Bank.", MoneyFlow.IN))
         assertEquals("Rahul Kum", counterpartyOf("INR 3630.00 credited to A/c no. XX1234 on 19-11-26 at 18:40:12 IST. Info- UPI/P2A/432112345678/RAHUL KUM/Axis Bank", MoneyFlow.IN))
-        assertEquals("rahul (UPI ID)", counterpartyOf("Received Rs.3630.00 in your Kotak Bank a/c XX1234 from rahul@okicici on 19-11-26.UPI Ref:432112345678.", MoneyFlow.IN))
+        assertEquals("UPI ID rahul", counterpartyOf("Received Rs.3630.00 in your Kotak Bank a/c XX1234 from rahul@okicici on 19-11-26.UPI Ref:432112345678.", MoneyFlow.IN))
         assertEquals("Rahul Kumar", counterpartyOf("Dear SBI User, your A/c X1234-credited by Rs.3630 on 19Nov26 transfer from RAHUL KUMAR Ref No 432112345678 -SBI", MoneyFlow.IN))
         assertEquals("Rahul Kumar", counterpartyOf("Dear UPI user A/C X1234 debited by 500.0 on date 19Nov26 trf to RAHUL KUMAR Refno 432112345678. -SBI", MoneyFlow.OUT))
         assertEquals("Rahul Kumar", counterpartyOf("Your a/c no. XXXXXXXX1234 is credited by Rs.3630.00 on 19-11-26 by a/c linked to mobile 98XXXXXX10-RAHUL KUMAR (IMPS Ref no 432112345678).", MoneyFlow.IN))
@@ -172,7 +172,7 @@ class MoneyQuestionTest {
     @Test
     fun toWhomItWentInTheLastHour() {
         val ask = MoneyAsk.Amounts(MoneyFlow.OUT, MoneyTime.LastMinutes(60), withNames = true)
-        assertEquals("पिछले 1 घंटे में एक पेमेंट गया: 500 रुपये Amit को।", spokenMoneyAmounts(ask, events(ask.time), today, SeemaLanguage.HINDI))
+        assertEquals("पिछले 1 घंटे में एक बार पैसा कटा: 500 रुपये Amit को।", spokenMoneyAmounts(ask, events(ask.time), today, SeemaLanguage.HINDI))
     }
 
     @Test
@@ -180,7 +180,7 @@ class MoneyQuestionTest {
         val many = (1..13).map { MoneyEvent(10_000L * it, MoneyFlow.IN, at(20, 10, it), null) }
         val said = spokenMoneyAmounts(MoneyAsk.Amounts(MoneyFlow.IN, MoneyTime.Day(today)), many, today, SeemaLanguage.HINDI)
         assertTrue(said, said.startsWith("आज 13 पेमेंट आए: 100, 200"))
-        assertTrue(said, said.endsWith("और 3 पेमेंट — सब मिलाकर कुल 9,100 रुपये।"))
+        assertTrue(said, said.endsWith("और 3 — सब मिलाकर कुल 9,100 रुपये।"))
     }
 
     @Test
