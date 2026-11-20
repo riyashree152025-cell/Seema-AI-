@@ -8,13 +8,9 @@ import com.raju.aiassistant.domain.voice.VoiceCatalog
  * cloud voices first, the offline Android voice always last.
  */
 enum class TtsEngine(val label: String, val hint: String) {
-    SARVAM("Sarvam AI — Bulbul", "Indian voices, best Hindi pronunciation, cheap"),
-    ELEVENLABS("ElevenLabs", "★ most natural and sweet voice; Hindi + English"),
-    CARTESIA("Cartesia Sonic", "Natural voice with moods; Hindi + English"),
-    DEEPGRAM("Deepgram Aura", "English only — Hindi replies use the next voice"),
-    PIPER("Piper — offline, fast", "★ Runs on the phone after a one-time download (21 MB); Hindi female voice; no API cost"),
-    KOKORO("Kokoro-82M — offline, natural", "Most human-like offline voice (132 MB); needs a fast phone, otherwise Piper takes over"),
-    ANDROID("Android TTS (offline)", "Free, works without internet; the last fallback"),
+    SARVAM("Sarvam AI", "Indian voices, best Hindi pronunciation; needs a key and credits"),
+    CARTESIA("Cartesia", "Warm, slow, affectionate voice with moods; needs a key and credits"),
+    EDGE("Edge Neural (Unlimited Free)", "Microsoft neural voices (Swara for Hindi, Tanishaa for Bengali); no key, takes over whenever the others fail"),
 }
 
 /** How Seema talks. Changes only the tone; honesty and safety rules stay the same. */
@@ -76,26 +72,16 @@ data class UserSettings(
     val historyLimit: Int = 20,
     val ttsEngine: TtsEngine = TtsEngine.SARVAM,
     val sarvamSpeaker: String = SARVAM_FEMALE_SPEAKERS.first(),
-    val elevenModel: String = VoiceCatalog.ELEVEN_DEFAULT_MODEL,
-    /** null = not chosen yet: the best female voice of the account is picked on first use. */
-    val elevenVoiceId: String? = null,
-    val elevenVoiceName: String? = null,
     val cartesiaModel: String = VoiceCatalog.CARTESIA_DEFAULT_MODEL,
     val cartesiaVoiceId: String? = null,
     val cartesiaVoiceName: String? = null,
     /** Cartesia Sonic 3 emotion, "" = natural. */
     val cartesiaMood: String = "",
-    val deepgramVoice: String = VoiceCatalog.DEEPGRAM_DEFAULT_VOICE,
     val sttEngine: SttEngine = SttEngine.ANDROID,
     val deepgramSttModel: String = VoiceCatalog.DEEPGRAM_DEFAULT_STT,
     val speechRate: Float = 1.0f,
-    /** Automatic: the app picks the offline engine (Kokoro → Piper → Android) by availability, speed and failures. */
+    /** Automatic: Sarvam → Cartesia → Edge Neural, a failing voice moved back; Manual: the chosen voice first. */
     val voiceEngineAuto: Boolean = true,
-    /** Kokoro speaker (31 = hf_alpha, Hindi female). */
-    val kokoroSpeaker: Int = 31,
-    /** Voice pitch for the Android voice: a little below 1 sounds deeper and calmer. */
-    val speechPitch: Float = 0.92f,
-    val androidVoice: String? = null,
     /** "auto" (Hindi/Bengali detected from the user), "hi-IN" or "bn-IN". */
     val speechLanguage: String = com.raju.aiassistant.domain.language.LANGUAGE_AUTO,
     val autoSpeakReplies: Boolean = true,

@@ -2700,6 +2700,72 @@ class AssistantEngineTest {
         assertEquals(0, provider.calls.size)
     }
 
+    /** A quick AI (Groq) and Google AI Studio (Gemini), each with its own answers. */
+    private class NamedProvider(override val id: ProviderId, vararg answers: String) : AiProvider {
+        val replies = ArrayDeque(answers.toList())
+        val systems = mutableListOf<String>()
+        val asked = mutableListOf<List<Turn>>()
+        override suspend fun listModels(): AiResult<List<AiModel>> = AiResult.Success(listOf(AiModel(if (id == ProviderId.GEMINI) "gemini-2.5-flash" else "llama", "m")))
+        override suspend fun chat(model: String, systemPrompt: String, turns: List<Turn>): AiResult<String> {
+            systems += systemPrompt; asked += turns
+            return replies.removeFirstOrNull()?.let { AiResult.Success(it) } ?: AiResult.Failure(FailureKind.SERVER, "no more answers")
+        }
+    }
+
+    private fun TestScope.twoLayerEngine(groq: NamedProvider, gemini: NamedProvider, now: Long = 0L): AssistantEngine {
+        keys[SecretId.GROQ_API_KEY] = "gk"
+        settings.value = settings.value.copy(defaultProvider = ProviderId.GROQ)
+        return AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { id, _ -> if (id == ProviderId.GEMINI) gemini else groq }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
+            fallbackProviders = { listOf(ProviderId.GEMINI) },
+        )
+    }
+
+    @Test
+    fun whenTheQuickAiGivesUpGeminiAnswersInstead() = runTest {
+        val groq = NamedProvider(ProviderId.GROQ, "हम्म… मुझे समझ नहीं आया।")
+        val gemini = NamedProvider(ProviderId.GEMINI, "अरे, ब्लैक होल वो जगह है जहाँ से रोशनी भी बाहर नहीं निकल पाती।")
+        val e = twoLayerEngine(groq, gemini)
+        e.submit("ब्लैक होल असल में होता क्या है", fromVoice = true)
+        settle()
+        assertEquals("अरे, ब्लैक होल वो जगह है जहाँ से रोशनी भी बाहर नहीं निकल पाती।", speaker.spoken.last())
+        assertTrue(speaker.spoken.none { it.contains("समझ नहीं आया") }) // never "I didn't understand"
+        assertTrue(gemini.systems.single().contains("SECOND TRY"))
+        assertEquals("ब्लैक होल असल में होता क्या है", gemini.asked.single().last().text)
+    }
+
+    @Test
+    fun aGoodQuickAnswerNeverSpendsGeminiQuota() = runTest {
+        val groq = NamedProvider(ProviderId.GROQ, "हाँ जान, कल धूप रहेगी।")
+        val gemini = NamedProvider(ProviderId.GEMINI, "unused")
+        val e = twoLayerEngine(groq, gemini)
+        e.submit("कल धूप रहेगी ना", fromVoice = true)
+        settle()
+        assertEquals("हाँ जान, कल धूप रहेगी।", speaker.spoken.last())
+        assertTrue(gemini.asked.isEmpty())
+    }
+
+    @Test
+    fun aBankSmsInAFormatThePhoneDoesNotKnowIsReadByGeminiRedacted() = runTest {
+        val zone = java.time.ZoneId.systemDefault()
+        val today = java.time.LocalDate.now(zone)
+        val at = today.atStartOfDay(zone).plusHours(10).toInstant().toEpochMilli()
+        // No "credited / debited" word the phone knows: its own reader finds no payment.
+        tools.inboxSms = listOf(com.raju.aiassistant.domain.sms.SmsMessage("XY-NEWBNK", "UPI txn Rs 2400 into A/c XX3587 from rahul@ybl RRN 632354656706", at))
+        val groq = NamedProvider(ProviderId.GROQ)
+        val gemini = NamedProvider(ProviderId.GEMINI, "आज एक पेमेंट आया, 2,400 रुपये।")
+        val e = twoLayerEngine(groq, gemini, now = today.atStartOfDay(zone).plusHours(15).toInstant().toEpochMilli())
+        e.submit("आज कितना पैसा आया", fromVoice = true)
+        settle()
+        assertEquals("आज एक पेमेंट आया, 2,400 रुपये।", speaker.spoken.last())
+        val sent = gemini.asked.single().single().text
+        assertTrue(sent, sent.contains("Rs 2400"))
+        assertTrue(sent, !sent.contains("3587") && !sent.contains("632354656706") && !sent.contains("rahul@ybl")) // nothing that identifies the account
+    }
+
     @Test
     fun paisaAayeToBatanaTurnsTheMoneyAlertOn() = runTest {
         provider = FakeProvider(ArrayDeque())

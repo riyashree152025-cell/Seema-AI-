@@ -2,6 +2,7 @@ package com.raju.aiassistant
 
 import android.app.Application
 import com.raju.aiassistant.di.AppContainer
+import kotlinx.coroutines.launch
 
 class RajuApp : Application() {
     lateinit var container: AppContainer
@@ -15,6 +16,8 @@ class RajuApp : Application() {
         // Morning briefing and weekly report; they check the setting themselves each time.
         runCatching { com.raju.aiassistant.notifications.BusinessScheduler.schedule(this) }
         runCatching { container.cleanSharedFiles() }
+        // The old offline voice models (up to 150 MB) are no longer used: their storage is given back.
+        container.appScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { container.deleteOldVoiceModels() } }
         // Calls and headphone disconnects pause / silence Seema (no extra permission needed).
         // Volumes a killed process left lowered (ring at 10 %) or raised are given back first.
         runCatching { container.ringDucker.restoreAfterRestart() }
@@ -25,6 +28,6 @@ class RajuApp : Application() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         // BACKGROUND and above: the app has been in the background for a while.
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) runCatching { container.trimForBackground() }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) runCatching { container.cleanSharedFiles() }
     }
 }

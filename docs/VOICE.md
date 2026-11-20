@@ -11,16 +11,18 @@
 6. **Background work:** all synthesis and network work runs off the main thread. `TtsManager` lives in the app scope, so it survives screen rotation.
 
 ## Engine priority and fallback
-The engine selected in Settings → Voice is tried first, then the others (`providerOrder`):
+Seema has three streamed voices; nothing is stored on the phone (the offline Kokoro / Piper models and Android
+TextToSpeech were removed, and their old files are deleted on start). `voiceEngineOrder` decides the order:
 
-| Order (default) | Engine | Needs | Hindi | Notes |
-|---|---|---|---|---|
-| 1 | **Sarvam AI Bulbul v3** (cloud; v2 was retired by Sarvam) | Sarvam key + internet | Yes; also handles code-mixed Hinglish | Female voices: priya (default), ritu, kavya, neha, simran, ishita, shreya, pooja, roopa. A saved v2 voice (anushka etc.) falls back to priya. No pitch/loudness in v3 |
-| 2 | **Android TextToSpeech** (on-device) | Hindi voice data installed | Depends on the phone's TTS engine (Google/Samsung) | Always available as the last fallback |
+| Order (Automatic) | Engine | Needs | Notes |
+|---|---|---|---|
+| 1 | **Sarvam AI Bulbul** | Sarvam key + credits | Indian female voices, best Hindi pronunciation |
+| 2 | **Cartesia Sonic** | Cartesia key + credits | Sonic 3: speed ×0.914 (≈ -15 %) and emotion "affectionate" ("calm" late at night); older models: `__experimental_controls` speed -0.15, "positivity:high" |
+| 3 | **Edge Neural** (`EdgeNeuralTtsProvider`) | internet only | Microsoft read-aloud WebSocket: `hi-IN-SwaraNeural` (rate -6 %, pitch +2 Hz) for Hindi / Hinglish, `bn-IN-TanishaaNeural` (rate -5 %, pitch +2 Hz) for Bengali; MP3 decoded with MediaCodec. Unofficial endpoint: it can change |
 
-- **No key or no internet:** Sarvam is skipped silently.
-- **Sarvam request fails:** the same chunk is retried with Android TTS, and the reason is shown in chat ("Voice: Sarvam AI (cloud) failed (...) — using Android TTS").
-- **Adding an engine later:** a new engine only needs a `TtsProvider` implementation, a `TtsEngine` entry, and one line in `AppContainer`.
+A voice that fails (no credits, rate limit, error) is skipped for that sentence and the next one speaks at once;
+after two failures in a row it moves behind the others. Manual mode puts the chosen voice first. Without internet
+there is no voice (only the text in the chat).
 
 ## Offline neural Hindi TTS — evaluated, not integrated (yet)
 | Option | Finding | Decision |

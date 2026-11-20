@@ -1,6 +1,5 @@
 package com.raju.aiassistant.ui.settings
 
-import com.raju.aiassistant.data.tts.local.installedModel
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
@@ -9,7 +8,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.raju.aiassistant.data.tts.TtsDiagnostics
 import com.raju.aiassistant.domain.ai.ModelAdvice
 import androidx.lifecycle.ViewModel
 import com.raju.aiassistant.domain.model.CoreAppearance
@@ -23,9 +21,7 @@ import com.raju.aiassistant.core.security.maskSecret
 import com.raju.aiassistant.data.search.TavilyClient
 import com.raju.aiassistant.data.tts.CartesiaClient
 import com.raju.aiassistant.data.tts.DeepgramClient
-import com.raju.aiassistant.data.tts.ElevenLabsClient
 import com.raju.aiassistant.data.tts.SarvamTtsClient
-import com.raju.aiassistant.data.tts.VoiceOption
 import com.raju.aiassistant.di.AppContainer
 import com.raju.aiassistant.domain.ai.AiModel
 import com.raju.aiassistant.domain.ai.AiResult
@@ -72,7 +68,6 @@ data class Diagnostics(
     val appNotificationsAllowed: Boolean = false,
     val callRoleSupported: Boolean = false,
     val callRoleHeld: Boolean = false,
-    val tts: TtsDiagnostics? = null,
 )
 
 data class SettingsUiState(
@@ -87,17 +82,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     private val _models = MutableStateFlow<Map<ProviderId, List<AiModel>>>(emptyMap())
     val models: StateFlow<Map<ProviderId, List<AiModel>>> = _models.asStateFlow()
-    private val _voices = MutableStateFlow<List<VoiceOption>>(emptyList())
-    val voices: StateFlow<List<VoiceOption>> = _voices.asStateFlow()
     private val _voiceTest = MutableStateFlow<String?>(null)
     val voiceTest: StateFlow<String?> = _voiceTest.asStateFlow()
     private val _info = MutableStateFlow<String?>(null)
     val info: StateFlow<String?> = _info.asStateFlow()
     val activeTtsEngine: StateFlow<String?> = c.speaker.activeEngine
-    private val _elevenModels = MutableStateFlow(VoiceCatalog.elevenModels)
-    val elevenModels: StateFlow<List<VoiceModelOption>> = _elevenModels.asStateFlow()
-    private val _elevenVoices = MutableStateFlow<List<CloudVoice>>(emptyList())
-    val elevenVoices: StateFlow<List<CloudVoice>> = _elevenVoices.asStateFlow()
     private val _cartesiaVoices = MutableStateFlow<List<CloudVoice>>(VoiceCatalog.defaultCartesiaVoices)
     val cartesiaVoices: StateFlow<List<CloudVoice>> = _cartesiaVoices.asStateFlow()
     private val _previewStatus = MutableStateFlow<String?>(null)
@@ -129,7 +118,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                 appNotificationsAllowed = c.consentNotifier.canPost(),
                 callRoleSupported = roleSupported,
                 callRoleHeld = roleHeld,
-                tts = runCatching { c.androidTts.diagnostics() }.getOrNull(),
             )
         }
     }
@@ -151,7 +139,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             refreshMasks()
             if (c.secureKeyStore.get(SecretId.CARTESIA_API_KEY) != null) loadCartesia()
-            if (c.secureKeyStore.get(SecretId.ELEVENLABS_API_KEY) != null) loadElevenLabs()
         }
     }
 
@@ -165,7 +152,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             // A new key needs a new test: the old result must not keep saying "Connected".
             ProviderId.entries.firstOrNull { it.secret == id }?.let { repo.clearLastTest(it) }
             if (id == SecretId.CARTESIA_API_KEY) loadCartesia()
-            if (id == SecretId.ELEVENLABS_API_KEY) loadElevenLabs()
             if (ok) setStatus(id, "Saved and encrypted on this device. Tap Test connection to check it.", false)
             else setStatus(id, "Save failed. The key was not stored.", true)
         }
@@ -207,11 +193,11 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     is com.raju.aiassistant.domain.rail.RailResult.Failed -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.UNKNOWN, r.message)
                     com.raju.aiassistant.domain.rail.RailResult.NotConfigured -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "No key saved.")
                 }
-                id == SecretId.ELEVENLABS_API_KEY -> testElevenLabs(key)
                 id == SecretId.CARTESIA_API_KEY -> testCartesia(key)
                 id == SecretId.PC_SYNC_ENDPOINT || id == SecretId.PC_SYNC_TOKEN -> testPcSync()
-                id == SecretId.DEEPGRAM_API_KEY -> when (val r = DeepgramClient(c.http, key).synthesize("Hello", c.currentSettings.value.deepgramVoice)) {
-                    is AiResult.Success -> AiResult.Success("Connected — received ${r.value.size / 1024} KB of audio. Deepgram can now listen (Speech input) and speak English.")
+                // Half a second of silence: a real request that costs next to nothing and checks the key.
+                id == SecretId.DEEPGRAM_API_KEY -> when (val r = DeepgramClient(c.http, key).transcribe(com.raju.aiassistant.core.audio.pcm16ToWav(ByteArray(16_000), 16_000), "nova-3", "hi")) {
+                    is AiResult.Success -> AiResult.Success("Connected — Deepgram can now listen (Speech input).")
                     is AiResult.Failure -> r
                 }
                 else -> when (val r = SarvamTtsClient(c.http, key).synthesize("हाय बाबू! मैं सीमा हूँ।", c.currentSettings.value.sarvamSpeaker, "hi-IN", 1f)) {
@@ -272,21 +258,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     /** The PC companion's status, through the same guarded client sync uses (no token over plain http). */
     private suspend fun testPcSync(): AiResult<String> = c.pcSyncClient.checkStatus()
 
-    private suspend fun testElevenLabs(key: String): AiResult<String> {
-        val client = ElevenLabsClient(c.http, key)
-        loadElevenLists(client)
-        val s = c.currentSettings.value
-        val voice = s.elevenVoiceId ?: VoiceCatalog.bestDefault(_elevenVoices.value)?.also { repo.setElevenVoice(it.id, it.name) }?.id
-            ?: VoiceCatalog.ELEVEN_FALLBACK_VOICE
-        return when (val r = client.synthesize("हाय बाबू! मैं सीमा हूँ।", voice, s.elevenModel, 1f)) {
-            is AiResult.Success -> {
-                parseWav(r.value)?.let { c.audioPlayer.play(it) {} }
-                AiResult.Success("Connected — model ${s.elevenModel}, received ${r.value.size / 1024} KB.")
-            }
-            is AiResult.Failure -> r
-        }
-    }
-
     private suspend fun testCartesia(key: String): AiResult<String> {
         val client = CartesiaClient(c.http, key)
         loadCartesiaList(client)
@@ -326,18 +297,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    private suspend fun loadElevenLists(client: ElevenLabsClient) {
-        val models = client.listModels()
-        if (models is AiResult.Success) _elevenModels.value = VoiceCatalog.mergeElevenModels(models.value)
-        when (val voices = client.listVoices()) {
-            is AiResult.Success -> {
-                _elevenVoices.value = VoiceCatalog.sortVoices(voices.value)
-                _voiceListMessage.value = "ElevenLabs: ${voices.value.size} voices loaded (female voices first)."
-            }
-            is AiResult.Failure -> _voiceListMessage.value = "ElevenLabs voices could not be loaded: ${voices.message}"
-        }
-    }
-
     private suspend fun loadCartesiaList(client: CartesiaClient) {
         when (val voices = client.listVoices()) {
             is AiResult.Success -> {
@@ -351,15 +310,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    fun loadElevenLabs() = launch {
-        val key = c.secureKeyStore.get(SecretId.ELEVENLABS_API_KEY)
-        if (key == null) {
-            _voiceListMessage.value = "Save an ElevenLabs key first (card below)."
-            return@launch
-        }
-        loadElevenLists(ElevenLabsClient(c.http, key))
-    }
-
     fun loadCartesia() = launch {
         val key = c.secureKeyStore.get(SecretId.CARTESIA_API_KEY)
         if (key == null) {
@@ -371,8 +321,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun selectModel(provider: ProviderId, model: String) = launch { repo.setModel(provider, model) }
 
     // ------------------------------------------------------------ voice
-
-    fun loadVoices() = launch { _voices.value = c.androidTts.voices() }
 
     fun testVoice() {
         _voiceTest.value = "Playing test voice…"
@@ -394,22 +342,16 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setTtsEngine(v: TtsEngine) = launch { repo.setTtsEngine(v) }
     fun setActiveVoiceEngine(engine: TtsEngine) = launch {
         repo.setTtsEngine(engine)
-        // A voice picked by hand stays the user's choice. Automatic would put Kokoro first whenever it is
-        // fast, so picking Piper (or Cartesia, Sarvam…) was quietly undone. "Automatic" has its own button.
+        // A voice picked by hand stays the user's choice; "Automatic" has its own button.
         repo.setVoiceEngineAuto(false)
     }
     fun setSarvamSpeaker(v: String) = launch { repo.setSarvamSpeaker(v) }
-    fun setElevenModel(v: String) = launch { repo.setElevenModel(v) }
-    fun setElevenVoice(v: CloudVoice) = launch { repo.setElevenVoice(v.id, v.name) }
     fun setCartesiaModel(v: String) = launch { repo.setCartesiaModel(v) }
     fun setCartesiaVoice(v: CloudVoice) = launch { repo.setCartesiaVoice(v.id, v.name) }
     fun setCartesiaMood(v: String) = launch { repo.setCartesiaMood(v) }
-    fun setDeepgramVoice(v: String) = launch { repo.setDeepgramVoice(v) }
     fun setSttEngine(v: SttEngine) = launch { repo.setSttEngine(v) }
     fun setDeepgramSttModel(v: String) = launch { repo.setDeepgramSttModel(v) }
     fun setSpeechRate(v: Float) = launch { repo.setSpeechRate(v) }
-    fun setSpeechPitch(v: Float) = launch { repo.setSpeechPitch(v) }
-    fun setAndroidVoice(v: String?) = launch { repo.setAndroidVoice(v) }
     fun setSpeechLanguage(v: String) = launch { repo.setSpeechLanguage(v) }
     fun setAutoSpeak(v: Boolean) = launch { repo.setAutoSpeak(v) }
     fun setContinuous(v: Boolean) = launch { repo.setContinuous(v) }
@@ -441,7 +383,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     // ---------------------------------------------------------------- offline wake word "Hey Seema"
     val wakeModel = com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL
-    val wakeModelState: StateFlow<Map<String, com.raju.aiassistant.data.tts.local.ModelState>> = c.wakeModels.states
+    val wakeModelState: StateFlow<Map<String, com.raju.aiassistant.data.voice.ModelState>> = c.wakeModels.states
     fun downloadWakeModel() = c.wakeModels.download(wakeModel)
     fun cancelWakeModel() = c.wakeModels.cancel(wakeModel)
     fun deleteWakeModel() {
@@ -520,7 +462,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             "Activity state" to "${e.state.value.label} · voice mode ${s.voiceMode.label}" + if (e.handsFreeActive.value) " · mic session on" else " · mic off",
             "Home screen" to "Arc Reactor (no 3D avatar in this app)",
             "Active modules" to "AI ${s.defaultProvider.shortName} (per request) · voice ${s.ttsEngine.label}" +
-                " · listening ${s.sttEngine.label}" + if (c.androidTts.isConnected) " · Android TTS connected" else " · Android TTS released",
+                " · listening ${s.sttEngine.label}",
             "Background work" to "No foreground service, no wake locks, no polling. $work",
             "Recent tasks" to (recent?.ifBlank { null } ?: "none"),
         )
@@ -541,26 +483,10 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         _info.value = runCatching { c.memoryRepository.deleteAll() }.fold({ "All memories deleted." }, { "Could not delete memories." })
     }
 
-    // ---------------------------------------------------------------- offline voice engines
+    // ---------------------------------------------------------------- voices
 
-    val voiceModelStates: StateFlow<Map<String, com.raju.aiassistant.data.tts.local.ModelState>> = c.voiceModels.states
     val voiceEngineStats: StateFlow<Map<TtsEngine, com.raju.aiassistant.domain.voice.EngineStats>> = c.voiceEngineStats.stats
-    val voiceModelCatalog get() = c.voiceModels.catalog
-    val offlineRuntimeAvailable: Boolean get() = c.sherpaHost.nativeAvailable
-    private val _benchmark = MutableStateFlow<List<com.raju.aiassistant.data.tts.local.VoiceBenchmark>?>(null)
-    val benchmark: StateFlow<List<com.raju.aiassistant.data.tts.local.VoiceBenchmark>?> = _benchmark.asStateFlow()
-    private val _benchmarkRunning = MutableStateFlow(false)
-    val benchmarkRunning: StateFlow<Boolean> = _benchmarkRunning.asStateFlow()
-
-    fun onMeteredNetwork() = c.voiceModels.onMeteredNetwork()
     fun setVoiceEngineAuto(v: Boolean) = launch { repo.setVoiceEngineAuto(v) }
-    fun setKokoroSpeaker(v: Int) = launch { repo.setKokoroSpeaker(v) }
-    fun downloadVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = c.voiceModels.download(m)
-    fun cancelVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = c.voiceModels.cancel(m)
-    fun deleteVoiceModel(m: com.raju.aiassistant.domain.voice.LocalVoiceModel) = launch {
-        c.sherpaHost.release(m.engine)
-        c.voiceModels.delete(m)
-    }
 
     /** Speaks a sample with exactly this engine, so voices can be compared. */
     fun previewEngine(engine: TtsEngine) = launch {
@@ -570,18 +496,6 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         _voiceTest.value = if (r.completed) "Preview: ${r.engineLabel}" else "Preview failed: ${r.error ?: "no audio"}"
         kotlinx.coroutines.delay(4000)
         if (_previewStatus.value?.startsWith("▶️") == true) _previewStatus.value = null
-    }
-
-    fun runVoiceBenchmark() = launch {
-        if (_benchmarkRunning.value) return@launch
-        _benchmarkRunning.value = true
-        c.speaker.stop()
-        val installed = c.voiceModels.catalog.filter { c.voiceModels.installedModel(it.engine)?.id == it.id }
-        val s = c.currentSettings.value
-        _benchmark.value = com.raju.aiassistant.data.tts.local.benchmarkOfflineVoices(c.appContext, c.sherpaHost, installed) { m ->
-            if (m.engine == TtsEngine.KOKORO) s.kokoroSpeaker else m.speakers.first().id
-        }
-        _benchmarkRunning.value = false
     }
 
     fun resetVoiceStats() = c.voiceEngineStats.reset()

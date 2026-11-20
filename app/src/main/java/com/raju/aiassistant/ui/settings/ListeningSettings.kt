@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.raju.aiassistant.data.tts.local.ModelState
+import com.raju.aiassistant.data.voice.ModelState
 import com.raju.aiassistant.domain.model.UserSettings
 import com.raju.aiassistant.domain.model.VoiceMode
 import com.raju.aiassistant.ui.components.HudPanel

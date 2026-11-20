@@ -144,7 +144,7 @@ fun httpFailure(code: Int, body: String): AiResult.Failure {
     val detail = extractErrorMessage(body)
     val lower = detail.lowercase()
     val kind = when {
-        // ElevenLabs reports used-up credits as 401 "quota_exceeded"; that is not a bad key.
+        // Some voice APIs report used-up credits as 401 "quota_exceeded"; that is not a bad key.
         code in setOf(401, 402, 429) && ("quota" in lower || "credits" in lower || "insufficient" in lower) -> FailureKind.QUOTA_EXCEEDED
         code == 401 || code == 403 -> FailureKind.INVALID_KEY
         code == 400 && ("api key" in lower || "api_key" in lower || "incorrect key" in lower) -> FailureKind.INVALID_KEY
@@ -169,7 +169,7 @@ fun extractErrorMessage(body: String): String {
     return when {
         error is JsonPrimitive -> error.contentOrNull.orEmpty()
         error is JsonObject -> error.text("message").orEmpty()
-        detail is JsonObject -> listOfNotNull(detail.text("status"), detail.text("message")).joinToString(": ") // ElevenLabs
+        detail is JsonObject -> listOfNotNull(detail.text("status"), detail.text("message")).joinToString(": ") // a provider's {"detail":{"status","message"}}
         else -> root.text("message") ?: (detail as? JsonPrimitive)?.contentOrNull ?: root.text("err_msg").orEmpty() // Deepgram: err_msg
     }
 }

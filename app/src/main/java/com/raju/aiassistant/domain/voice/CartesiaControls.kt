@@ -4,17 +4,18 @@ package com.raju.aiassistant.domain.voice
  * How Cartesia is asked to sound soft, warm, unhurried and smiling — never fast or newsreader-flat.
  *
  * Sonic 3 and newer read `generation_config` (a speed number 0.6–1.5 and one emotion word such as
- * "affectionate"). Older Sonic models read `voice.__experimental_controls` (speed "slow" and emotion tags
- * such as "positivity:high"; Cartesia's tag set is anger / positivity / surprise / sadness / curiosity, so
- * there is no "affection" tag to send there). Each model gets only the controls it understands.
+ * "affectionate"). Older Sonic models read `voice.__experimental_controls` (a speed from -1 to 1, -0.15 for her
+ * warm pace, and emotion tags such as "positivity:high"; Cartesia's tag set is anger / positivity / surprise /
+ * sadness / curiosity — an "affection" tag does not exist there and would make the request fail, so the
+ * affection goes through Sonic 3's "affectionate"). Each model gets only the controls it understands.
  */
 sealed interface CartesiaControls {
     data class Generation(val speed: Double, val emotion: String?) : CartesiaControls
-    data class Experimental(val speed: String, val emotions: List<String>) : CartesiaControls
+    data class Experimental(val speed: Double, val emotions: List<String>) : CartesiaControls
 
     companion object {
-        /** Her voice a little slower than the reading speed: unhurried, about -15 % with the warm mood. */
-        const val SOFT_SPEED = 0.92f
+        /** Her voice a little slower than the reading speed: unhurried, exactly -15 % with the warm mood. */
+        const val SOFT_SPEED = 0.914f
         private const val MIN_SPEED = 0.6f
         private const val MAX_SPEED = 1.5f
 
@@ -42,7 +43,8 @@ sealed interface CartesiaControls {
                 mood == VoiceMood.CONTROLLED_UPSET -> listOf("sadness:low")
                 else -> listOf("positivity:high")
             }
-            return Experimental(if (speed < 0.9f) "slow" else "normal", tags)
+            // The same pace on the older scale (0 = normal): -0.15 for the warm mood.
+            return Experimental(Math.round((speed - 1f) * 100) / 100.0, tags)
         }
     }
 }

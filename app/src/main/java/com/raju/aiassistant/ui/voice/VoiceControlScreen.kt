@@ -233,12 +233,10 @@ fun VoiceControlScreen(
                 },
             )
             val activeVoiceName = when {
-                settings.voiceEngineAuto -> "Auto\n(Offline)"
+                settings.voiceEngineAuto -> "Voice\n(Auto)"
                 settings.ttsEngine == TtsEngine.CARTESIA -> "Voice\n(${settings.cartesiaVoiceName ?: "Cartesia"})"
                 settings.ttsEngine == TtsEngine.SARVAM -> "Voice\n(${settings.sarvamSpeaker.replaceFirstChar { it.uppercase() }})"
-                settings.ttsEngine == TtsEngine.ELEVENLABS -> "Voice\n(ElevenLabs)"
-                settings.ttsEngine == TtsEngine.ANDROID -> "Voice\n(Android)"
-                else -> "Voice\n(Offline)"
+                else -> "Voice\n(Edge Neural)"
             }
             VoiceChip(
                 label = activeVoiceName,

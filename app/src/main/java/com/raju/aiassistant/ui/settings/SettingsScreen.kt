@@ -1514,9 +1514,18 @@ fun VoiceSpeechScreen(
         }
 
         // Engine Cards List Matching Reference Image Panel 4
+        val isEdgeActive = s.ttsEngine == TtsEngine.EDGE && !s.voiceEngineAuto
+        VoiceEngineCard(
+            engineName = "Edge Neural (Unlimited Free)",
+            subtitle = "Swara (हिंदी) • Tanishaa (বাংলা) • No key, never runs out",
+            isActive = isEdgeActive,
+            iconTint = Color(0xFF40C4FF),
+            onClick = { viewModel.setActiveVoiceEngine(TtsEngine.EDGE) }
+        )
+
         val isCartesiaActive = s.ttsEngine == TtsEngine.CARTESIA && !s.voiceEngineAuto
         VoiceEngineCard(
-            engineName = "Voice Engine One: Cartesia Sonic",
+            engineName = "Cartesia",
             subtitle = "High Quality • Moods & Companion (Meera / Ananya)",
             isActive = isCartesiaActive,
             iconTint = Color(0xFF00E5FF),
@@ -1525,20 +1534,11 @@ fun VoiceSpeechScreen(
 
         val isSarvamActive = s.ttsEngine == TtsEngine.SARVAM && !s.voiceEngineAuto
         VoiceEngineCard(
-            engineName = "Voice Engine Two: Sarvam AI Bulbul v4",
+            engineName = "Sarvam AI",
             subtitle = "Indian Hindi • Companion (Roopa / Suman)",
             isActive = isSarvamActive,
             iconTint = Color(0xFFFF4081),
             onClick = { viewModel.setActiveVoiceEngine(TtsEngine.SARVAM) }
-        )
-
-        val isAndroidActive = s.ttsEngine == TtsEngine.ANDROID && !s.voiceEngineAuto
-        VoiceEngineCard(
-            engineName = "Voice Engine Three: Android TTS",
-            subtitle = "Offline System Speech • Always Available",
-            isActive = isAndroidActive,
-            iconTint = Color(0xFF40C4FF),
-            onClick = { viewModel.setActiveVoiceEngine(TtsEngine.ANDROID) }
         )
 
         // Active Engine API Key & Live Connection Test Card
@@ -1828,7 +1828,7 @@ fun VoiceFineTuneScreen(
             }
         }
 
-        // Sliders Section (Speech Speed & Pitch)
+        // Speech speed
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1863,30 +1863,6 @@ fun VoiceFineTuneScreen(
                     )
                 }
 
-                // Pitch Slider
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Pitch (टोन)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.5.sp)
-                        }
-                        Text(
-                            "${String.format("%.1f", s.speechPitch)}x",
-                            color = Color(0xFF00E5FF),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.5.sp
-                        )
-                    }
-                    Slider(
-                        value = s.speechPitch,
-                        onValueChange = viewModel::setSpeechPitch,
-                        valueRange = 0.5f..1.5f
-                    )
-                }
             }
         }
 

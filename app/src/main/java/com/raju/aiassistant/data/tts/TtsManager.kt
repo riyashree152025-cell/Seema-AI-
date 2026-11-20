@@ -27,7 +27,6 @@ class TtsManager(
     private val scope: CoroutineScope,
     private val pipeline: SpeechPipeline,
     private val providers: List<TtsProvider>,
-    private val androidTts: AndroidTts,
     private val settings: StateFlow<UserSettings>,
     /** The conversation's language (Hindi or Bengali), used when "Auto" is chosen. */
     private val conversationLanguage: StateFlow<SeemaLanguage>,
@@ -48,10 +47,6 @@ class TtsManager(
     private val _mood = MutableStateFlow<com.raju.aiassistant.domain.voice.VoiceMood?>(null)
     override val mood: StateFlow<com.raju.aiassistant.domain.voice.VoiceMood?> = _mood.asStateFlow()
     @Volatile private var nextMood: com.raju.aiassistant.domain.voice.VoiceMood? = null
-
-    /** The pitch of the current mood, read by the phone's own voice while it synthesises. */
-    @Volatile var activePitch: Float = 1f
-        private set
 
     override fun setMood(mood: com.raju.aiassistant.domain.voice.VoiceMood?) {
         nextMood = mood
@@ -87,7 +82,6 @@ class TtsManager(
                         ?: com.raju.aiassistant.domain.voice.VoiceMood.defaultFor(java.time.LocalTime.now().hour)
                     nextMood = null
                     _mood.value = mood
-                    activePitch = mood.pitch
                     result = pipeline.speak(
                         text = parsed.text,
                         providers = ordered,
@@ -104,7 +98,6 @@ class TtsManager(
                     _playing.value = false
                     _level.value = 0f
                     _mood.value = null
-                    activePitch = 1f
                 }
             }
         }
@@ -135,7 +128,6 @@ class TtsManager(
     private fun halt() {
         current?.cancel()
         current = null
-        androidTts.stop()
         _playing.value = false
         _level.value = 0f
     }

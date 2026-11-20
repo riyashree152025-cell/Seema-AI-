@@ -13,7 +13,6 @@ import com.k2fsa.sherpa.onnx.KeywordSpotter
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
-import com.raju.aiassistant.data.tts.local.VoiceModelManager
 import com.raju.aiassistant.domain.assistant.WakeListener
 import com.raju.aiassistant.domain.voice.WakeWordModel
 import kotlinx.coroutines.CoroutineScope

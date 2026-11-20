@@ -1465,6 +1465,19 @@ class AssistantEngine(
                 parsedRaw = parseReply(b.text)
             }
         }
+        // Layer 2: the quick AI gave up ("समझ नहीं आया", "पता नहीं") — Gemini answers it properly instead.
+        if (spokenHead == null && answeredBy != ProviderId.GEMINI && parsedRaw.actions.isEmpty() && SmartEscalation.isUnsure(parsedRaw.text)) {
+            askGemini(system + SmartEscalation.ESCALATION_NOTE, turns)?.let { g ->
+                val again = parseReply(g.text)
+                if (again.text.isNotBlank() && !SmartEscalation.isUnsure(again.text)) {
+                    note("↪ ${answeredBy.shortName} was not sure — answered by Gemini.")
+                    answeredBy = g.provider
+                    answeredModel = g.model
+                    raw = g.text
+                    parsedRaw = again
+                }
+            }
+        }
         val repetition = collapseRepetition(parsedRaw.text)
         val parsed = parsedRaw.copy(text = repetition.text)
         if (parsed.text.isBlank() && parsed.actions.isEmpty()) {
@@ -1567,6 +1580,27 @@ class AssistantEngine(
             }
         }
         return null
+    }
+
+    /**
+     * One careful answer from Google AI Studio (Gemini), for a question the quick layer could not answer; null when
+     * no Gemini key is saved, Gemini is resting after a limit, or it does not answer in time.
+     */
+    private suspend fun askGemini(system: String, turns: List<Turn>): FallbackReply? {
+        val id = ProviderId.GEMINI
+        if ((providerCooldown[id] ?: 0L) > clock()) return null
+        val key = keyFor(id) ?: return null
+        val p = providerFor(id, key)
+        val model = (resolveModel(id, key, p) as? AiResult.Success)?.value ?: return null
+        trace("escalation: gemini")
+        val r = withTimeoutOrNull(FALLBACK_TIMEOUT_MS) { p.chat(model, system, turns) } ?: return null
+        return when (r) {
+            is AiResult.Success -> r.value.takeIf { it.isNotBlank() }?.let { FallbackReply(id, model, it) }
+            is AiResult.Failure -> {
+                providerCooldown[id] = clock() + cooldownMsFor(r.kind, r.message)
+                null
+            }
+        }
     }
 
     /** Models a provider said are gone (HTTP 404); never asked for again in this run. */
@@ -2363,7 +2397,7 @@ class AssistantEngine(
         when {
             // Nothing (or not all) was heard: always tell the user, never fail silently.
             !result.completed && result.error != null -> note("🔇 Voice failed: ${result.error}")
-            // A fallback reason (e.g. "ElevenLabs failed … using Android") is shown once, not under every reply.
+            // A fallback reason (e.g. "Sarvam failed … using Edge Neural") is shown once, not under every reply.
             result.error != null && result.error != lastVoiceNote -> note("Voice: ${result.error}")
         }
         lastVoiceNote = result.error
@@ -3054,6 +3088,22 @@ class AssistantEngine(
         val events = com.raju.aiassistant.domain.sms.moneyEvents(sms, notes)
         // Privacy: only counts in the log.
         trace("money question: ${sms.size} SMS, ${notes.size} notes, ${events.size} payments")
+        // Bank messages in a format the phone does not know yet: Gemini reads them (redacted) instead of "nothing found".
+        if (events.isEmpty()) {
+            val unknown = SmartEscalation.bankLike(sms)
+            val question = lastUserText
+            if (unknown.isNotEmpty() && question != null) {
+                trace("money question: ${unknown.size} unread bank SMS → gemini")
+                val prompt = SmartEscalation.moneyPrompt(question, unknown) { ms ->
+                    java.time.Instant.ofEpochMilli(ms).atZone(z).toLocalDateTime().toString().replace('T', ' ').take(16)
+                }
+                val system = buildSystemPrompt(emptyList(), nowDescription(), PromptContext(voiceTurn = speak, language = lang()))
+                askGemini(system, listOf(Turn(TurnRole.USER, prompt)))?.let { g ->
+                    val text = parseReply(g.text).text
+                    if (text.isNotBlank()) return informational(action, text, speak)
+                }
+            }
+        }
         val text = when (val a = action.ask) {
             is com.raju.aiassistant.domain.sms.MoneyAsk.Amounts -> com.raju.aiassistant.domain.sms.spokenMoneyAmounts(a, events, today, lang())
             is com.raju.aiassistant.domain.sms.MoneyAsk.Who -> com.raju.aiassistant.domain.sms.spokenMoneyWho(a, events, today, z, lang())

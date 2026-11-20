@@ -53,13 +53,8 @@ class SpeechPipelineTest {
 
     @Test
     fun selectedEngineIsTriedFirstThenTheRest() {
-        assertEquals(
-            listOf(TtsEngine.ELEVENLABS, TtsEngine.SARVAM, TtsEngine.CARTESIA, TtsEngine.DEEPGRAM, TtsEngine.PIPER, TtsEngine.KOKORO, TtsEngine.ANDROID),
-            providerOrder(TtsEngine.ELEVENLABS),
-        )
-        assertEquals(TtsEngine.ANDROID, providerOrder(TtsEngine.SARVAM).last()) // offline voice is always the last fallback
-        assertEquals(TtsEngine.SARVAM, providerOrder(TtsEngine.SARVAM).first())
-        assertEquals(TtsEngine.entries.size, providerOrder(TtsEngine.SARVAM).toSet().size)
+        assertEquals(listOf(TtsEngine.CARTESIA, TtsEngine.SARVAM, TtsEngine.EDGE), providerOrder(TtsEngine.CARTESIA))
+        assertEquals(listOf(TtsEngine.EDGE, TtsEngine.SARVAM, TtsEngine.CARTESIA), providerOrder(TtsEngine.EDGE))
     }
 
     @Test
@@ -75,8 +70,8 @@ class SpeechPipelineTest {
     fun aVoiceThatCannotSpeakBengaliIsPassedOverWithoutAFailedTry() = runTest {
         val sink = FakeSink()
         val kokoro = object : TtsProvider {
-            override val engine = TtsEngine.KOKORO
-            override val label = "Kokoro"
+            override val engine = TtsEngine.CARTESIA
+            override val label = "Cartesia"
             var tries = 0
             override suspend fun isAvailable() = true
             override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> { tries++; return AiResult.Failure(FailureKind.UNKNOWN, "no Bengali offline voice yet") }
@@ -93,10 +88,10 @@ class SpeechPipelineTest {
     @Test
     fun unavailableProviderIsSkippedSilently() = runTest {
         val sink = FakeSink()
-        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(text, listOf(FakeProvider(TtsEngine.SARVAM, available = false), FakeProvider(TtsEngine.ANDROID)), "hi-IN", 1f)
+        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(text, listOf(FakeProvider(TtsEngine.SARVAM, available = false), FakeProvider(TtsEngine.EDGE)), "hi-IN", 1f)
         assertTrue(r.completed)
         assertEquals(null, r.error) // no key/offline is expected, not an error
-        assertTrue(sink.played.all { it.startsWith("ANDROID:") })
+        assertTrue(sink.played.all { it.startsWith("EDGE:") })
     }
 
     @Test
@@ -106,11 +101,11 @@ class SpeechPipelineTest {
         assertTrue(chunks.size >= 3)
         val sink = FakeSink()
         val sarvam = FakeProvider(TtsEngine.SARVAM, failAfter = 1)
-        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(long, listOf(sarvam, FakeProvider(TtsEngine.ANDROID)), "hi-IN", 1f)
+        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(long, listOf(sarvam, FakeProvider(TtsEngine.EDGE)), "hi-IN", 1f)
         assertTrue(r.completed)
         assertEquals(chunks.size, sink.played.size) // nothing skipped
         assertEquals("SARVAM:${chunks[0]}", sink.played[0])
-        assertEquals("ANDROID:${chunks[1]}", sink.played[1]) // failed chunk retried on the fallback
+        assertEquals("EDGE:${chunks[1]}", sink.played[1]) // failed chunk retried on the fallback
         assertEquals(2, sarvam.calls.size) // dropped after its failure
         assertNotNull(r.error)
         assertTrue(r.error!!.contains("SARVAM failed"))
@@ -119,7 +114,7 @@ class SpeechPipelineTest {
     @Test
     fun allProvidersFailingReturnsError() = runTest {
         val sink = FakeSink()
-        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(text, listOf(FakeProvider(TtsEngine.SARVAM, failAfter = 0), FakeProvider(TtsEngine.ANDROID, failAfter = 0)), "hi-IN", 1f)
+        val r = SpeechPipeline(sink, silent = NEVER_SILENT).speak(text, listOf(FakeProvider(TtsEngine.SARVAM, failAfter = 0), FakeProvider(TtsEngine.EDGE, failAfter = 0)), "hi-IN", 1f)
         assertFalse(r.completed)
         assertTrue(sink.played.isEmpty())
         assertEquals(0, sink.focus)
@@ -208,7 +203,7 @@ class SpeechPipelineTest {
             override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> = AiResult.Success(PcmAudio(16000, 1, ByteArray(320)))
         }
         val loud = object : TtsProvider {
-            override val engine = TtsEngine.ANDROID
+            override val engine = TtsEngine.EDGE
             override val label = "Loud"
             override suspend fun isAvailable() = true
             override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> =
@@ -229,10 +224,10 @@ class SpeechPipelineTest {
             override suspend fun isAvailable() = true
             override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> = kotlinx.coroutines.awaitCancellation()
         }
-        val r = SpeechPipeline(sink, NEVER_SILENT).speak("Namaste.", listOf(hanging, FakeProvider(TtsEngine.ANDROID)), "hi-IN", 1f)
+        val r = SpeechPipeline(sink, NEVER_SILENT).speak("Namaste.", listOf(hanging, FakeProvider(TtsEngine.EDGE)), "hi-IN", 1f)
         assertTrue(r.completed)
-        assertEquals("ANDROID", r.engineLabel)
-        assertEquals(listOf("ANDROID:Namaste."), sink.played)
+        assertEquals("EDGE", r.engineLabel)
+        assertEquals(listOf("EDGE:Namaste."), sink.played)
         assertTrue(testScheduler.currentTime in synthTimeoutMs("Namaste.")..synthTimeoutMs("Namaste.") + 1_000)
     }
 

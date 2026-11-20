@@ -10,10 +10,8 @@ data class CloudVoice(
     val detail: String = "",
     val female: Boolean = false,
     val hindi: Boolean = false,
-    /** Voice Library voice: works through the API only on a paid plan. */
-    val paidOnly: Boolean = false,
 ) {
-    val label: String get() = name + (if (hindi) " · Hindi" else "") + (if (paidOnly) " · paid plan" else "") + (if (detail.isNotBlank()) " — $detail" else "")
+    val label: String get() = name + (if (hindi) " · Hindi" else "") + (if (detail.isNotBlank()) " — $detail" else "")
 }
 
 /** Sarvam AI Indian speaker choice with description. */
@@ -30,34 +28,6 @@ data class SttModelOption(val id: String, val title: String, val note: String, v
  * a Hindi/Hinglish assistant that speaks short replies sentence by sentence, often on a free plan.
  */
 object VoiceCatalog {
-    // ---------------------------------------------------------------- ElevenLabs
-    const val ELEVEN_DEFAULT_MODEL = "eleven_multilingual_v2"
-    /** "Sarah", one of ElevenLabs' default (premade) female voices; used until the user picks one. */
-    const val ELEVEN_FALLBACK_VOICE = "EXAVITQu4vr4xnSDxMaL"
-
-    val elevenModels = listOf(
-        VoiceModelOption("eleven_multilingual_v2", "Multilingual v2", "सबसे प्राकृतिक और मीठी Hindi आवाज़ · 1 credit/अक्षर", recommended = true),
-        VoiceModelOption("eleven_flash_v2_5", "Flash v2.5", "सबसे तेज़, आधे credits · free plan पर ज़्यादा देर चलेगा", recommended = true),
-        VoiceModelOption("eleven_v3_conversational", "v3 Conversational", "भावपूर्ण बातचीत, तेज़ · आधे credits"),
-        VoiceModelOption("eleven_turbo_v2_5", "Turbo v2.5", "तेज़, आधे credits"),
-        VoiceModelOption("eleven_v3", "v3", "सबसे भावपूर्ण, पर धीमा · 1 credit/अक्षर"),
-        VoiceModelOption("eleven_v4_turbo", "v4 Turbo", "नया, बहुत तेज़ · plan के हिसाब से"),
-        VoiceModelOption("eleven_v4", "v4", "नया · plan के हिसाब से"),
-    )
-
-    /**
-     * Known models first (in recommended order), then any other text-to-speech model the account offers.
-     * [available] is (id, name) from the API; when it is empty (not loaded yet) the known list is shown.
-     */
-    fun mergeElevenModels(available: List<Pair<String, String>>): List<VoiceModelOption> {
-        if (available.isEmpty()) return elevenModels
-        val ids = available.map { it.first }.toSet()
-        val known = elevenModels.filter { it.id in ids }
-        val extra = available.filter { (id, _) -> elevenModels.none { it.id == id } }
-            .map { (id, name) -> VoiceModelOption(id, name.ifBlank { id }, "आपके account में उपलब्ध") }
-        return known + extra
-    }
-
     // ---------------------------------------------------------------- Cartesia
     const val CARTESIA_DEFAULT_MODEL = "sonic-3"
     val cartesiaModels = listOf(
@@ -128,22 +98,7 @@ object VoiceCatalog {
         SarvamSpeakerOption("pooja", "Pooja (पूजा)", "घरेलू और परिचित लहज़ा"),
     )
 
-    // ---------------------------------------------------------------- Deepgram
-    const val DEEPGRAM_DEFAULT_VOICE = "aura-2-thalia-en"
-    /** Deepgram Aura-2 female voices. Aura has no Hindi voice, so these read English only. */
-    val deepgramVoices = listOf(
-        VoiceModelOption("aura-2-thalia-en", "Thalia", "साफ़, गर्मजोशी भरी", recommended = true),
-        VoiceModelOption("aura-2-andromeda-en", "Andromeda", "नरम, सहज", recommended = true),
-        VoiceModelOption("aura-2-helena-en", "Helena", "देखभाल करने वाली, मधुर"),
-        VoiceModelOption("aura-2-asteria-en", "Asteria", "स्पष्ट, भरोसेमंद"),
-        VoiceModelOption("aura-2-luna-en", "Luna", "हल्की, दोस्ताना"),
-        VoiceModelOption("aura-2-cora-en", "Cora", "शांत"),
-        VoiceModelOption("aura-2-iris-en", "Iris", "खुशमिज़ाज"),
-        VoiceModelOption("aura-2-aurora-en", "Aurora", "ऊर्जावान"),
-        VoiceModelOption("aura-2-delia-en", "Delia", "मीठी, बातचीत वाली"),
-        VoiceModelOption("aura-2-harmonia-en", "Harmonia", "सौम्य"),
-    )
-
+    // ---------------------------------------------------------------- Deepgram (listening)
     const val DEEPGRAM_DEFAULT_STT = "nova-3:hi"
     val deepgramSttModels = listOf(
         // Hindi first: on the phone "multi" wrote Hindi speech as Spanish or in Telugu letters.
@@ -155,20 +110,15 @@ object VoiceCatalog {
 
     fun sttOption(id: String): SttModelOption = deepgramSttModels.firstOrNull { it.id == id } ?: deepgramSttModels.first()
 
-    /** Female voices first, Hindi-capable ones before others, voices that work on every plan before paid-only ones, then by name. */
+    /** Female voices first, Hindi-capable ones before others, then by name. */
     fun sortVoices(voices: List<CloudVoice>): List<CloudVoice> =
         voices.sortedWith(
             compareByDescending<CloudVoice> { it.female && it.hindi }
                 .thenByDescending { it.female }
-                .thenBy { it.paidOnly }
                 .thenByDescending { it.hindi }
                 .thenBy { it.name.lowercase() },
         )
 
     /** The voice to use when the user has not picked one yet: one that works on every plan. */
-    fun bestDefault(voices: List<CloudVoice>): CloudVoice? = sortVoices(voices.filter { !it.paidOnly }).firstOrNull()
-
-    /** ElevenLabs refuses Voice Library voices on the free plan with HTTP 402 "payment_required". */
-    fun isPaidVoiceError(message: String): Boolean =
-        message.contains("402") || message.contains("payment_required", ignoreCase = true) || message.contains("library voices", ignoreCase = true)
+    fun bestDefault(voices: List<CloudVoice>): CloudVoice? = sortVoices(voices).firstOrNull()
 }

@@ -1,6 +1,5 @@
 package com.raju.aiassistant.di
 
-import com.raju.aiassistant.data.tts.local.installedEngines
 import android.content.Context
 import com.raju.aiassistant.core.audio.AudioPlayer
 import com.raju.aiassistant.core.audio.ConversationAudio
@@ -16,11 +15,8 @@ import com.raju.aiassistant.data.repository.MemoryRepository
 import com.raju.aiassistant.data.repository.BusinessRepository
 import com.raju.aiassistant.data.search.TavilyClient
 import com.raju.aiassistant.data.tools.AndroidDeviceTools
-import com.raju.aiassistant.data.tts.AndroidTts
-import com.raju.aiassistant.data.tts.AndroidTtsProvider
 import com.raju.aiassistant.data.tts.CartesiaTtsProvider
-import com.raju.aiassistant.data.tts.DeepgramTtsProvider
-import com.raju.aiassistant.data.tts.ElevenLabsTtsProvider
+import com.raju.aiassistant.data.tts.EdgeNeuralTtsProvider
 import com.raju.aiassistant.data.tts.SarvamTtsProvider
 import com.raju.aiassistant.data.tts.TtsManager
 import com.raju.aiassistant.data.voice.DeepgramVoiceInput
@@ -133,16 +129,14 @@ class AppContainer(context: Context) {
         if (choice == com.raju.aiassistant.domain.model.CoreAppearance.AUTO) autoCoreAppearance else choice
 
     /**
-     * The app went to the background for a while (Android trims memory): free what is cheap to
-     * recreate. The TTS engine binding is rebuilt on the next reply; chats and memories are untouched.
+     * The offline voice models of older versions (Piper 21 MB, Kokoro 132 MB) are no longer used: their files are
+     * deleted once, so the phone gets the storage back. The "Hey Seema" model next to them is kept.
      */
-    fun trimForBackground() {
-        if (!engine.voiceSession.value) {
-            androidTts.release()
-            // The offline voice models hold 50–200 MB of native memory: free it; the next reply reloads it.
-            appScope.launch { sherpaHost.release() }
+    fun deleteOldVoiceModels() {
+        val voices = java.io.File(appContext.filesDir, "voices")
+        listOf("piper-hi-priyamvada-int8", "kokoro-multi-lang-v1_0-int8").forEach { id ->
+            java.io.File(voices, id).takeIf { it.exists() }?.let { runCatching { it.deleteRecursively() } }
         }
-        cleanSharedFiles()
     }
 
     /** Files Seema created for sharing (code, notes) are deleted after a day; nothing else is touched. */
@@ -154,19 +148,16 @@ class AppContainer(context: Context) {
 
     val providerFactory by lazy { AiProviderFactory(com.raju.aiassistant.data.ai.aiHttpClient(http)) }
     val pcSyncClient by lazy { com.raju.aiassistant.data.sync.PcSyncClient(http, secureKeyStore) }
-    val androidTts by lazy { AndroidTts(appContext) }
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }
     val audioPlayer by lazy { AudioPlayer(appContext) { conversationAudio.active } }
-    /** Offline voices: model downloads, the sherpa-onnx runtime and measured engine speed. */
-    val voiceModels by lazy { com.raju.aiassistant.data.tts.local.voiceModels(appContext, http, appScope) }
-    /** The offline "Hey Seema" model download (same downloader as the offline voices). */
+    /** The offline "Hey Seema" model download. */
     val wakeModels by lazy {
-        com.raju.aiassistant.data.tts.local.VoiceModelManager(appContext, http, appScope, listOf(com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL))
+        com.raju.aiassistant.data.voice.VoiceModelManager(appContext, http, appScope, listOf(com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL))
     }
     val kwsWakeListener by lazy {
         com.raju.aiassistant.data.voice.KwsWakeListener(
-            appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { sherpaHost.nativeAvailable },
+            appContext, appScope, wakeModels, com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL, { com.raju.aiassistant.data.voice.SherpaNative.available },
             hub = micHub,
             useHub = { currentSettings.value.micHub },
             sensitivity = { com.raju.aiassistant.domain.voice.WakeSensitivity.from(currentSettings.value.wakeSensitivity) },
@@ -239,32 +230,24 @@ class AppContainer(context: Context) {
             onBecomingNoisy = { engine.interrupt() },
         )
     }
-    val sherpaHost by lazy { com.raju.aiassistant.data.tts.local.SherpaTtsHost(voiceModels) }
-    val voiceEngineStats by lazy { com.raju.aiassistant.data.tts.local.VoiceEngineStatsStore(appContext) }
+    val voiceEngineStats by lazy { com.raju.aiassistant.data.tts.VoiceEngineStatsStore(appContext) }
 
-    /** The voice engines that will be tried, in order (Automatic / Manual selection, installed offline voices, measured speed). */
-    fun voiceEnginesFor(s: com.raju.aiassistant.domain.model.UserSettings): List<TtsEngine> {
-        val installed = if (sherpaHost.nativeAvailable) voiceModels.installedEngines() else emptySet()
-        return com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, installed, voiceEngineStats.stats.value)
-    }
+    /** The voices that will be tried, in order: Sarvam → Cartesia → Edge Neural (Automatic), or the chosen one first. */
+    fun voiceEnginesFor(s: com.raju.aiassistant.domain.model.UserSettings): List<TtsEngine> =
+        com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, voiceEngineStats.stats.value)
 
     val speaker: TtsManager by lazy {
         val providers = listOf(
-            com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.KOKORO, sherpaHost, voiceModels) { currentSettings.value },
-            com.raju.aiassistant.data.tts.local.LocalTtsProvider(TtsEngine.PIPER, sherpaHost, voiceModels) { currentSettings.value },
             SarvamTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value.sarvamSpeaker }),
-            ElevenLabsTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }) { v ->
-                settingsRepository.setElevenVoice(v.id, v.name)
-            },
             CartesiaTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }, mood = { speaker.mood.value }) { v ->
                 settingsRepository.setCartesiaVoice(v.id, v.name)
             },
-            DeepgramTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }),
-            AndroidTtsProvider(androidTts, { currentSettings.value.androidVoice }) { currentSettings.value.speechPitch * speaker.activePitch },
+            // Free and always there while online: takes over the moment Sarvam or Cartesia fails or runs out.
+            EdgeNeuralTtsProvider(http, { online.value }) { speaker.mood.value },
         )
         TtsManager(
-            appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.local.MeasuredTtsProvider(it, voiceEngineStats) },
-            androidTts, currentSettings, conversationLanguage,
+            appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.MeasuredTtsProvider(it, voiceEngineStats) },
+            currentSettings, conversationLanguage,
         ) { s -> voiceEnginesFor(s) }
     }
     val voiceInput by lazy { VoiceInputManager(appContext) { android.util.Log.i("SeemaVoice", it) } }

@@ -3,7 +3,7 @@ package com.raju.aiassistant.domain.voice
 import com.raju.aiassistant.core.audio.PcmAudio
 
 /**
- * Her cloud voices (Sarvam, Cartesia, ElevenLabs) take their pauses from punctuation. Before a sentence goes out:
+ * Her voices (Sarvam, Cartesia, Edge Neural) take their pauses from punctuation. Before a sentence goes out:
  * markdown, bullets and emoji are dropped, help-desk lines ("मैं आपकी कैसे सहायता कर सकती हूँ", "As an AI…")
  * are removed, a comma or "…" becomes a real, gentle pause, a soft breath ("…") comes before a tender word
  * ("अच्छा… जान, …"), and every sentence ends on a full stop (a finished tone, not a cut-off). A short quiet tail

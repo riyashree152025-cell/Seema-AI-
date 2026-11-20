@@ -1,7 +1,6 @@
 package com.raju.aiassistant.data.voice
 
 import android.util.Log
-import com.raju.aiassistant.data.tts.local.ModelState
 import com.raju.aiassistant.di.AppContainer
 import com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +17,7 @@ import java.io.File
  */
 suspend fun runWakeWordSelfTest(c: AppContainer) {
     fun log(msg: String) { Log.i("SeemaWakeTest", "WAKE_TEST $msg") }
-    log("native=${c.sherpaHost.nativeAvailable}")
+    log("native=${SherpaNative.available}")
     c.wakeModels.download(WAKE_WORD_MODEL)
     val end = withTimeoutOrNull(10 * 60_000L) {
         c.wakeModels.states.first { val s = it[WAKE_WORD_MODEL.id]; s is ModelState.Installed || s is ModelState.Failed }[WAKE_WORD_MODEL.id]

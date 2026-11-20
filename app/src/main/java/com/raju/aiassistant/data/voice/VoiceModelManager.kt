@@ -1,11 +1,7 @@
-package com.raju.aiassistant.data.tts.local
+package com.raju.aiassistant.data.voice
 
 import android.content.Context
-import android.net.ConnectivityManager
-import com.raju.aiassistant.domain.model.TtsEngine
 import com.raju.aiassistant.domain.voice.DownloadableModel
-import com.raju.aiassistant.domain.voice.LOCAL_VOICE_CATALOG
-import com.raju.aiassistant.domain.voice.LocalVoiceModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,7 +20,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/** Install state of one offline voice model. */
+/** Install state of one downloadable model (the offline "Hey Seema" detector). */
 sealed interface ModelState {
     data object NotInstalled : ModelState
     data class Downloading(val done: Long, val total: Long) : ModelState
@@ -35,10 +31,9 @@ sealed interface ModelState {
 }
 
 /**
- * Downloads, checks and installs the offline voice models (Settings → Voice Engine Manager).
+ * Downloads, checks and installs a model archive (the offline "Hey Seema" detector, Settings → Listening).
  * Downloads start only when the user taps Download, resume after a broken connection, are checked
- * against the catalog's SHA-256 and unpacked into app-private storage. After that the voice works
- * without internet.
+ * against the catalog's SHA-256 and unpacked into app-private storage. After that it works without internet.
  */
 class VoiceModelManager<M : DownloadableModel>(
     private val context: Context,
@@ -59,8 +54,6 @@ class VoiceModelManager<M : DownloadableModel>(
     /** Directory that holds the model's files (only meaningful when installed). */
     fun modelDir(model: M) = File(File(root, model.id), model.dirName)
 
-    /** True on mobile data or another metered network (the UI warns before a big download). */
-    fun onMeteredNetwork(): Boolean = runCatching { context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered == true }.getOrDefault(false)
 
     fun download(model: M) {
         if (jobs[model.id]?.isActive == true) return
@@ -189,12 +182,3 @@ class VoiceModelManager<M : DownloadableModel>(
     }
 }
 
-/** Offline voices (Piper, Kokoro). */
-typealias VoiceModels = VoiceModelManager<LocalVoiceModel>
-
-fun voiceModels(context: Context, http: OkHttpClient, scope: CoroutineScope): VoiceModels = VoiceModelManager(context, http, scope, LOCAL_VOICE_CATALOG)
-
-/** Engines with an installed model (ready to use offline). */
-fun VoiceModels.installedEngines(): Set<TtsEngine> = catalog.filter { isInstalled(it) }.map { it.engine }.toSet()
-
-fun VoiceModels.installedModel(engine: TtsEngine): LocalVoiceModel? = catalog.firstOrNull { it.engine == engine && isInstalled(it) }

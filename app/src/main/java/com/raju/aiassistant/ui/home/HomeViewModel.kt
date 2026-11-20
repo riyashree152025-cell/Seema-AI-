@@ -1,6 +1,5 @@
 package com.raju.aiassistant.ui.home
 
-import com.raju.aiassistant.data.tts.local.installedEngines
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raju.aiassistant.di.AppContainer
@@ -102,10 +101,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 paused = settings.assistantPaused,
                 safetyMode = settings.safetyMode,
                 handsFree = ev.handsFree,
-                // The engine that is really tried first (Automatic mode may pick an offline voice, not the one chosen under Voice).
+                // The voice that is really tried first (Automatic mode may start with another than the one chosen under Voice).
                 voiceEngine = (if (settings.voiceEngineAuto) "AUTO·" else "") +
-                    // (installed models only: loading the native runtime here would block the UI thread)
-                    com.raju.aiassistant.domain.voice.voiceEngineOrder(settings.voiceEngineAuto, settings.ttsEngine, c.voiceModels.installedEngines(), c.voiceEngineStats.stats.value).first().label.substringBefore(" ").uppercase(),
+                    com.raju.aiassistant.domain.voice.voiceEngineOrder(settings.voiceEngineAuto, settings.ttsEngine, c.voiceEngineStats.stats.value).first().label.substringBefore(" ").uppercase(),
                 listenEngine = settings.sttEngine.label.substringBefore(" ").uppercase(),
                 listenMode = when {
                     ev.handsFree && settings.voiceMode == VoiceMode.SESSION -> "Session"

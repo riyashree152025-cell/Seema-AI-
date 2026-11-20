@@ -47,22 +47,15 @@ class SettingsRepository(private val context: Context) {
             historyLimit = this[Keys.HISTORY_LIMIT] ?: d.historyLimit,
             ttsEngine = enumOr(this[Keys.TTS_ENGINE], d.ttsEngine),
             sarvamSpeaker = validSarvamSpeaker(this[Keys.SARVAM_SPEAKER]),
-            elevenModel = this[Keys.ELEVEN_MODEL] ?: d.elevenModel,
-            elevenVoiceId = this[Keys.ELEVEN_VOICE_ID],
-            elevenVoiceName = this[Keys.ELEVEN_VOICE_NAME],
             cartesiaModel = this[Keys.CARTESIA_MODEL] ?: d.cartesiaModel,
             cartesiaVoiceId = this[Keys.CARTESIA_VOICE_ID],
             cartesiaVoiceName = this[Keys.CARTESIA_VOICE_NAME],
             cartesiaMood = this[Keys.CARTESIA_MOOD] ?: d.cartesiaMood,
-            deepgramVoice = this[Keys.DEEPGRAM_VOICE] ?: d.deepgramVoice,
             sttEngine = enumOr(this[Keys.STT_ENGINE], d.sttEngine),
             deepgramSttModel = this[Keys.DEEPGRAM_STT] ?: d.deepgramSttModel,
             speechRate = this[Keys.SPEECH_RATE] ?: d.speechRate,
-            androidVoice = this[Keys.ANDROID_VOICE],
             speechLanguage = com.raju.aiassistant.domain.language.normalizeLanguageSetting(this[Keys.SPEECH_LANGUAGE]),
-            speechPitch = this[Keys.SPEECH_PITCH] ?: d.speechPitch,
             voiceEngineAuto = this[Keys.VOICE_ENGINE_AUTO] ?: d.voiceEngineAuto,
-            kokoroSpeaker = this[Keys.KOKORO_SPEAKER] ?: d.kokoroSpeaker,
             autoSpeakReplies = this[Keys.AUTO_SPEAK] ?: d.autoSpeakReplies,
             continuousConversation = this[Keys.CONTINUOUS] ?: d.continuousConversation,
             // Older versions stored a hands-free switch: keep a user's explicit choice.
@@ -121,19 +114,13 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHistoryLimit(v: Int) = edit { it[Keys.HISTORY_LIMIT] = v.coerceIn(4, 60) }
     suspend fun setTtsEngine(v: TtsEngine) = edit { it[Keys.TTS_ENGINE] = v.name }
     suspend fun setSarvamSpeaker(v: String) = edit { it[Keys.SARVAM_SPEAKER] = v }
-    suspend fun setElevenModel(v: String) = edit { it[Keys.ELEVEN_MODEL] = v }
-    suspend fun setElevenVoice(id: String, name: String) = edit { it[Keys.ELEVEN_VOICE_ID] = id; it[Keys.ELEVEN_VOICE_NAME] = name }
     suspend fun setCartesiaModel(v: String) = edit { it[Keys.CARTESIA_MODEL] = v }
     suspend fun setCartesiaVoice(id: String, name: String) = edit { it[Keys.CARTESIA_VOICE_ID] = id; it[Keys.CARTESIA_VOICE_NAME] = name }
     suspend fun setCartesiaMood(v: String) = edit { it[Keys.CARTESIA_MOOD] = v }
-    suspend fun setDeepgramVoice(v: String) = edit { it[Keys.DEEPGRAM_VOICE] = v }
     suspend fun setSttEngine(v: SttEngine) = edit { it[Keys.STT_ENGINE] = v.name }
     suspend fun setDeepgramSttModel(v: String) = edit { it[Keys.DEEPGRAM_STT] = v }
     suspend fun setSpeechRate(v: Float) = edit { it[Keys.SPEECH_RATE] = v.coerceIn(0.5f, 2f) }
-    suspend fun setSpeechPitch(v: Float) = edit { it[Keys.SPEECH_PITCH] = v.coerceIn(0.5f, 1.5f) }
     suspend fun setVoiceEngineAuto(v: Boolean) = edit { it[Keys.VOICE_ENGINE_AUTO] = v }
-    suspend fun setKokoroSpeaker(v: Int) = edit { it[Keys.KOKORO_SPEAKER] = v }
-    suspend fun setAndroidVoice(v: String?) = edit { if (v == null) it.remove(Keys.ANDROID_VOICE) else it[Keys.ANDROID_VOICE] = v }
     suspend fun setSpeechLanguage(v: String) = edit { it[Keys.SPEECH_LANGUAGE] = v }
     suspend fun setAutoSpeak(v: Boolean) = edit { it[Keys.AUTO_SPEAK] = v }
     suspend fun setContinuous(v: Boolean) = edit { it[Keys.CONTINUOUS] = v }
@@ -191,22 +178,15 @@ class SettingsRepository(private val context: Context) {
         val HISTORY_LIMIT = intPreferencesKey("history_limit")
         val TTS_ENGINE = stringPreferencesKey("tts_engine")
         val SARVAM_SPEAKER = stringPreferencesKey("sarvam_speaker")
-        val ELEVEN_MODEL = stringPreferencesKey("eleven_model")
-        val ELEVEN_VOICE_ID = stringPreferencesKey("eleven_voice_id")
-        val ELEVEN_VOICE_NAME = stringPreferencesKey("eleven_voice_name")
         val CARTESIA_MODEL = stringPreferencesKey("cartesia_model")
         val CARTESIA_VOICE_ID = stringPreferencesKey("cartesia_voice_id")
         val CARTESIA_VOICE_NAME = stringPreferencesKey("cartesia_voice_name")
         val CARTESIA_MOOD = stringPreferencesKey("cartesia_mood")
-        val DEEPGRAM_VOICE = stringPreferencesKey("deepgram_voice")
         val STT_ENGINE = stringPreferencesKey("stt_engine")
         // v2: the earlier default "multi" wrote Hindi as Spanish / Telugu on the phone; everyone starts on Hindi again.
         val DEEPGRAM_STT = stringPreferencesKey("deepgram_stt_model_v2")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
-        val SPEECH_PITCH = floatPreferencesKey("speech_pitch")
         val VOICE_ENGINE_AUTO = booleanPreferencesKey("voice_engine_auto")
-        val KOKORO_SPEAKER = intPreferencesKey("kokoro_speaker")
-        val ANDROID_VOICE = stringPreferencesKey("android_voice")
         val SPEECH_LANGUAGE = stringPreferencesKey("speech_language")
         val AUTO_SPEAK = booleanPreferencesKey("auto_speak")
         val CONTINUOUS = booleanPreferencesKey("continuous_conversation")

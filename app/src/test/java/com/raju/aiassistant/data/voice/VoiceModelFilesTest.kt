@@ -1,9 +1,8 @@
-package com.raju.aiassistant.data.tts.local
+package com.raju.aiassistant.data.voice
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,14 +54,5 @@ class VoiceModelFilesTest {
     @Test fun sha256MatchesTheKnownValue() {
         val f = tmp.newFile("abc").apply { writeText("abc") }
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", VoiceModelManager.sha256(f))
-    }
-
-    @Test fun floatSamplesBecomeLittleEndian16Bit() {
-        val pcm = floatToPcm16(floatArrayOf(0f, 1f, -1f, 2f))
-        assertArrayEquals(
-            byteArrayOf(0, 0, 0xFF.toByte(), 0x7F, 0x01, 0x80.toByte(), 0xFF.toByte(), 0x7F),
-            pcm,
-        )
-        assertTrue(floatToPcm16(FloatArray(0)).isEmpty())
     }
 }

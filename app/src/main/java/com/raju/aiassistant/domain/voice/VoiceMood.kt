@@ -3,7 +3,7 @@ package com.raju.aiassistant.domain.voice
 /**
  * Seema's three speaking moods. Every feeling is mapped onto one of these clean profiles so her voice
  * never cracks on a phone speaker: no high-pitched shouting for anger, a lower and calmer voice instead.
- * [pitch] is used by the phone's own voice (Android TTS); [rate] multiplies the user's speech-rate
+ * [pitch] shapes the Edge Neural voice's pitch (see EdgeTts); [rate] multiplies the user's speech-rate
  * setting for every voice; [gain] scales the loudness before the limiter.
  */
 enum class VoiceMood(val pitch: Float, val rate: Float, val gain: Float, val eyeArgb: Long) {

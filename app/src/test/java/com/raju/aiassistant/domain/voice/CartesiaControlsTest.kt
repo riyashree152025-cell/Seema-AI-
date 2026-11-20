@@ -11,8 +11,8 @@ class CartesiaControlsTest {
     @Test
     fun sonic3SpeaksSlowerAndAffectionate() {
         val c = CartesiaControls.forModel("sonic-3", warm, VoiceCatalog.cartesiaEmotion(""), VoiceMood.WARM)
-        assertEquals(CartesiaControls.Generation(0.86, "affectionate"), c) // about -15 %: unhurried, never newsreader-fast
-        assertTrue((c as CartesiaControls.Generation).speed in 0.8..0.9)
+        assertEquals(CartesiaControls.Generation(0.85, "affectionate"), c) // -15 %: unhurried, never newsreader-fast
+        assertEquals(0.85, (c as CartesiaControls.Generation).speed, 0.001)
     }
 
     @Test
@@ -30,8 +30,10 @@ class CartesiaControlsTest {
     @Test
     fun olderModelsGetTheExperimentalVoiceControls() {
         val c = CartesiaControls.forModel("sonic-2", warm, "affectionate", VoiceMood.WARM)
-        assertEquals(CartesiaControls.Experimental("slow", listOf("positivity:high")), c)
-        assertEquals(CartesiaControls.Experimental("slow", listOf("positivity:low")), CartesiaControls.forModel("sonic-english", VoiceMood.WHISPER.rate, "affectionate", VoiceMood.WHISPER))
+        assertEquals(CartesiaControls.Experimental(-0.15, listOf("positivity:high")), c) // "speed": -0.15
+        assertEquals(listOf("positivity:low"), (CartesiaControls.forModel("sonic-english", VoiceMood.WHISPER.rate, "affectionate", VoiceMood.WHISPER) as CartesiaControls.Experimental).emotions)
+        // No "affection" tag exists in this set (the request would fail): never sent.
+        assertTrue((c as CartesiaControls.Experimental).emotions.none { it.startsWith("affection") })
     }
 
     @Test
