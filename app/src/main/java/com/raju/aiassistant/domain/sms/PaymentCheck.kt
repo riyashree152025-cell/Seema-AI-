@@ -43,6 +43,8 @@ private val AMOUNT_IN_QUESTION = Regex("(?:rs\\.?|inr|₹|रु\\.?|रुप�
 fun parsePaymentQuestion(text: String): PaymentQuery? {
     val t = asciiDigits(text).trim()
     if (t.length > 120 || !ASKS_REFUND.containsMatchIn(t)) return null
+    // "6840828103 pnr check karo" is a train ticket, never ₹68 crore: PNR / train words or a 10-digit number.
+    if (NOT_MONEY.containsMatchIn(t) || Regex("(?<![\\d,.])\\d{10,}(?![\\d,.])").containsMatchIn(t)) return null
     // "15 तारीख का कितना डेबिट, कितना क्रेडिट हुआ" asks for a day's account, not for one amount: both sides
     // named, or "kitna kitna", is the inbox summary.
     if (BOTH_SIDES.containsMatchIn(t) && SOME_DEBIT.containsMatchIn(t)) return null
@@ -53,6 +55,7 @@ fun parsePaymentQuestion(text: String): PaymentQuery? {
     return amounts.singleOrNull()?.let { PaymentQuery(it) }
 }
 
+private val NOT_MONEY = Regex("(?<![\\p{L}])(?:pnr|पीएनआर|train|ट्रेन|ট্রেন|ticket|टिकट|টিকিট)(?![\\p{L}])", RegexOption.IGNORE_CASE)
 private val BOTH_SIDES = Regex("credit|क्रेडिट|jama|जमा|জমা", RegexOption.IGNORE_CASE)
 private val SOME_DEBIT = Regex("debit|डेबिट|kata|kate|कटा|कटे|kharch|खर्च|ডেবিট", RegexOption.IGNORE_CASE)
 private val HOW_MUCH_EACH = Regex("kitna\\s+kitna|kitne\\s+kitne|कितना\\s+कितना|कितने\\s+कितने|কত\\s+কত", RegexOption.IGNORE_CASE)

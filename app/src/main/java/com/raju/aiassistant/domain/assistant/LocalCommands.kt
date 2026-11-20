@@ -624,9 +624,16 @@ object LocalCommands {
             "^(?:mera|meri|मेरा|मेरी) (?:ticket|टिकट) (?:confirm|कन्फर्म) (?:hua|hui|हुआ|हुई)(?: (?:kya|क्या))?$",
     )
     private val PNR_NUMBER = Regex("^(?:pnr|पीएनआर)? ?(\\d{10})(?: (?:ka|ki|का|की))? (?:status|स्टेटस)(?: (?:kya hai|batao|bata do|क्या है|बताओ))?$")
+    /** "6840828103 pnr check karo", "train pnr 6840828103 dekho", "PNR 6840828103 ka status check karo". */
+    private val PNR_CHECK = Regex(
+        "^(?:(?:train|ट्रेन|ticket|टिकट) )?(?:(?:pnr|पीएनआर) )?(?:(?:number|नंबर) )?(\\d{10})(?: (?:train|ट्रेन|ticket|टिकट))?(?: (?:pnr|पीएनआर))?(?: (?:number|नंबर))?" +
+            "(?: (?:ka|ki|का|की))?(?: (?:status|स्टेटस))? (?:check karo|check kar do|check|dekho|dekh lo|chek karo|चेक करो|चेक कर दो|देखो|देख लो|बताओ|batao)$|" +
+            "^(?:(?:train|ट्रेन) )?(?:pnr|पीएनआर) (?:number |नंबर )?(\\d{10})(?: (?:ka|ki|का|की))?(?: (?:status|स्टेटस))?(?: (?:check karo|check kar do|dekho|batao|चेक करो|देखो|बताओ))?$",
+    )
 
     private fun pnr(t: String): AssistantAction? {
         PNR_NUMBER.matchEntire(t.replace(Regex("(?<=\\d) (?=\\d)"), ""))?.let { return AssistantAction.PnrStatus(it.groupValues[1]) }
+        PNR_CHECK.matchEntire(t.replace(Regex("(?<=\\d) (?=\\d)"), ""))?.let { m -> return AssistantAction.PnrStatus(m.groupValues[1].ifEmpty { m.groupValues[2] }) }
         return if (PNR_MINE.matches(t)) AssistantAction.PnrStatus("") else null
     }
 
