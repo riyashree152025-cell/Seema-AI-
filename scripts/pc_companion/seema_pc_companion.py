@@ -25,6 +25,7 @@ import hmac
 import ipaddress
 import platform
 import subprocess
+import time
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -38,6 +39,37 @@ DATA_DIR = Path.home() / ".seema_ai"
 CONFIG_FILE = DATA_DIR / "companion_config.json"
 MEMORIES_FILE = DATA_DIR / "pc_memories.json"
 CONVERSATION_FILE = DATA_DIR / "pc_conversations.json"
+# Instructions spoken to Seema for this PC / VPS ("PC ko command bhejo: …"): only written here for the owner's own
+# tools to read. The companion never runs them.
+INSTRUCTIONS_FILE = DATA_DIR / "seema_instructions.jsonl"
+MAX_INSTRUCTION_CHARS = 500
+
+# Apps Seema may open by name ("PC mein Cursor kholo"). Nothing else can be started, and never through a shell.
+SAFE_APPS = {
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "terminal": "cmd.exe",
+    "explorer": "explorer.exe",
+    "cursor": os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "cursor", "Cursor.exe"),
+}
+
+
+def resolve_app(name):
+    """The program for a safe app name, or None (unknown names never reach the system)."""
+    return SAFE_APPS.get(str(name).lower().strip())
+
+
+def queue_instruction(text):
+    """Saves an instruction for the owner's own automation to pick up; it is never executed here."""
+    text = str(text).strip()[:MAX_INSTRUCTION_CHARS]
+    if not text:
+        return None
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    entry = {"at": int(time.time()), "text": text}
+    with open(INSTRUCTIONS_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    restrict_to_owner(INSTRUCTIONS_FILE)
+    return entry
 
 def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -62,7 +94,7 @@ def ensure_data_dir():
     if "ollama_url" not in config:
         config["ollama_url"] = OLLAMA_DEFAULT_URL
     if "allowed_actions" not in config:
-        config["allowed_actions"] = ["open_url", "open_app", "system_info"]
+        config["allowed_actions"] = ["open_url", "open_app", "system_info", "instruction"]
     if "bind_host" not in config:
         config["bind_host"] = DEFAULT_BIND_HOST
 
@@ -284,26 +316,37 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
 
             elif action == "open_app":
                 app_name = params.get("name", "").lower().strip()
-                safe_apps = {
-                    "notepad": "notepad.exe",
-                    "calculator": "calc.exe",
-                    "terminal": "cmd.exe",
-                    "explorer": "explorer.exe"
-                }
-                cmd = safe_apps.get(app_name)
+                cmd = resolve_app(app_name)
                 if cmd and platform.system() == "Windows":
                     subprocess.Popen([cmd])
                     return self._send_json(200, {"success": True, "app": app_name})
                 else:
                     return self._send_json(400, {"error": "App not in safe launch list"})
 
+            elif action == "instruction":
+                entry = queue_instruction(params.get("text", ""))
+                if entry is None:
+                    return self._send_json(400, {"error": "Empty instruction"})
+                return self._send_json(200, {"success": True, "queued": True, "message": "Instruction saved for your PC tools (not executed)."})
+
             elif action == "system_info":
-                return self._send_json(200, {
+                info = {
                     "success": True,
                     "hostname": socket.gethostname(),
                     "os": platform.platform(),
                     "cpu_count": os.cpu_count()
-                })
+                }
+                # Load and free disk space, for "VPS status check karo" (numbers only, nothing private).
+                try:
+                    info["load_1m"] = round(os.getloadavg()[0], 2)
+                except (AttributeError, OSError):
+                    pass
+                try:
+                    import shutil
+                    info["disk_free_gb"] = round(shutil.disk_usage(str(Path.home())).free / 1e9, 1)
+                except OSError:
+                    pass
+                return self._send_json(200, info)
 
             else:
                 return self._send_json(400, {"error": "Unknown action"})

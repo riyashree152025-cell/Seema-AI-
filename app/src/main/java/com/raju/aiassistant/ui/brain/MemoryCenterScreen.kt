@@ -286,14 +286,19 @@ fun MemoryCenterScreen(
                             Text("No memories saved yet. Talk with SEEMA to build memories!", color = Color.Gray)
                         } else {
                             memories.forEach { mem ->
-                                Box(
+                                Row(
                                     Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color(0x2600E5FF))
-                                        .padding(8.dp)
+                                        .padding(start = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(mem.text, color = Color.White, fontSize = 15.sp)
+                                    Text(mem.text, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                                    // One fact can be forgotten on its own ("Clear All" is under Manage Memory).
+                                    IconButton(onClick = { scope.launch { container.memoryRepository.delete(mem.id) } }) {
+                                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Forget this", tint = Color(0xFFFF8A80))
+                                    }
                                 }
                             }
                         }

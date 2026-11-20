@@ -350,6 +350,16 @@ sealed interface AssistantAction {
         override val label: String get() = "Day briefing"
     }
 
+    /** "WhatsApp ka haal batao": unread WhatsApp messages by person, in two sentences, then "reply karna hai?". */
+    data object WhatsAppDigest : AssistantAction {
+        override val label get() = "WhatsApp digest"
+    }
+
+    /** "PC mein Cursor kholo", "VPS status check karo", "PC ko command bhejo: …" through the PC / VPS bridge. */
+    data class Remote(val command: com.raju.aiassistant.domain.remote.RemoteCommand) : AssistantAction {
+        override val label get() = "PC / VPS bridge"
+    }
+
     data object NotificationSummary : AssistantAction {
         override val label get() = "Notification summary"
     }

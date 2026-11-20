@@ -144,6 +144,14 @@ private const val NOTIFICATION_ASK_TTL_MS = 30_000L
 private const val AUTO_ACTION_WAIT_MS = 14_000L
 /** How long "Send dabao" still means the WhatsApp send that just failed. */
 private const val UNSENT_RETRY_MS = 3 * 60_000L
+/** How long the quick AI may take for a short summary before the local one is said. */
+private const val QUICK_AI_TIMEOUT_MS = 8_000L
+/** How long the PC / VPS bridge may take to answer. */
+private const val REMOTE_TIMEOUT_MS = 15_000L
+/** How long after a call what Raju says is checked for promises ("Rahul kal 5000 dega"). */
+private const val POST_CALL_MS = 3 * 60_000L
+/** "Yaad rakhna: …", "note karo …", "মনে রেখো …": a promise to keep, said any time. */
+private val REMEMBER_NOTE = Regex("^(?:seema[, ]+)?(?:yaad rakhna|yaad rakho|note karo|note kar lo|याद रखना|याद रखो|नोट करो|नोट कर लो|মনে রেখো|মনে রাখবে|নোট করো)[:, ]*", RegexOption.IGNORE_CASE)
 /** How long "सब मिला के बोलो" still means the money question just answered. */
 private const val MONEY_FOLLOW_UP_MS = 3 * 60_000L
 /** How long a spoken "haan / nahi" is listened for after "ये बटन दबा दूँ?". */
@@ -276,6 +284,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** The PC / VPS bridge: sends the companion's action and params, says what it answered. */
+    private val remoteBridge: suspend (String, Map<String, String>) -> com.raju.aiassistant.domain.remote.RemoteResult = { _, _ -> com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured },
     /** Messages that can be answered from their notification (newest first), and the sender for one of them. */
     private val replyTargets: () -> List<com.raju.aiassistant.domain.notify.ReplyTarget> = { emptyList() },
     private val sendNotificationReply: (key: String, text: String) -> Boolean = { _, _ -> false },
@@ -1098,6 +1108,8 @@ class AssistantEngine(
         }
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
+        // "Mera bhai Amit hai", "mujhe chai pasand hai": kept quietly as a long-term fact; the turn goes on as usual.
+        if (s.memoryEnabled) learnFact(text)
 
         // "QR kisko bhejna hai?" → "Rizwan ko" / "Rizwan".
         pendingPayTo?.let { pay ->
@@ -1139,6 +1151,19 @@ class AssistantEngine(
                     else -> null
                 }
                 if (again != null && runLocalCommand(AssistantAction.MoneyQuestion(again), speak = fromVoice || s.autoSpeakReplies)) return
+            }
+        }
+        // After a call (or "yaad rakhna: …" any time): "Rahul kal 5000 dega", "shaam ko Amit ko call karna hai" become
+        // reminders, with one short confirmation. Nothing is said when no promise is in the sentence.
+        if (clock() < postCallUntil || REMEMBER_NOTE.containsMatchIn(text)) {
+            val now = java.time.Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()
+            val promises = com.raju.aiassistant.domain.memory.CallMemoryExtractor.extract(text.replace(REMEMBER_NOTE, " "), now)
+            if (promises.isNotEmpty()) {
+                postCallUntil = 0
+                saveCommitments(promises, speak = fromVoice || s.autoSpeakReplies)
+                if (_state.value != AssistantState.Error) _state.value = AssistantState.Success
+                finishTurn()
+                return
             }
         }
         // "Tum dabao / Send kar do" right after WhatsApp's Send could not be pressed: press it again for that same
@@ -2041,6 +2066,16 @@ class AssistantEngine(
                 _state.value = AssistantState.Thinking
                 submit(DAY_BRIEFING_REQUEST, fromVoice = true)
             }
+            AssistantAction.WhatsAppDigest -> {
+                trace("offline command: whatsapp digest")
+                _state.value = AssistantState.Thinking
+                whatsAppDigest(action, speak)
+            }
+            is AssistantAction.Remote -> {
+                trace("offline command: remote bridge")
+                _state.value = AssistantState.Thinking
+                remote(action, speak)
+            }
             AssistantAction.NotificationSummary -> {
                 trace("offline command: notification summary")
                 informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
@@ -2792,6 +2827,8 @@ class AssistantEngine(
         val wasHandsFree = handsFreeBeforeCall
         handsFreeBeforeCall = false
         trace("phone call ended")
+        // For a few minutes after a call, what Raju tells Seema is checked for promises ("Rahul kal 5000 dega").
+        postCallUntil = clock() + POST_CALL_MS
         if (settings.value.assistantPaused) return
         if (wasHandsFree && handsFree && !inBackground) startHandsFree() else returnToStandby()
     }
@@ -2858,6 +2895,8 @@ class AssistantEngine(
             is AssistantAction.CalendarRead -> calendarRead(action, speak)
             AssistantAction.DayBriefing -> submit(DAY_BRIEFING_REQUEST, fromVoice = true)
             AssistantAction.NotificationSummary -> informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
+            AssistantAction.WhatsAppDigest -> whatsAppDigest(action, speak)
+            is AssistantAction.Remote -> remote(action, speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
                 report(action, outcome)
@@ -2986,15 +3025,47 @@ class AssistantEngine(
 
     /** Today's and tomorrow's journeys (with pending money), the biggest dues and today's reminders. */
     private suspend fun headsUpNow(action: AssistantAction, speak: Boolean) {
+        informational(action, dailyBriefingText(), speak)
+    }
+
+    /**
+     * "Aaj ka update do" and the 9 AM / 9 PM check-in: today's money in and out, the dues and today's tasks in three
+     * short sentences, plus today's / tomorrow's journeys (R Travels). The SMS are read only if the permission is
+     * already there (no question in the middle of a greeting).
+     */
+    private suspend fun dailyBriefingText(): String {
+        val z = zone()
+        val now = clock()
         val today = today()
-        val text = com.raju.aiassistant.domain.memory.headsUp(
-            today,
-            runCatching { business.journeysFrom(today) }.getOrDefault(emptyList()),
-            runCatching { business.allBalances() }.getOrDefault(emptyList()),
-            runCatching { tools.listReminders() }.getOrDefault(emptyList()),
-            zone(),
-        ) ?: phrase(lang(), "आज और कल के लिए कुछ खास नहीं है — न यात्रा, न बकाया, न reminder।", "আজ আর কালের জন্য বিশেষ কিছু নেই।")
-        informational(action, text, speak)
+        val start = today.atStartOfDay(z).toInstant().toEpochMilli()
+        val cash = when (val inbox = runCatching { tools.smsInbox(start) }.getOrNull()) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
+                val notes = runCatching { moneyNotes.since(start) }.getOrDefault(emptyList())
+                com.raju.aiassistant.domain.business.DailyBriefing.cashflow(
+                    com.raju.aiassistant.domain.sms.moneyEvents(inbox.list.filter { it.atMillis >= start }, notes),
+                )
+            }
+            else -> null
+        }
+        val balances = runCatching { business.allBalances() }.getOrDefault(emptyList())
+        val reminders = runCatching { tools.listReminders() }.getOrDefault(emptyList())
+        val brief = com.raju.aiassistant.domain.business.DailyBriefing.build(now, z, cash, balances, reminders, bengali = lang() == SeemaLanguage.BENGALI)
+        val journeys = com.raju.aiassistant.domain.memory.headsUp(
+            today, runCatching { business.journeysFrom(today) }.getOrDefault(emptyList()), emptyList(), emptyList(), z,
+        )
+        trace("briefing: cash ${if (cash == null) "unread" else "read"}, ${balances.size} balances, ${reminders.size} reminders")
+        return listOfNotNull(brief, journeys).joinToString("\n")
+    }
+
+    /** The check-in said by itself (phone unlocked after 9 AM / 9 PM): only while Seema is idle and allowed to speak. */
+    fun speakDailyBriefing() {
+        if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || settings.value.safetyMode) return
+        job = scope.launch {
+            val text = dailyBriefingText()
+            record(ChatRole.ASSISTANT, text)
+            say(text)
+            finishTurn()
+        }
     }
 
     /** Looks for the amount in the bank SMS of the last [PAYMENT_DAYS] days, on the phone; no SMS text leaves it. */
@@ -3119,6 +3190,34 @@ class AssistantEngine(
     private var bookingRepeats = 0
 
     /** "Kya likhun?" asked for a WhatsApp message: the contact, and until when the next sentence is the text. */
+    /** Until when what Raju says is checked for promises made on the call that just ended. */
+    @Volatile private var postCallUntil = 0L
+
+    /** Each promise becomes one of Seema's reminders; one short spoken confirmation for all of them. */
+    private suspend fun saveCommitments(promises: List<com.raju.aiassistant.domain.memory.Commitment>, speak: Boolean) {
+        val bn = lang() == SeemaLanguage.BENGALI
+        val z = zone()
+        val today = today()
+        val saved = promises.mapNotNull { c ->
+            val text = com.raju.aiassistant.domain.memory.CallMemoryExtractor.reminderText(c, bn)
+            val at = c.due.atZone(z).toInstant().toEpochMilli()
+            if (tools.addReminder(at, text) !is ToolOutcome.Done) return@mapNotNull null
+            val day = when (c.due.toLocalDate()) {
+                today -> phrase(lang(), "आज", "আজ")
+                today.plusDays(1) -> phrase(lang(), "कल", "কাল")
+                else -> "${c.due.dayOfMonth}/${c.due.monthValue}"
+            }
+            val clock = "${c.due.hour}:${c.due.minute.toString().padStart(2, '0')}"
+            phrase(lang(), "$day $clock बजे — $text", "$day $clock-এ — $text")
+        }
+        trace("call memory: ${promises.size} promise(s), ${saved.size} reminder(s)")
+        val line = if (saved.isEmpty()) phrase(lang(), "याद रखने के लिए reminder नहीं बन पाया।", "রিমাইন্ডার তৈরি করতে পারিনি।")
+        else phrase(lang(), "ठीक है, याद रख लिया: ", "ঠিক আছে, মনে রাখলাম: ") + saved.joinToString("; ") + phrase(lang(), "। उस वक़्त याद दिला दूँगी।", "। সময়মতো মনে করিয়ে দেব।")
+        record(ChatRole.ASSISTANT, line)
+        report(AssistantAction.ReminderList, if (saved.isEmpty()) ActionStatus.FAILED else ActionStatus.SUCCESS, line)
+        if (speak) say(line)
+    }
+
     /** The last money question, for "सब मिला के बोलो" right after it. */
     private var lastMoneyAsk: com.raju.aiassistant.domain.sms.MoneyAsk? = null
     private var lastMoneyAskAt = 0L
@@ -3830,8 +3929,68 @@ class AssistantEngine(
     }
 
     /** "Reply karo ki …": into the reply field of the message's own notification, after the user says yes. */
+    /** The chat the last WhatsApp digest was about, so "unko bol do …" goes there (for [UNSENT_RETRY_MS]). */
+    private var digestReplyWho: String? = null
+    private var digestReplyUntil = 0L
+
+    /** "WhatsApp ka haal batao": the WhatsApp messages by person, summed up in two sentences, then "reply karna hai?". */
+    private suspend fun whatsAppDigest(action: AssistantAction, speak: Boolean) {
+        val bn = lang() == SeemaLanguage.BENGALI
+        val groups = com.raju.aiassistant.domain.notify.WhatsAppDigest.group(recentMessages())
+        trace("whatsapp digest: ${groups.size} chats, ${groups.sumOf { it.count }} messages")
+        if (groups.isEmpty()) return informational(action, com.raju.aiassistant.domain.notify.WhatsAppDigest.localSummary(groups, bn), speak)
+        val ai = quickAi(com.raju.aiassistant.domain.notify.WhatsAppDigest.aiPrompt(groups, bn))
+            ?.let { parseReply(it).text }?.takeIf { it.isNotBlank() && !SmartEscalation.isUnsure(it) }
+        val top = groups.first().who
+        val text = ai?.let { it + " " + com.raju.aiassistant.domain.notify.WhatsAppDigest.replyQuestion(top, bn) }
+            ?: com.raju.aiassistant.domain.notify.WhatsAppDigest.localSummary(groups, bn)
+        digestReplyWho = top
+        digestReplyUntil = clock() + UNSENT_RETRY_MS
+        followUpUntil = maxOf(followUpUntil, digestReplyUntil)
+        informational(action, text, speak)
+    }
+
+    /**
+     * The PC / VPS bridge. An instruction is read back and sent only after his yes; an app the companion would
+     * refuse is answered here without sending anything. What the companion answered is spoken.
+     */
+    private suspend fun remote(action: AssistantAction.Remote, speak: Boolean) {
+        val bn = lang() == SeemaLanguage.BENGALI
+        val c = action.command
+        if (c is com.raju.aiassistant.domain.remote.RemoteCommand.OpenApp) {
+            com.raju.aiassistant.domain.remote.RemoteBridge.unknownApp(c, bn)?.let { return cancelledLine(action, speak, it) }
+        }
+        if (c is com.raju.aiassistant.domain.remote.RemoteCommand.Instruction) {
+            val ok = confirmScreenAction("PC / VPS", com.raju.aiassistant.domain.remote.RemoteBridge.confirmQuestion(c, bn), speak)
+            if (!ok) return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं भेजी।", "ঠিক আছে, পাঠাইনি।"))
+        }
+        val (name, params) = com.raju.aiassistant.domain.remote.RemoteBridge.request(c)
+        val result = withTimeoutOrNull(REMOTE_TIMEOUT_MS) { runCatching { remoteBridge(name, params) }.getOrNull() }
+            ?: com.raju.aiassistant.domain.remote.RemoteResult.Unreachable
+        trace("remote bridge: $name -> ${result::class.simpleName}")
+        val line = com.raju.aiassistant.domain.remote.RemoteBridge.spoken(c, result, bn)
+        if (result is com.raju.aiassistant.domain.remote.RemoteResult.Done) informational(action, line, speak)
+        else {
+            report(action, ActionStatus.FAILED, line)
+            if (speak) say(line)
+        }
+    }
+
+    /** One short answer from the quick AI (Groq), else Gemini; null when neither answers in time. */
+    private suspend fun quickAi(prompt: String): String? {
+        val system = "You are Seema, Raju's warm, caring companion. Answer exactly what is asked, briefly, in soft spoken language."
+        val turns = listOf(Turn(TurnRole.USER, prompt))
+        fastRouter()?.let { (p, m) ->
+            val r = withTimeoutOrNull(QUICK_AI_TIMEOUT_MS) { runCatching { p.chat(m, system, turns) }.getOrNull() }
+            if (r is AiResult.Success && r.value.isNotBlank()) return r.value
+        }
+        return askGemini(system, turns)?.text
+    }
+
     private suspend fun notificationReply(action: AssistantAction.NotificationReply, speak: Boolean) {
-        val target = com.raju.aiassistant.domain.notify.pickReplyTarget(action.who, replyTargets())
+        // "Unko bol do …" right after the WhatsApp digest: the chat it was about.
+        val who = action.who ?: digestReplyWho?.takeIf { clock() < digestReplyUntil }
+        val target = com.raju.aiassistant.domain.notify.pickReplyTarget(who, replyTargets())
         if (target == null) {
             val text = if (action.who == null) phrase(lang(), "जवाब देने लायक कोई नया संदेश अभी नहीं दिख रहा।", "উত্তর দেওয়ার মতো কোনো নতুন বার্তা নেই।")
                 else phrase(lang(), "${action.who} का कोई संदेश अभी notification में नहीं है। \"${action.who} को message करो कि …\" बोलिए।", "${action.who}-এর কোনো বার্তা notification-এ নেই।")
@@ -3845,6 +4004,13 @@ class AssistantEngine(
             if (speak) say(phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।"))
             return
         }
+        // The usual 2.5 s to say "ruko" before it goes.
+        when (val c = actionSafetyWindow(target.who, speak, "जवाब भेज रही हूँ")) {
+            Correction.Cancel -> return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं भेजा।", "ঠিক আছে, পাঠাইনি।"))
+            is Correction.Rename -> return notificationReply(action.copy(who = c.name), speak)
+            null -> Unit
+        }
+        digestReplyWho = null
         val sent = sendNotificationReply(target.key, action.text)
         val text = if (sent) phrase(lang(), "${target.who} को जवाब भेज दिया।", "${target.who}-কে উত্তর পাঠিয়ে দিয়েছি।")
             else phrase(lang(), "जवाब नहीं जा पाया, वह notification अब नहीं है।", "উত্তর পাঠানো গেল না।")
@@ -4156,7 +4322,9 @@ class AssistantEngine(
 
     private suspend fun screenTap(action: AssistantAction.ScreenTap, speak: Boolean) {
         val before = screenOrSay(action, speak) ?: return
-        val found = ScreenMatch.candidates(before, action.target)
+        // "Neeche wala button", "pehla button": the button at that place (then confirmed like any tap).
+        val found = com.raju.aiassistant.domain.screen.ScreenPilot.resolve(action.target, before)?.let { listOf(it) }
+            ?: ScreenMatch.candidates(before, action.target)
         if (found.isEmpty()) {
             val visible = before.elements.filter { it.kind == ElementKind.BUTTON && it.text.isNotBlank() }.map { it.text }.distinct().take(6)
             val msg = phrase(
@@ -4619,6 +4787,26 @@ class AssistantEngine(
             d.option != null -> d.option
             candidates.size == 1 -> candidates[0]
             else -> null
+        }
+    }
+
+    /**
+     * A fact Raju said about himself ([com.raju.aiassistant.domain.memory.FactExtractor]) goes into memory without
+     * a question; one on the same subject is replaced ("bhai: Amit" → "bhai: Sumit"). He sees and clears them in
+     * Memory Center. Nothing is said about it; only a count goes to the log.
+     */
+    private suspend fun learnFact(text: String) {
+        val fact = com.raju.aiassistant.domain.memory.FactExtractor.extract(text) ?: return
+        runCatching {
+            val existing = memories.all()
+            val subject = com.raju.aiassistant.domain.memory.FactExtractor.subject(fact)
+            existing.filter { it.text != fact && com.raju.aiassistant.domain.memory.FactExtractor.subject(it.text) == subject && it.text.startsWith("Raju") }
+                .forEach { memories.delete(it.id) }
+            val check = validateMemory(fact, memories.all().map { it.text })
+            if (check is MemoryCheck.Ok) {
+                memories.add(check.text)
+                trace("fact learned (${check.text.length} chars)")
+            }
         }
     }
 

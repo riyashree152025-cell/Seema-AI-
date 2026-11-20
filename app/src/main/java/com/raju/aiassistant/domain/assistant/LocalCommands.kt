@@ -35,6 +35,9 @@ object LocalCommands {
         if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep
         // Money questions ("कल कितना कितना पैसा आया", "1 घंटे में किसको भेजा", "3630 किसका आया") and "पैसा आए तो
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
+        if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
+        // "PC mein Cursor kholo" before the phone's own "X kholo".
+        com.raju.aiassistant.domain.remote.RemoteBridge.parse(text)?.let { return AssistantAction.Remote(it) }
         if (com.raju.aiassistant.domain.sms.asksMoneyAlert(text)) return AssistantAction.MoneyAlertOn
         com.raju.aiassistant.domain.sms.parseMoneyQuestion(withoutLeadingFillers(text), java.time.LocalDate.now())?.let { return AssistantAction.MoneyQuestion(it) }
         // Payment QR / UPI ID before the general WhatsApp and SMS commands ("X ko UPI ID bhej do").
@@ -498,7 +501,9 @@ object LocalCommands {
 
     private fun typeOnScreen(text: String): AssistantAction? {
         val t = text.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, "")
-        val words = TYPE_FIRST.matchEntire(t)?.groupValues?.get(1)?.trim()?.trim('"', '\'', '“', '”') ?: return null
+        val words = TYPE_FIRST.matchEntire(t)?.groupValues?.get(1)?.trim()?.trim('"', '\'', '“', '”')
+            ?: com.raju.aiassistant.domain.screen.ScreenPilot.typeHere(t) // "isme kal milte hain likh do"
+            ?: return null
         return if (words.isBlank()) null else AssistantAction.ScreenType(words, null)
     }
 

@@ -24,7 +24,7 @@ class MemoryRepository(private val dao: MemoryDao, private val clock: () -> Long
 
     /** Returns true only if a row was actually changed. */
     suspend fun update(id: Long, text: String): Boolean = !looksSensitive(text) && dao.update(id, text.trim()) > 0
-    suspend fun delete(id: Long): Boolean = dao.delete(id) > 0
+    override suspend fun delete(id: Long): Boolean = dao.delete(id) > 0
     suspend fun deleteAll() = dao.deleteAll()
 }
 

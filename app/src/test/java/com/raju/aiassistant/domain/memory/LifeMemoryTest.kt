@@ -72,6 +72,8 @@ class LifeMemoryTest {
         assertTrue(isHeadsUpQuestion("aaj ki briefing do"))
         assertTrue(isHeadsUpQuestion("कल का क्या है"))
         assertTrue(isHeadsUpQuestion("आज का प्लान बताओ"))
+        assertTrue(isHeadsUpQuestion("Aaj ka update do"))
+        assertTrue(isHeadsUpQuestion("আজকের আপডেট দাও"))
         assertFalse(isHeadsUpQuestion("aaj ka mausam kya hai"))
     }
 }

@@ -186,7 +186,9 @@ class AssistantEngineTest {
         override suspend fun add(role: ChatRole, text: String): Long { saved += ChatMessage(saved.size + 1L, 1, role, text, 0); return saved.size.toLong() }
         override suspend fun clear() = saved.clear()
         override suspend fun all() = mems.toList()
-        override suspend fun add(text: String): Long { mems += Memory(mems.size + 1L, text, 0); return mems.size.toLong() }
+        private var nextId = 0L
+        override suspend fun add(text: String): Long { mems += Memory(++nextId, text, 0); return nextId }
+        override suspend fun delete(id: Long) = mems.removeAll { it.id == id }
         override suspend fun log(type: String, summary: String, status: ActionStatus) { logs += type to status }
     }
 
@@ -221,7 +223,67 @@ class AssistantEngineTest {
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
             callRinging = { ringing },
             inPhoneCall = { inCall },
+            remoteBridge = { action, params -> remoteSent += action to params; remoteAnswer },
         )
+    }
+
+    /** What went to the PC / VPS bridge, and what it answers. */
+    private val remoteSent = mutableListOf<Pair<String, Map<String, String>>>()
+    private var remoteAnswer: com.raju.aiassistant.domain.remote.RemoteResult = com.raju.aiassistant.domain.remote.RemoteResult.Done(mapOf("hostname" to "box"))
+
+    @Test
+    fun factsAreLearnedQuietlyAndTheNewerOneWins() = runTest {
+        val e = engine(AiResult.Success("Achha!"), AiResult.Success("Theek hai."), AiResult.Success("Hmm"))
+        e.submit("mera bhai Amit hai")
+        settle()
+        assertEquals(listOf("Raju का bhai: Amit"), store.mems.map { it.text })
+        e.submit("mera bhai Sumit hai")
+        settle()
+        assertEquals(listOf("Raju का bhai: Sumit"), store.mems.map { it.text })
+        e.submit("mera bhai kaun hai?")
+        settle()
+        assertEquals(1, store.mems.size)
+        assertNull(e.pending.value) // never asked "याद रख लूँ?"
+    }
+
+    @Test
+    fun aPcInstructionIsSentOnlyAfterYes() = runTest {
+        val e = engine()
+        e.submit("PC ko command bhejo: backup chala do")
+        runCurrent()
+        assertTrue(remoteSent.isEmpty()) // asked first
+        assertTrue(e.pending.value!!.message.contains("backup chala do"))
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(listOf("instruction" to mapOf("text" to "backup chala do", "target" to "pc")), remoteSent)
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aPcInstructionIsNotSentOnNo() = runTest {
+        val e = engine()
+        e.submit("PC ko command bhejo: backup chala do")
+        runCurrent()
+        e.resolve(Decision.Deny)
+        settle()
+        assertTrue(remoteSent.isEmpty())
+    }
+
+    @Test
+    fun vpsStatusIsSpokenAndAnUnknownAppIsNeverSent() = runTest {
+        val e = engine()
+        e.submit("VPS status check karo", fromVoice = true)
+        settle()
+        assertEquals("system_info", remoteSent.single().first)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("VPS चालू है") && speaker.spoken.last().contains("box"))
+        e.submit("PC mein photoshop kholo", fromVoice = true)
+        settle()
+        assertEquals(1, remoteSent.size)
+        remoteAnswer = com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured
+        e.submit("PC mein Cursor kholo", fromVoice = true)
+        settle()
+        assertEquals("open_app" to mapOf("name" to "cursor"), remoteSent.last())
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Settings"))
     }
 
     /** A SIM call is up (answered). */
@@ -782,7 +844,9 @@ class AssistantEngineTest {
         val e = engine()
         e.submit("aaj ki briefing do", fromVoice = true)
         settle()
-        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कुछ खास नहीं"))
+        // Nothing saved: said plainly in three short sentences — no money moved, nobody owes, no task left.
+        val said = speaker.spoken.last()
+        assertTrue(said, said.contains("कोई लेन-देन नहीं") && said.contains("किसी का कोई बकाया नहीं") && said.contains("कोई काम बाकी नहीं"))
         assertTrue(provider.calls.isEmpty())
     }
 

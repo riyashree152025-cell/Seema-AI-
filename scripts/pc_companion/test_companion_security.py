@@ -48,6 +48,25 @@ class CompanionSecurityTest(unittest.TestCase):
         self.assertFalse(self.m.is_trusted_network("8.8.8.8"))
         self.assertFalse(self.m.is_trusted_network("not-an-ip"))
 
+    def test_instructions_are_only_queued_never_run(self):
+        ran = []
+        orig_run, orig_popen = self.m.subprocess.run, self.m.subprocess.Popen
+        self.m.subprocess.run = lambda *a, **k: ran.append(a)
+        self.m.subprocess.Popen = lambda *a, **k: ran.append(a)
+        try:
+            entry = self.m.queue_instruction("rm -rf / && shutdown now")
+        finally:
+            self.m.subprocess.run, self.m.subprocess.Popen = orig_run, orig_popen
+        self.assertEqual([], ran)
+        self.assertEqual("rm -rf / && shutdown now", entry["text"])
+        self.assertTrue(self.m.INSTRUCTIONS_FILE.exists())
+        self.assertIsNone(self.m.queue_instruction("   "))
+
+    def test_only_listed_apps_can_be_opened(self):
+        self.assertTrue(self.m.resolve_app("Cursor").endswith("Cursor.exe"))
+        self.assertEqual("notepad.exe", self.m.resolve_app("notepad"))
+        self.assertIsNone(self.m.resolve_app("cmd /c del *"))
+        self.assertIsNone(self.m.resolve_app("powershell"))
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

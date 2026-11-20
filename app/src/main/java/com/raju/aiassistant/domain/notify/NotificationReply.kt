@@ -10,6 +10,11 @@ private const val REPLY = "(?:reply|riplai|jawab|javab|answer|रिप्ला
 private const val DO = "(?:karo|kar do|kar dena|do|de do|de dena|bhejo|bhej do|करो|कर दो|कर देना|दो|दे दो|दे देना|भेजो|भेज दो)"
 private val WITH_NAME = Regex("^(.+?) (?:ko|को) $REPLY $DO(?: (?:ki|ke|कि))? (.+)$", RegexOption.IGNORE_CASE)
 private val NEWEST = Regex("^(?:(?:isko|isko|use|usko|iska|uska|इसको|उसको|इसका|उसका|is message ka|इस मैसेज का) )?$REPLY $DO(?: (?:ki|ke|कि))? (.+)$", RegexOption.IGNORE_CASE)
+/** "Unko bol do ki 10 minute mein call karta hoon", "ওকে বলে দাও আসছি": tell the person who just wrote. */
+private val TELL = Regex(
+    "^(?:unko|usko|use|unhe|unhein|uske|उनको|उसको|उन्हें|उसे|ওকে|ওদের|তাকে) (?:bol do|bolo|bol dena|keh do|kah do|बोल दो|बोलो|बोल देना|कह दो|বলে দাও|বলো|বলে দিও)(?: (?:ki|कि|যে))? (.+)$",
+    RegexOption.IGNORE_CASE,
+)
 private val NOT_A_NAME = setOf("isko", "usko", "use", "iska", "uska", "इसको", "उसको", "sab", "sabko")
 
 /**
@@ -20,6 +25,7 @@ fun parseReplyCommand(text: String): ReplyCommand? {
     val t = text.trim().trimEnd('.', '!', '?', '।').replace(Regex("\\s+"), " ")
     if (t.length > 300) return null
     NEWEST.matchEntire(t)?.let { m -> return m.groupValues[1].trim().takeIf { it.length >= 2 }?.let { ReplyCommand(null, it) } }
+    TELL.matchEntire(t)?.let { m -> return m.groupValues[1].trim().takeIf { it.length >= 2 }?.let { ReplyCommand(null, it) } }
     WITH_NAME.matchEntire(t)?.let { m ->
         val who = m.groupValues[1].trim()
         val body = m.groupValues[2].trim()

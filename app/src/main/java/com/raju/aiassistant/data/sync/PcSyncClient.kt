@@ -79,6 +79,42 @@ class PcSyncClient(
         }
     }
 
+    /**
+     * The PC / VPS bridge: one action on the companion ("open_app", "system_info", "instruction"). Only the action
+     * name and its few params are sent; the reply's simple values come back for Seema to say.
+     */
+    suspend fun sendAction(action: String, params: Map<String, String>): com.raju.aiassistant.domain.remote.RemoteResult = withContext(Dispatchers.IO) {
+        val base = when (val b = base()) {
+            is AiResult.Success -> b.value
+            is AiResult.Failure -> return@withContext com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured
+        }
+        val payload = buildJsonObject {
+            put("action", action)
+            put("params", buildJsonObject { params.forEach { (k, v) -> put(k, v) } })
+        }
+        val req = Request.Builder()
+            .url("$base/api/v1/actions/pc")
+            .auth(getToken())
+            .post(payload.toRequestBody())
+            .build()
+        try {
+            http.newCall(req).execute().use { resp ->
+                when {
+                    resp.isSuccessful -> {
+                        val obj = runCatching { JsonFormat.parseToJsonElement(resp.body?.string().orEmpty()) as JsonObject }.getOrNull()
+                        val fields = obj?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it.take(80) } }?.toMap().orEmpty()
+                        com.raju.aiassistant.domain.remote.RemoteResult.Done(fields)
+                    }
+                    resp.code == 401 -> com.raju.aiassistant.domain.remote.RemoteResult.Unauthorized
+                    resp.code == 400 || resp.code == 403 -> com.raju.aiassistant.domain.remote.RemoteResult.Refused
+                    else -> com.raju.aiassistant.domain.remote.RemoteResult.Unreachable
+                }
+            }
+        } catch (e: Exception) {
+            com.raju.aiassistant.domain.remote.RemoteResult.Unreachable
+        }
+    }
+
     suspend fun pushMemories(memories: List<Memory>): AiResult<Int> = withContext(Dispatchers.IO) {
         val base = when (val b = base()) {
             is AiResult.Success -> b.value

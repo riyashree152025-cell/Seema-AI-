@@ -37,17 +37,20 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Background business reminders (WorkManager). Android decides the exact minute (battery saving), so
- * "7 AM" means around 7. Everything is computed from the phone's own records — no AI call, no data
+ * "9 AM" means around 9. Everything is computed from the phone's own records — no AI call, no data
  * leaves the phone. Tapping a notification opens Seema, who then explains it in detail.
  */
 object BusinessScheduler {
-    private const val MORNING = "morning_briefing"
+    // Renamed when the check-ins moved to 9 AM / 9 PM: a periodic work keeps its first time, so the old ones are cancelled.
+    private const val MORNING = "morning_briefing_9am"
+    private val OLD = listOf("morning_briefing", "evening_heads_up")
     private const val WEEKLY = "weekly_expense_report"
     private const val PNR_WATCH = "pnr_watch"
-    private const val EVENING = "evening_heads_up"
+    private const val EVENING = "evening_check_in_9pm"
 
     fun schedule(context: Context) {
         val wm = WorkManager.getInstance(context)
+        OLD.forEach { wm.cancelUniqueWork(it) }
         val now = LocalDateTime.now()
         wm.enqueueUniquePeriodicWork(
             MORNING, ExistingPeriodicWorkPolicy.KEEP,
@@ -76,14 +79,15 @@ object BusinessScheduler {
         )
     }
 
-    /** 8 PM today, or tomorrow when it is already past. */
+    /** 9 PM today, or tomorrow when it is already past (the night check-in). */
     internal fun nextEvening(now: LocalDateTime): LocalDateTime {
-        val today = now.toLocalDate().atTime(LocalTime.of(20, 0))
+        val today = now.toLocalDate().atTime(LocalTime.of(21, 0))
         return if (now.isBefore(today)) today else today.plusDays(1)
     }
 
+    /** 9 AM today, or tomorrow when it is already past (the morning check-in). */
     internal fun nextMorning(now: LocalDateTime): LocalDateTime {
-        val today = now.toLocalDate().atTime(LocalTime.of(7, 0))
+        val today = now.toLocalDate().atTime(LocalTime.of(9, 0))
         return if (now.isBefore(today)) today else today.plusDays(1)
     }
 
@@ -152,7 +156,7 @@ class PnrWatchWorker(context: Context, params: WorkerParameters) : CoroutineWork
 }
 
 /**
- * 8 PM: tomorrow's journeys, each with what its passenger still owes, so the evening before is enough
+ * 9 PM: tomorrow's journeys, each with what its passenger still owes, so the evening before is enough
  * time to ask for the money or send the ticket. Silent when there is nothing for tomorrow.
  */
 class EveningHeadsUpWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

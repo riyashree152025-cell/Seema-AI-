@@ -133,7 +133,8 @@ fun headsUp(
 
 private val HEADS_UP = Regex(
     "^(?:aaj|aj|kal|आज|कल)?\\s*(?:ka|ki|का|की)?\\s*(?:briefing|ब्रीफिंग|plan|प्लान|kya kya hai|क्या क्या है|kya hai|क्या है|update|अपडेट)\\s*(?:do|de do|batao|bata do|सुनाओ|sunao|दो|बताओ)?$|" +
-        "^(?:aaj|kal|आज|कल)\\s+(?:ka|का)\\s+(?:kaam|काम|din|दिन)\\s*(?:batao|बताओ|kya hai|क्या है)?$",
+        "^(?:aaj|kal|आज|कल)\\s+(?:ka|का)\\s+(?:kaam|काम|din|दिन)\\s*(?:batao|बताओ|kya hai|क्या है)?$|" +
+        "^(?:আজকের|আজ)\\s*(?:আপডেট|খবর|ব্রিফিং|প্ল্যান)\\s*(?:দাও|বলো|শোনাও)?$",
     RegexOption.IGNORE_CASE,
 )
 

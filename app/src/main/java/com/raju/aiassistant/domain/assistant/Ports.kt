@@ -129,6 +129,8 @@ data class Memory(val id: Long, val text: String, val createdAt: Long)
 interface MemoryStore {
     suspend fun all(): List<Memory>
     suspend fun add(text: String): Long
+    /** Removes one memory; false when it was not there (or the store cannot delete). */
+    suspend fun delete(id: Long): Boolean = false
 }
 
 enum class ActionStatus { SUCCESS, FAILED, CANCELLED, BLOCKED }
