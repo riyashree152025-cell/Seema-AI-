@@ -46,8 +46,21 @@ class EdgeNeuralTtsProvider(
         val spoken = WarmProsody.text(text)
         if (spoken.isBlank()) return AiResult.Failure(FailureKind.UNKNOWN, "nothing to say")
         val voice = EdgeTts.voiceFor(languageTag)
-        val ssml = EdgeTts.ssml(spoken, voice, EdgeTts.ratePercent(voice, rate), EdgeTts.pitchHz(voice, mood()))
+        val mood = mood()
+        val now = java.time.LocalTime.now()
+        // The feeling of this sentence (pouting, tender, playful, factual) sets pace, pitch and pauses.
+        val emotion = com.raju.aiassistant.domain.voice.SpeechEmotion.of(spoken, mood, now.hour, now.minute)
+        val (ratePct, pitch) = EdgeTts.prosodyFor(voice, emotion, rate, mood)
+        var ssml = EdgeTts.ssml(spoken, voice, ratePct, pitch, emotion, breaks = !breaksRefused)
         var result = fetchMp3(ssml)
+        // The free read-aloud service may not take <break> tags: say it once more with punctuation pauses only,
+        // and stop sending breaks for the rest of the app's life (Edge is the last voice; it must never go silent).
+        if (result is Fetch.Failed && !breaksRefused && ssml.contains("<break")) {
+            val plain = EdgeTts.ssml(spoken, voice, ratePct, pitch, emotion, breaks = false)
+            val retry = fetchMp3(plain)
+            if (retry is Fetch.Audio) { breaksRefused = true; ssml = plain }
+            result = retry
+        }
         // 403: the phone's clock is off for Sec-MS-GEC; learn the server's time and try once more.
         if (result is Fetch.Refused && result.skewSeconds != null) {
             skewSeconds = result.skewSeconds
@@ -120,6 +133,8 @@ class EdgeNeuralTtsProvider(
         private const val TIMEOUT_MS = 12_000L
         /** Server time minus phone time, learned from a 403 (kept for the app's lifetime). */
         @Volatile private var skewSeconds = 0L
+        /** The service failed a sentence with break tags and said it without them: no more break tags. */
+        @Volatile private var breaksRefused = false
 
         /** MP3 → 16-bit PCM with Android's own decoder; null when it cannot be decoded. */
         fun decodeMp3(mp3: ByteArray): PcmAudio? = runCatching {

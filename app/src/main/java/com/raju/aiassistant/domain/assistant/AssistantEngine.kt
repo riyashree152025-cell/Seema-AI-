@@ -290,6 +290,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** When Raju last talked to her (kept on the phone), for "kahan the itni der se?" and late-night care. */
+    private val presence: PresenceStore = InMemoryPresenceStore(),
     /** The PC / VPS bridge: sends the companion's action and params, says what it answered. */
     private val remoteBridge: suspend (String, Map<String, String>) -> com.raju.aiassistant.domain.remote.RemoteResult = { _, _ -> com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured },
     /** Messages that can be answered from their notification (newest first), and the sender for one of them. */
@@ -1121,6 +1123,11 @@ class AssistantEngine(
         }
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
+        // How long he was away (and the hour), read before this talk is marked; used in this reply's instructions.
+        val lastTalk = presence.lastInteraction()
+        feelingNow = EmotionStateTracker.promptLine(EmotionStateTracker.cues(clock(), lastTalk, zone()), clock(), lastTalk, lang() == SeemaLanguage.BENGALI)
+        presence.markInteraction(clock())
+        if (feelingNow != null) trace("feeling: ${EmotionStateTracker.cues(clock(), lastTalk, zone()).joinToString { it.name.lowercase() }}")
         // "Band kar do" while a video is being recorded (typed, or after "Hey Seema").
         if (tools.recordingVideo() && com.raju.aiassistant.domain.camera.CameraVoice.isStop(text)) {
             if (runLocalCommand(AssistantAction.StopVideo, speak = fromVoice || s.autoSpeakReplies)) return
@@ -1367,6 +1374,7 @@ class AssistantEngine(
         val context = PromptContext(
             voiceTurn = fromVoice, recentOpenings = recentOpenings, partOfDay = partOfDay(hourOfDay()), business = businessSnapshot(),
             language = lang(), languageUnclear = languageUnclear, documents = documents, savedPayment = savedPaymentLine(s),
+            feeling = feelingNow,
         )
         // The mood the user's own words show, for this answer only (nothing is stored).
         val mood = moodOf(text)
@@ -3938,6 +3946,9 @@ class AssistantEngine(
     }
 
     /** "Photo lo" (saved to the gallery) or, with [question], "dekho kya dikh raha hai" (photo → Gemini → spoken answer). */
+    /** How she feels as he speaks this time (back after hours, late night), for this reply only. */
+    private var feelingNow: String? = null
+
     /** While a video records: only "band kar do" is acted on; everything else heard is ignored (it is the video's sound). */
     private var videoListening = false
     private var videoAutoStop: Job? = null

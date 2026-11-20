@@ -57,7 +57,9 @@ class SecureKeyStore(context: Context) {
             Read.Missing -> null
             Read.Unavailable -> null
             Read.Broken -> {
-                prefs.edit().remove(id.storageKey).apply()
+                // Never thrown away: kept aside under another name (it may still open after a Keystore hiccup),
+                // and the field shows "Not set" so the key can be typed again or restored from the keys backup.
+                prefs.getString(id.storageKey, null)?.let { prefs.edit().putString(QUARANTINE + id.storageKey, it).remove(id.storageKey).apply() }
                 _configured.value = readConfiguredIds()
                 null
             }
@@ -92,12 +94,26 @@ class SecureKeyStore(context: Context) {
         }
     }
 
+    /** Every key that can be read now, for the password-locked keys backup. */
+    suspend fun exportAll(): Map<SecretId, String> = withContext(Dispatchers.IO) {
+        SecretId.entries.mapNotNull { id -> (read(id) as? Read.Ok)?.let { id to it.value } }.toMap()
+    }
+
+    /** Saves the keys from a backup (each encrypted again with this phone's key). Returns how many were saved. */
+    suspend fun importAll(values: Map<SecretId, String>): Int =
+        values.count { (id, v) -> v.isNotBlank() && runCatching { save(id, v) }.getOrDefault(false) }
+
     private fun readConfiguredIds(): Set<SecretId> =
         SecretId.entries.filter { prefs.contains(it.storageKey) }.toSet()
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        if (keyStore.containsAlias(KEY_ALIAS)) {
+            // The master key exists but could not be read this time: NEVER make a new one over it — that would
+            // make every saved API key unreadable for good (this is how saved keys used to vanish). Try again later.
+            return (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+                ?: throw java.security.KeyStoreException("Master key is busy")
+        }
 
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
@@ -123,6 +139,8 @@ class SecureKeyStore(context: Context) {
         const val GCM_TAG_BITS = 128
         const val PREFS_NAME = "raju_secure_store"
         const val SEPARATOR = ":"
+        /** Where a key that cannot be decrypted is kept aside instead of being deleted. */
+        const val QUARANTINE = "unreadable_"
     }
 }
 

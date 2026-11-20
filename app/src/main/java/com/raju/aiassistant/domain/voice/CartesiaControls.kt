@@ -28,19 +28,29 @@ sealed interface CartesiaControls {
          * [rate] is her speaking rate after the mood (warm ≈ 0.93); [savedEmotion] is the user's choice
          * (null = "Natural", none sent); [mood] the mood of this reply.
          */
-        fun forModel(modelId: String, rate: Float, savedEmotion: String?, mood: VoiceMood?): CartesiaControls {
-            val speed = (rate * SOFT_SPEED).coerceIn(MIN_SPEED, MAX_SPEED)
+        fun forModel(modelId: String, rate: Float, savedEmotion: String?, mood: VoiceMood?, feeling: SpeechEmotion? = null): CartesiaControls {
+            // The sentence's feeling moves the pace a little: slower when pouting, livelier when teasing.
+            val pace = when (feeling) {
+                SpeechEmotion.POUTING -> 0.94f
+                SpeechEmotion.AFFECTIONATE -> 0.97f
+                SpeechEmotion.PLAYFUL -> 1.04f
+                else -> 1f
+            }
+            val speed = (rate * SOFT_SPEED * pace).coerceIn(MIN_SPEED, MAX_SPEED)
             val emotion = when {
                 savedEmotion == null -> null
                 mood == VoiceMood.WHISPER -> "calm" // late night: soft and quiet, not bubbly
-                mood == VoiceMood.CONTROLLED_UPSET -> "sympathetic"
+                mood == VoiceMood.CONTROLLED_UPSET || feeling == SpeechEmotion.POUTING -> "sympathetic"
+                feeling == SpeechEmotion.AFFECTIONATE -> "affectionate"
+                feeling == SpeechEmotion.PLAYFUL -> "happy"
+                feeling == SpeechEmotion.CALM -> "calm"
                 else -> savedEmotion
             }
             if (isSonic3(modelId)) return Generation(Math.round(speed * 100) / 100.0, emotion)
             val tags = when {
                 savedEmotion == null -> emptyList()
                 mood == VoiceMood.WHISPER -> listOf("positivity:low")
-                mood == VoiceMood.CONTROLLED_UPSET -> listOf("sadness:low")
+                mood == VoiceMood.CONTROLLED_UPSET || feeling == SpeechEmotion.POUTING -> listOf("sadness:low")
                 else -> listOf("positivity:high")
             }
             // The same pace on the older scale (0 = normal): -0.15 for the warm mood.

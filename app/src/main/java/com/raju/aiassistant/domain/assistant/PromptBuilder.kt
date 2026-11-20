@@ -28,6 +28,8 @@ data class PromptContext(
     val documents: List<KnowledgeHit> = emptyList(),
     /** What payment details are saved in Seema ("payment QR saved; UPI IDs: Paytm, PhonePe"), or null when none. */
     val savedPayment: String? = null,
+    /** "He was away 3+ hours" / "it is late night": how she feels as he speaks (see [EmotionStateTracker]). */
+    val feeling: String? = null,
 )
 
 fun buildSystemPrompt(
@@ -94,6 +96,7 @@ fun buildSystemPrompt(
     if (context.recentOpenings.isNotEmpty()) {
         appendLine("Your last replies began with: " + context.recentOpenings.joinToString(" | ") { "\"$it\"" } + " — begin this one differently.")
     }
+    context.feeling?.let { appendLine(it) }
     if (context.voiceTurn) {
         appendLine("THIS TURN IS SPOKEN: the user is talking to you by voice and will only hear your reply. Reply in 1-2 short, natural spoken sentences; Hindi words in Devanagari, Bengali words in Bengali script; no symbols, lists or emoji.")
     }

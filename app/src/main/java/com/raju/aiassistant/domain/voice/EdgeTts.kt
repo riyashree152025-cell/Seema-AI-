@@ -66,6 +66,38 @@ object EdgeTts {
         }
     }
 
+    /**
+     * Rate and pitch for a sentence said with [emotion]: the emotion's own pace and pitch (the voice's base for
+     * WARM), still moved by the user's speech-rate setting ([rate] / the mood's own rate = the setting).
+     */
+    fun prosodyFor(voice: Voice, emotion: SpeechEmotion, rate: Float, mood: VoiceMood?): Pair<Int, Int> {
+        val setting = rate / (mood ?: VoiceMood.WARM).rate
+        val userOffset = ((setting - 1f) * 100f).roundToInt()
+        return if (emotion == SpeechEmotion.WARM) ratePercent(voice, rate) to pitchHz(voice, mood)
+        else (emotion.ratePercent!! + userOffset).coerceIn(-50, 50) to emotion.pitchHz!!
+    }
+
+    private val ELLIPSIS = Regex("(?:…|\\.{2,})\\s*")
+    private val COMMA = Regex("([,،])\\s+")
+
+    /**
+     * SSML with the emotion's prosody and real pauses: a break after every "…" (and, when pouting, after commas)
+     * so a sigh or a hesitation is heard instead of rushed. [breaks] false: pauses from punctuation only (the
+     * fallback when the service does not take break tags).
+     */
+    fun ssml(text: String, voice: Voice, ratePercent: Int, pitchHz: Int, emotion: SpeechEmotion, breaks: Boolean = true): String {
+        var body = escapeXml(text.trim())
+        if (breaks) {
+            val pause = "<break time='${emotion.pauseMs}ms'/>"
+            body = ELLIPSIS.replace(body) { m -> if (m.range.last >= body.length - 1) "…" else "…$pause " }
+            if (emotion == SpeechEmotion.POUTING || emotion == SpeechEmotion.AFFECTIONATE) body = COMMA.replace(body) { m -> m.groupValues[1] + pause + " " }
+        }
+        return "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${voice.locale}'>" +
+            "<voice name='${voice.ssmlName}'>" +
+            "<prosody pitch='${signed(pitchHz)}Hz' rate='${signed(ratePercent)}%' volume='+0%'>$body</prosody>" +
+            "</voice></speak>"
+    }
+
     fun ssml(text: String, voice: Voice, ratePercent: Int, pitchHz: Int): String =
         "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${voice.locale}'>" +
             "<voice name='${voice.ssmlName}'>" +

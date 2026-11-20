@@ -485,6 +485,7 @@ class AppContainer(context: Context) {
             routines = { com.raju.aiassistant.notifications.RoutineStore.all(appContext) },
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             remoteBridge = { action, params -> pcSyncClient.sendAction(action, params) },
+            presence = com.raju.aiassistant.data.prefs.PresencePrefs(appContext),
             replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
             sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },
             log = { android.util.Log.i("SeemaVoice", it) },

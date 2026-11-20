@@ -71,6 +71,7 @@ class CartesiaTtsProvider(
         // Soft, warm, unhurried: speed and emotion in the form this model understands.
         val emotion = com.raju.aiassistant.domain.voice.CartesiaControls.forModel(
             s.cartesiaModel, rate, com.raju.aiassistant.domain.voice.VoiceCatalog.cartesiaEmotion(s.cartesiaMood), mood(),
+            java.time.LocalTime.now().let { now -> com.raju.aiassistant.domain.voice.SpeechEmotion.of(text, mood(), now.hour, now.minute) },
         )
         val first = client.synthesize(com.raju.aiassistant.domain.voice.WarmProsody.text(text), voice, s.cartesiaModel, language, emotion)
         // The saved voice no longer exists (Cartesia: 404 "voice not found"): choose one from the

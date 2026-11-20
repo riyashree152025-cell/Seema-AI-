@@ -42,7 +42,7 @@ import java.time.LocalDate
 @Composable
 fun BackupPanel(viewModel: SettingsViewModel) {
     val context = LocalContext.current
-    var mode by remember { mutableStateOf<String?>(null) } // "save" / "restore"
+    var mode by remember { mutableStateOf<String?>(null) } // "save" / "restore" / "keys_save" / "keys_restore"
     var uri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -52,6 +52,12 @@ fun BackupPanel(viewModel: SettingsViewModel) {
     }
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) { uri = u; mode = "restore" }
+    }
+    val createKeys = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { u ->
+        if (u != null) { uri = u; mode = "keys_save" }
+    }
+    val openKeys = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) { uri = u; mode = "keys_restore" }
     }
 
     HudPanel(title = "Backup (password se locked)") {
@@ -65,16 +71,30 @@ fun BackupPanel(viewModel: SettingsViewModel) {
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White) }
     }
 
+    HudPanel(title = "API keys backup (password se locked)") {
+        Text(
+            "Gemini, Groq, Sarvam, Cartesia — sab saved API keys ek locked file mein. App dobara install karna pade ya " +
+                "naya phone ho, to ek tap se sab keys wapas. File sirf aapke password se khulti hai.",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
+        Button(onClick = { createKeys.launch("seema-api-keys-${LocalDate.now()}.seemakeys") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("API keys ka backup banao") }
+        OutlinedButton(onClick = { openKeys.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("API keys wapas laao") }
+    }
+
     val target = uri
     val m = mode
     if (m != null && target != null) {
         PasswordDialog(
-            restore = m == "restore",
+            restore = m == "restore" || m == "keys_restore",
             onCancel = { mode = null; uri = null },
             onOk = { pw ->
                 mode = null; uri = null; busy = true
-                message = if (m == "save") "Backup ban raha hai…" else "Backup wapas aa raha hai…"
-                if (m == "save") {
+                message = if (m == "save" || m == "keys_save") "Backup ban raha hai…" else "Backup wapas aa raha hai…"
+                if (m == "keys_save") {
+                    viewModel.exportKeys(target, pw) { msg -> busy = false; message = msg }
+                } else if (m == "keys_restore") {
+                    viewModel.importKeys(target, pw) { msg -> busy = false; message = msg }
+                } else if (m == "save") {
                     viewModel.exportBackup(target, pw) { msg -> busy = false; message = msg }
                 } else {
                     viewModel.restoreBackup(target, pw) { msg, ok ->

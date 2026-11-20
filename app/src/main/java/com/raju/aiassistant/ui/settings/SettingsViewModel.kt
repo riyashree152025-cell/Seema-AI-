@@ -377,6 +377,41 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             is com.raju.aiassistant.data.backup.BackupManager.Result.Failed -> done(r.message, false)
         }
     }
+    /** All saved API keys into one password-locked file (see KeyBackup). */
+    fun exportKeys(uri: android.net.Uri, password: CharArray, done: (String) -> Unit) = viewModelScope.launch {
+        val msg = runCatching {
+            val keys = c.secureKeyStore.exportAll()
+            if (keys.isEmpty()) return@runCatching "Abhi koi API key saved nahi hai."
+            val bytes = com.raju.aiassistant.domain.backup.KeyBackup.lock(keys, password, System.currentTimeMillis())
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                c.appContext.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("file")
+            }
+            "${keys.size} API keys ka backup ban gaya. File aur password sambhal ke rakhiye."
+        }.getOrElse { "Backup file nahi likh payi." }
+        password.fill(' ')
+        done(msg)
+    }
+
+    /** API keys back from a keys backup file. */
+    fun importKeys(uri: android.net.Uri, password: CharArray, done: (String) -> Unit) = viewModelScope.launch {
+        val msg = runCatching {
+            val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                c.appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("file")
+            }
+            when (val r = com.raju.aiassistant.domain.backup.KeyBackup.open(bytes, password)) {
+                com.raju.aiassistant.domain.backup.KeyBackup.Opened.WrongPassword -> "Password galat hai (ya file badli hui hai)."
+                com.raju.aiassistant.domain.backup.KeyBackup.Opened.NotAKeyBackup -> "Yeh API keys ki backup file nahi hai."
+                is com.raju.aiassistant.domain.backup.KeyBackup.Opened.Ok -> {
+                    val n = c.secureKeyStore.importAll(r.keys)
+                    refreshMasks()
+                    "$n API keys wapas aa gayi."
+                }
+            }
+        }.getOrElse { "Backup file nahi padh payi." }
+        password.fill(' ')
+        done(msg)
+    }
+
     fun setWakeToStart(v: Boolean) = launch { repo.setWakeToStart(v) }
     fun setWakeSensitivity(v: String) = launch { repo.setWakeSensitivity(v) }
     fun setBargeInSpeaker(v: Boolean) = launch { repo.setBargeInSpeaker(v) }
