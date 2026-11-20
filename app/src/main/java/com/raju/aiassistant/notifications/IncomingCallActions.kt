@@ -30,7 +30,12 @@ object IncomingCallActions {
                 d == null && CallButtons.isDecline(title) -> d = act.actionIntent
             }
         }
-        if (a == null && d == null) return
+        // The same call's notification without an Answer button any more ("Speaker", "Mute", "End"…): the call
+        // was answered, so it is no longer ringing (the old Answer button used to be kept for 90 s).
+        if (a == null && d == null) {
+            if (notificationKey == key) answer = null
+            return
+        }
         // The call was answered: the same notification now offers "Hang up" (no Answer) — no longer ringing.
         answer = a
         decline = d

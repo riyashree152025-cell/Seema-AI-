@@ -53,9 +53,63 @@ class AudioInterruptions(
         }
     } else null
 
+    /**
+     * Android 12+: the SIM call state too, once the Phone permission is granted. It decides for SIM calls
+     * (the audio mode alone stayed "ringtone" on a Samsung after the call was answered, so Seema neither
+     * paused for the call nor believed it was answered).
+     */
+    private var telephonyRegistered = false
+    private val telephonyCallback: Any? = if (Build.VERSION.SDK_INT >= 31) object : android.telephony.TelephonyCallback(), android.telephony.TelephonyCallback.CallStateListener {
+        override fun onCallStateChanged(state: Int) = onSimState(simStateOf(state))
+    } else null
+
+    /** The SIM call state now (UNKNOWN without the Phone permission). */
+    @android.annotation.SuppressLint("MissingPermission") // READ_PHONE_STATE is checked by hasPhonePermission()
+    fun simState(): com.raju.aiassistant.domain.notify.SimCallState {
+        if (!hasPhonePermission()) return com.raju.aiassistant.domain.notify.SimCallState.UNKNOWN
+        return runCatching { simStateOf(context.getSystemService(TelephonyManager::class.java)?.callState ?: -1) }
+            .getOrDefault(com.raju.aiassistant.domain.notify.SimCallState.UNKNOWN)
+    }
+
+    private fun hasPhonePermission(): Boolean =
+        ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun simStateOf(state: Int) = when (state) {
+        TelephonyManager.CALL_STATE_RINGING -> com.raju.aiassistant.domain.notify.SimCallState.RINGING
+        TelephonyManager.CALL_STATE_OFFHOOK -> com.raju.aiassistant.domain.notify.SimCallState.OFFHOOK
+        TelephonyManager.CALL_STATE_IDLE -> com.raju.aiassistant.domain.notify.SimCallState.IDLE
+        else -> com.raju.aiassistant.domain.notify.SimCallState.UNKNOWN
+    }
+
+    private fun onSimState(sim: com.raju.aiassistant.domain.notify.SimCallState) {
+        when (sim) {
+            com.raju.aiassistant.domain.notify.SimCallState.RINGING -> update(CallPhase.RINGING)
+            com.raju.aiassistant.domain.notify.SimCallState.OFFHOOK -> update(CallPhase.ACTIVE)
+            // The SIM call is over: what is left is an internet call (by the audio mode) or nothing.
+            com.raju.aiassistant.domain.notify.SimCallState.IDLE -> update(audio?.mode?.let { m ->
+                callPhaseForMode(m).takeIf { m != AudioManager.MODE_IN_COMMUNICATION }
+            } ?: CallPhase.NONE)
+            com.raju.aiassistant.domain.notify.SimCallState.UNKNOWN -> Unit
+        }
+    }
+
+    /** Listens to the SIM call state once the Phone permission is there (it may be granted after start). */
+    @android.annotation.SuppressLint("MissingPermission") // READ_PHONE_STATE is checked by hasPhonePermission()
+    fun ensureCallStateListener() {
+        if (Build.VERSION.SDK_INT < 31) return
+        if (telephonyRegistered || !hasPhonePermission()) return
+        runCatching {
+            context.getSystemService(TelephonyManager::class.java)?.registerTelephonyCallback(
+                ContextCompat.getMainExecutor(context), telephonyCallback as android.telephony.TelephonyCallback,
+            )
+            telephonyRegistered = true
+        }
+    }
+
     fun start() {
         if (started) return
         started = true
+        ensureCallStateListener()
         ContextCompat.registerReceiver(context, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
         if (Build.VERSION.SDK_INT >= 31) {
             runCatching { audio?.addOnModeChangedListener(ContextCompat.getMainExecutor(context), modeListener as AudioManager.OnModeChangedListener) }
@@ -70,6 +124,14 @@ class AudioInterruptions(
         // Seema's own call-style audio (MODE_IN_COMMUNICATION) during a ringing or active phone call is not
         // the end of that call: ending it there stopped her listening for "utha lo / kaat do".
         if (mode == AudioManager.MODE_IN_COMMUNICATION && phase != CallPhase.NONE) return
+        // A SIM call is ringing or up: its own state decides, not the audio mode.
+        if (telephonyRegistered) {
+            when (simState()) {
+                com.raju.aiassistant.domain.notify.SimCallState.RINGING -> return update(CallPhase.RINGING)
+                com.raju.aiassistant.domain.notify.SimCallState.OFFHOOK -> return update(CallPhase.ACTIVE)
+                else -> Unit
+            }
+        }
         update(callPhaseForMode(mode))
     }
 

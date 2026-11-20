@@ -163,7 +163,9 @@ private val FALLBACK_KINDS = setOf(FailureKind.RATE_LIMITED, FailureKind.QUOTA_E
 /** How long after a caller announcement "haan / utha lo" or "kaat do" is listened for. */
 private const val CALL_COMMAND_WINDOW_MS = 35_000L
 /** After a voice answer / cut: how long before it is checked that the phone really stopped ringing. */
-private const val CALL_VERIFY_MS = 1_200L
+private const val CALL_VERIFY_MS = 3_000L
+/** How often the call state is looked at while waiting for an answer / cut to take effect. */
+private const val CALL_POLL_MS = 250L
 /** The loudspeaker goes on this long after "uthao" worked, and once more [SPEAKER_RETRY_MS] later. */
 private const val SPEAKER_AFTER_ANSWER_MS = 500L
 private const val SPEAKER_RETRY_MS = 1_000L
@@ -296,6 +298,8 @@ class AssistantEngine(
     private val headphones: () -> Boolean = { true },
     /** A phone call is still ringing (the audio mode says so): an answer / cut that changed nothing is retried on the screen. */
     private val callRinging: () -> Boolean = { false },
+    /** A SIM call is up (answered or dialled): what the microphone hears now is the call, never a request. */
+    private val inPhoneCall: () -> Boolean = { false },
     /** How the user says names, learned from their own choices (on the phone only). */
     private val contactAliases: com.raju.aiassistant.domain.tools.ContactAliasStore = com.raju.aiassistant.domain.tools.InMemoryContactAliases(),
     /** A soft, short chime when listening for an answer starts. */
@@ -466,6 +470,15 @@ class AssistantEngine(
         if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
+        // A SIM call is up: the microphone heard the call itself (the caller on the loudspeaker, or the user
+        // talking to them). That is never a request — it went to the AI and got a reply in the wrong language.
+        if (inPhoneCall()) {
+            trace("phone call on: heard result dropped (${heard.length} chars)")
+            listenGen++
+            voice.stop()
+            _voiceSession.value = false
+            return
+        }
         // "Haan sunao" / "nahi" while a message question waits but its own listening was not open:
         // it is still the answer to that question, never a new request for the AI.
         if (heard.trim().split(Regex("\\s+")).size <= 4) {
@@ -922,6 +935,12 @@ class AssistantEngine(
 
     private suspend fun onWakeAudio(pcm: ByteArray) {
         if (!asleep) return
+        // A SIM call is up (often on the loudspeaker): its voices are not "Hey Seema" or a request.
+        if (inPhoneCall()) {
+            trace("wake: phone call on, not checked")
+            armWakeListener()
+            return
+        }
         if (wakeListener.spotsWakeWord) {
             // The offline detector heard "Hey Seema" on the phone itself: wake and listen.
             trace("wake word (offline)")
@@ -1697,13 +1716,17 @@ class AssistantEngine(
             }
             is AssistantAction.EndCall -> {
                 trace("offline command: end call")
-                val outcome = tools.endCall()
-                report(action, outcome)
-                if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
+                // A ringing call is cut the verified way (never "कट गई" while it still rings).
+                if (callRinging()) cutRingingCall() else {
+                    val outcome = tools.endCall()
+                    report(action, outcome)
+                    if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))
+                }
             }
             is AssistantAction.AnswerCall -> {
                 trace("offline command: answer call")
-                report(action, tools.answerCall())
+                // Verified like "uthao" after the announcement: never "कॉल उठा ली" while it still rings.
+                answerRingingCall()
             }
             is AssistantAction.ReadNotification -> {
                 trace("offline command: read notification")
@@ -2515,6 +2538,14 @@ class AssistantEngine(
      * hands-free (again a little later: dialers reset the audio route while the call connects).
      */
     private suspend fun answerRingingCall() {
+        if (!callRinging()) {
+            // Nothing rings (the call is already up, or it ended): no button is pressed and nothing is claimed.
+            val msg = phrase(lang(), "अभी कोई कॉल बज नहीं रही — कॉल पहले से उठी हुई है या कट चुकी है।", "এখন কোনো কল বাজছে না — কলটা আগেই ধরা হয়েছে বা কেটে গেছে।")
+            trace("call: answer asked, nothing ringing")
+            report(AssistantAction.AnswerCall, ActionStatus.CANCELLED, msg)
+            if (!inPhoneCall()) say(msg)
+            return
+        }
         val outcome = tryCallSteps(answer = true)
         report(AssistantAction.AnswerCall, outcome)
         if (outcome is ToolOutcome.Done) {
@@ -2530,6 +2561,13 @@ class AssistantEngine(
 
     /** "Kaato": the same three ways, checked the same way. */
     private suspend fun cutRingingCall() {
+        if (!callRinging()) {
+            // Not ringing: an active call is hung up the usual way.
+            val outcome = tools.endCall()
+            report(AssistantAction.EndCall, outcome)
+            if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
+            return
+        }
         val outcome = tryCallSteps(answer = false)
         report(AssistantAction.EndCall, outcome)
         if (outcome !is ToolOutcome.Done) say(callFailureText(outcome, answer = false))
@@ -2559,7 +2597,10 @@ class AssistantEngine(
                 continue
             }
             anyDone = true
-            delay(CALL_VERIFY_MS)
+            // Dialers take a moment to connect: looked at every 250 ms for up to 3 s, so a slow but real answer
+            // is not reported as "still ringing" (and the next button is not pressed on an answered call).
+            var waited = 0L
+            while (callRinging() && waited < CALL_VERIFY_MS) { delay(CALL_POLL_MS); waited += CALL_POLL_MS }
             if (!callRinging()) {
                 trace("call: ${if (answer) "answered" else "cut"} (no longer ringing)")
                 return r
@@ -2736,10 +2777,10 @@ class AssistantEngine(
                 if (speak && outcome is ToolOutcome.Done) say(outcome.message)
             }
             is AssistantAction.FindPhone -> findPhone(action, speak)
-            is AssistantAction.AnswerCall -> report(action, tools.answerCall())
+            is AssistantAction.AnswerCall -> answerRingingCall()
             is AssistantAction.TakePhoto -> camera(action, action.front, question = null, speak = speak)
             is AssistantAction.LookCamera -> narrated(action, speak) { camera(action, action.front, question = action.question, speak = speak) }
-            is AssistantAction.EndCall -> {
+            is AssistantAction.EndCall -> if (callRinging()) cutRingingCall() else {
                 val outcome = tools.endCall()
                 report(action, outcome)
                 if (speak && outcome is ToolOutcome.Done) say(phrase(lang(), "कॉल कट कर दी गई है राजू।", "কল কেটে দেওয়া হয়েছে রাজু।"))

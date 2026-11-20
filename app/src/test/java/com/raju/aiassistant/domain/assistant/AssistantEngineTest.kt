@@ -26,6 +26,7 @@ import com.raju.aiassistant.domain.screen.ScreenRead
 import com.raju.aiassistant.domain.screen.ScreenSnapshot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -85,9 +86,12 @@ class AssistantEngineTest {
         var screenResult: ToolOutcome = ToolOutcome.Done("pressed")
         var answeredOnScreen = 0
         var endedOnScreen = 0
-        override fun answerCall(): ToolOutcome { answered++; return answerResult }
-        override fun endCall(): ToolOutcome { ended++; return endResult }
-        override fun answerCallOnScreen(): ToolOutcome { answeredOnScreen++; return screenResult }
+        /** A press that really worked: the phone stops ringing (set by [phoneRingsUntilAnsweredOrCut]). */
+        var onCallHandled: () -> Unit = {}
+        private fun handled(r: ToolOutcome) = r.also { if (it is ToolOutcome.Done) onCallHandled() }
+        override fun answerCall(): ToolOutcome { answered++; return handled(answerResult) }
+        override fun endCall(): ToolOutcome { ended++; return handled(endResult) }
+        override fun answerCallOnScreen(): ToolOutcome { answeredOnScreen++; return handled(screenResult) }
         var notificationPresses = 0
         var notificationResult: ToolOutcome = ToolOutcome.Failed("no call notification")
         var onNotificationPress: () -> Unit = {}
@@ -96,7 +100,7 @@ class AssistantEngineTest {
         val qrShares = mutableListOf<Pair<String, String>>()
         override fun hasPaymentQr(): Boolean = qrSaved
         override fun sharePaymentQr(number: String, caption: String): ToolOutcome { qrShares += number to caption; return ToolOutcome.Done("QR shared") }
-        override fun endCallOnScreen(): ToolOutcome { endedOnScreen++; return screenResult }
+        override fun endCallOnScreen(): ToolOutcome { endedOnScreen++; return handled(screenResult) }
         val torch = mutableListOf<Boolean>()
         override fun setFlashlight(on: Boolean): ToolOutcome { torch += on; return ToolOutcome.Done(if (on) "Torch on" else "Torch off") }
         val volumes = mutableListOf<Int>()
@@ -216,11 +220,21 @@ class AssistantEngineTest {
             history = store, memories = store, actionLog = store, tools = tools,
             speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
             callRinging = { ringing },
+            inPhoneCall = { inCall },
         )
     }
 
+    /** A SIM call is up (answered). */
+    private var inCall = false
+
     /** The phone is still ringing (the audio mode says so). */
     private var ringing = false
+
+    /** A real phone: it rings until one of Seema's presses really answers or cuts the call. */
+    private fun phoneRingsUntilAnsweredOrCut() {
+        ringing = true
+        tools.onCallHandled = { ringing = false }
+    }
 
     @Test
     fun replyIsRecordedSpokenAndStateReturnsToIdle() = runTest {
@@ -2501,6 +2515,7 @@ class AssistantEngineTest {
 
     @Test
     fun sayingYesWhileACallRingsAnswersItWithoutTheAi() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         val e = engine()
         e.onCallRinging()
         e.listenForCallCommand()
@@ -2514,6 +2529,7 @@ class AssistantEngineTest {
 
     @Test
     fun aRecogniserErrorWhileTheCallRingsKeepsListeningSoUthaLoStillWorks() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         val e = engine()
         e.onCallRinging()
         e.listenForCallCommand()
@@ -2531,6 +2547,7 @@ class AssistantEngineTest {
 
     @Test
     fun whenTelecomRefusesTheScreenAnswerButtonIsPressed() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         tools.answerResult = ToolOutcome.NeedsPermission("android.permission.ANSWER_PHONE_CALLS", "no permission")
         val e = engine()
         e.onCallRinging()
@@ -2605,15 +2622,58 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aSlowButRealAnswerIsReportedAsAnsweredAndNoSecondButtonIsPressed() = runTest {
+        // 20 Nov: the notification's Answer worked, the dialer took ~2 s, and Seema said "अब भी बज रहा है".
+        ringing = true
+        tools.notificationResult = ToolOutcome.Done("notification का Answer बटन दबाया।")
+        tools.onNotificationPress = { backgroundScope.launch { kotlinx.coroutines.delay(2_000); ringing = false } }
+        val e = engine()
+        e.onCallRinging()
+        e.listenForCallCommand()
+        runCurrent()
+        voice.onResult!!("utha lo")
+        settle()
+        assertEquals(1, tools.notificationPresses)
+        assertEquals(0, tools.answered) // telecom not pressed on a call that was being answered
+        assertTrue(speaker.spoken.none { it.contains("अब भी बज रहा") })
+        assertEquals(ActionStatus.SUCCESS, store.logs.last().second)
+    }
+
+    @Test
+    fun answerCallWhenNothingRingsPressesNothingAndClaimsNothing() = runTest {
+        // The AI's answer_call on a call that was already up used to show "✅ कॉल उठा ली है".
+        val e = engine(AiResult.Success("""ठीक है <action>{"type":"answer_call"}</action>"""))
+        e.submit("call utha lo")
+        settle()
+        assertEquals(0, tools.answered + tools.notificationPresses + tools.answeredOnScreen)
+        assertTrue(store.logs.toString(), store.logs.none { it.second == ActionStatus.SUCCESS && it.first.contains("nswer", ignoreCase = true) })
+    }
+
+    @Test
+    fun whatTheMicrophoneHearsDuringAPhoneCallNeverGoesToTheAi() = runTest {
+        // 20 Nov: the caller on the loudspeaker ("हां हाइले के बड़ा बताओ…") went to the AI, which answered in Bengali.
+        val e = engine(AiResult.Success("আহা"))
+        e.startVoice()
+        runCurrent()
+        inCall = true
+        voice.onResult!!("हां हाइले के बड़ा बताओ तो आपका नाज़बे")
+        settle()
+        assertEquals(0, provider.calls.size)
+        assertTrue(speaker.spoken.isEmpty())
+        inCall = false
+    }
+
+    @Test
     fun theLoudspeakerGoesOnHalfASecondAfterTheCallIsAnswered() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         val e = engine()
         e.onCallRinging()
         e.listenForCallCommand()
         runCurrent()
         voice.onResult!!("utha lo") // no "speaker" said
-        advanceTimeBy(1_600); runCurrent() // the answer is checked at 1.2 s, the speaker follows 0.5 s later
+        advanceTimeBy(400); runCurrent() // it stopped ringing at once: the speaker follows 0.5 s after the answer
         assertTrue("not before 0.5 s: ${tools.speakerCalls}", tools.speakerCalls.isEmpty())
-        advanceTimeBy(300); runCurrent()
+        advanceTimeBy(200); runCurrent()
         assertEquals(listOf(true), tools.speakerCalls)
         settle()
         assertTrue(tools.speakerCalls.all { it }) // never switched off
@@ -2621,6 +2681,7 @@ class AssistantEngineTest {
 
     @Test
     fun whenTelecomRefusesToCutTheScreenDeclineButtonIsPressed() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         tools.endResult = ToolOutcome.Failed("no active call")
         val e = engine()
         e.onCallRinging()
@@ -2635,6 +2696,7 @@ class AssistantEngineTest {
 
     @Test
     fun ifNothingCanAnswerTheCallTheUserIsToldWhy() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         tools.answerResult = ToolOutcome.NeedsPermission("android.permission.ANSWER_PHONE_CALLS", "no permission")
         tools.screenResult = ToolOutcome.Failed("button not found")
         val e = engine()
@@ -2900,6 +2962,7 @@ class AssistantEngineTest {
 
     @Test
     fun aWrongHearingWhileACallRingsKeepsListeningAndTheAnswerStillWorks() = runTest {
+        phoneRingsUntilAnsweredOrCut()
         // The ringtone or the room heard as some word used to end the listening: the call rang on
         // and "uthao" was never heard.
         val e = engine()

@@ -367,12 +367,14 @@ class AppContainer(context: Context) {
      */
     @Suppress("DEPRECATION")
     fun phoneRinging(): Boolean {
-        val byState = runCatching {
-            androidx.core.content.ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
-                appContext.getSystemService(android.telephony.TelephonyManager::class.java)?.callState == android.telephony.TelephonyManager.CALL_STATE_RINGING
-        }.getOrDefault(false)
-        return byState || audioInterruptions.ringing() || com.raju.aiassistant.notifications.IncomingCallActions.ringing()
+        audioInterruptions.ensureCallStateListener()
+        return com.raju.aiassistant.domain.notify.RingState.ringing(
+            audioInterruptions.simState(), audioInterruptions.ringing(), com.raju.aiassistant.notifications.IncomingCallActions.ringing(),
+        )
     }
+
+    /** A SIM call is up: Seema does not listen to it (the call's own voices are not requests to her). */
+    fun phoneInCall(): Boolean = com.raju.aiassistant.domain.notify.RingState.inCall(audioInterruptions.simState())
 
     val ringDucker by lazy { com.raju.aiassistant.core.audio.RingDucker(appContext) }
 
@@ -478,6 +480,7 @@ class AppContainer(context: Context) {
             releaseMic = { micHub.releaseAll() },
             setSpeechLanguage = { tag -> settingsRepository.setSpeechLanguage(tag) },
             callRinging = { phoneRinging() },
+            inPhoneCall = { phoneInCall() },
             contactAliases = com.raju.aiassistant.data.prefs.ContactAliasPrefs(appContext),
             answerAnnouncement = { yes ->
                 val p = announcements.pending.value
