@@ -130,7 +130,10 @@ private const val BACKGROUND_GUARD_MS = 3_000L
  * After she has done something for the user, the next sentence needs no "Hey Seema" for this long
  * (also while another app is on screen). Every new command starts it again.
  */
-private const val FOLLOW_UP_MS = 20_000L
+/** After her reply he may answer without "Hey Seema" for this long; then only her name wakes her. */
+private const val FOLLOW_UP_MS = 7_000L
+/** A tap on the mic: the next sentence is for her (he pressed it on purpose). */
+private const val TAP_GRANT_MS = 15_000L
 /** "Kaun si UPI ID?": the answer is taken this long after the question. */
 private const val UPI_ASK_MS = 10_000L
 /** A shorter form of a name is offered only when it fits this few contacts (each is confirmed). */
@@ -432,6 +435,8 @@ class AssistantEngine(
     @Volatile private var inBackground = false
     /** Until this time a spoken sentence is taken as a command without the wake word. */
     @Volatile private var followUpUntil = 0L
+    /** The 7-second window after her reply (see [com.raju.aiassistant.domain.voice.ConversationSessionTimer]). */
+    private val session = com.raju.aiassistant.domain.voice.ConversationSessionTimer(clock)
     private var backgroundGuard: Job? = null
     /** Low-confidence recognitions in a row; she asks to repeat only for the first. */
     private var unclearInARow = 0
@@ -511,6 +516,26 @@ class AssistantEngine(
                 if (answerAnnouncement(yes)) { trace("read reply: ${if (yes) "yes" else "no"} (waiting question)"); return }
             }
         }
+        // STRICT GATE: what she hears on her own is for her only when it calls her by name, or inside the short
+        // window after her reply / a tap on the mic. Talk with someone else or another assistant is dropped
+        // silently — never sent to an AI, never answered.
+        val open = session.accepts(listenStartedAt) || clock() < followUpUntil || heldVoiceText != null
+        val verdict = com.raju.aiassistant.domain.voice.WakeWordGate.check(heard, open)
+        when (verdict) {
+            com.raju.aiassistant.domain.voice.WakeWordGate.Verdict.Ignore -> {
+                trace("gate: not for her, dropped (${heard.length} chars)")
+                ignoreHeard()
+                return
+            }
+            com.raju.aiassistant.domain.voice.WakeWordGate.Verdict.OtherAssistant -> {
+                trace("gate: spoken to another assistant, follow-up closed")
+                closeFollowUp()
+                ignoreHeard()
+                return
+            }
+            // Taken: this window (a tap's, or the last reply's) is used up; her next reply opens a fresh 7 s.
+            else -> session.close()
+        }
         val text = heldVoiceText?.let { "$it $heard" } ?: heard
         _heard.value = text
         heldVoiceText = null
@@ -526,7 +551,8 @@ class AssistantEngine(
             listen()
             return
         }
-        val requestAfterWake = if (settings.value.wakeWord) afterWakeWord(text) else null
+        val requestAfterWake = (verdict as? com.raju.aiassistant.domain.voice.WakeWordGate.Verdict.Called)?.request
+            ?: if (settings.value.wakeWord) afterWakeWord(text) else null
         if (requestAfterWake != null) {
             if (requestAfterWake.isBlank()) {
                 // The user only called her name ("हे सीमा" / "सीमा" / "Hey Seema") to wake/greet her:
@@ -535,6 +561,7 @@ class AssistantEngine(
                 cancelWork()
                 job = scope.launch {
                     say(phrase(lang(), "हाँ जी, बोलिए?", "হ্যাঁ, বলুন?"), allowBargeIn = false)
+                    session.openAfterReply()
                     _voiceSession.value = true
                     listen()
                 }
@@ -568,6 +595,8 @@ class AssistantEngine(
         speaker.stop()
         leaveSleep()
         lastActivityAt = clock()
+        // He pressed the mic: what he says next is for her.
+        session.openFor(TAP_GRANT_MS)
         _voiceSession.value = true
         listen()
     }
@@ -811,7 +840,13 @@ class AssistantEngine(
                     // A "no speech" that comes back almost at once is not a quiet room: the recogniser is
                     // failing (seen on a phone: 0.4 s each time). Back off, and stop the loop after several.
                     fastNoSpeech = if (err.noSpeech && clock() - listenStartedAt < FAST_NO_SPEECH_MS) fastNoSpeech + 1 else 0
-                    if (sleepDue()) {
+                    val windowOver = !session.isOpen() && clock() >= followUpUntil
+                    if (windowOver && _pending.value == null && replyHandler == null && (canSleep() || settings.value.voiceMode == VoiceMode.SESSION)) {
+                        // Her 7 s were up and nobody spoke to her: only "Hey Seema" wakes her now (a conversation
+                        // session simply ends: microphone off).
+                        trace("follow-up window over")
+                        if (settings.value.voiceMode == VoiceMode.SESSION && !inBackground) endSession() else goToSleep()
+                    } else if (sleepDue()) {
                         // Always-listening sleeps and waits for her name; a session simply ends (mic off).
                         if (settings.value.voiceMode == VoiceMode.ALWAYS) goToSleep() else endSession()
                     } else if (fastNoSpeech >= MAX_FAST_NO_SPEECH) {
@@ -849,6 +884,26 @@ class AssistantEngine(
     }
 
     /** Listens again after [delayMs], unless something newer (a new listen, Stop, a reply) happened meanwhile. */
+    /** Heard speech that was not for her: nothing is said; she waits for her name (or keeps listening, gated). */
+    private fun ignoreHeard() {
+        heldVoiceText = null
+        heldJob?.cancel()
+        if (paused()) return
+        when {
+            canSleep() && _pending.value == null && (inBackground || settings.value.voiceMode != VoiceMode.SESSION) -> goToSleep()
+            handsFree && _voiceSession.value -> relisten(300)
+            else -> returnToStandby()
+        }
+    }
+
+    /** "Chup raho", or he turned to another assistant: the no-name window is shut at once. */
+    private fun closeFollowUp() {
+        session.close()
+        followUpUntil = 0L
+        heldVoiceText = null
+        heldJob?.cancel()
+    }
+
     private fun relisten(delayMs: Long) {
         val gen = listenGen
         scope.launch {
@@ -1027,9 +1082,11 @@ class AssistantEngine(
             val request = when {
                 // Her name said: the rest is the request (as before). No name: the whole sentence,
                 // unless it is just the echo of her own answer, which was said within the last 2.5 s.
-                followUp -> afterWakeWord(heard) ?: heard.takeIf { it.length >= 2 && now - lastSpokeAt >= 2_500L }
+                followUp -> com.raju.aiassistant.domain.voice.WakeWordGate.request(heard) ?: afterWakeWord(heard)
+                    ?: heard.takeIf { it.length >= 2 && now - lastSpokeAt >= 2_500L && !com.raju.aiassistant.domain.voice.WakeWordGate.addressesOther(it) }
                 settings.value.wakeWord -> afterWakeWord(heard)
-                else -> heard.takeIf { it.length >= 2 }
+                // Wake word switched off and her window closed: still only her name wakes her, never other talk.
+                else -> com.raju.aiassistant.domain.voice.WakeWordGate.request(heard)
             }
             trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")
             when {
@@ -1057,7 +1114,12 @@ class AssistantEngine(
             )
             armWakeListener()
         } else {
-            // "Wake only by name" is off: any voice wakes her (her own voice is ignored above).
+            // Her name cannot be checked: a voice wakes her only inside her follow-up window, never other talk later.
+            if (!followUp) {
+                trace("wake: name cannot be checked and the window is closed, staying asleep")
+                armWakeListener()
+                return
+            }
             trace("wake: transcriber unavailable, fallback")
             if (now - lastWakeAttemptAt < 3_000L) {
                 armWakeListener()
@@ -1076,10 +1138,12 @@ class AssistantEngine(
         unclearInARow = 0
         _voiceSession.value = true
         if (callStyleAllowed()) conversationMode.enter()
-        if (!greet) { listen(); return }
+        // Her name or a tap woke her: the next sentence is for her.
+        if (!greet) { session.openFor(TAP_GRANT_MS); listen(); return }
         cancelWork()
         job = scope.launch {
             say(phrase(lang(), "हाँ जी, बोलिए?", "হ্যাঁ, বলুন?"), allowBargeIn = false)
+            session.openFor(TAP_GRANT_MS)
             if (_voiceSession.value) listen()
         }
     }
@@ -2363,6 +2427,12 @@ class AssistantEngine(
         val wasVoice = voiceTurn
         voiceTurn = false
         lastActivityAt = clock() // the sleep timer counts from the end of her answer
+        // Her reply is over: 7 s in which he may answer without her name ("chup raho" opens none).
+        if (quietUntilName) quietUntilName = false
+        else {
+            session.openAfterReply()
+            followUpUntil = maxOf(followUpUntil, clock() + FOLLOW_UP_MS)
+        }
         if (videoListening && tools.recordingVideo() && !s.assistantPaused) {
             // Recording: the microphone stays open for "band kar do" (whatever the conversation mode).
             listen()
@@ -5052,12 +5122,19 @@ class AssistantEngine(
 
     /** "So jao": a short goodnight, then she waits for "Hey Seema" (or, without the wake word, simply stops listening). */
     private suspend fun sleepNow(action: AssistantAction, speak: Boolean) {
-        val msg = if (canSleep()) phrase(lang(), "ठीक है, सो रही हूँ। \"हे सीमा\" बोलकर जगा लेना।", "ঠিক আছে, ঘুমোচ্ছি। \"হে সীমা\" বলে জাগিয়ে নিও।")
+        closeFollowUp()
+        val msg = if (canSleep()) phrase(lang(), "ठीक है, जब बुलाओगे तभी बोलूँगी।", "ঠিক আছে, ডাকলে তবেই কথা বলব।")
             else phrase(lang(), "ठीक है, चुप हो रही हूँ। बात करनी हो तो माइक दबाइए।", "ঠিক আছে, চুপ করছি। কথা বলতে মাইক চাপুন।")
         report(action, ActionStatus.SUCCESS, msg)
         if (speak) say(msg)
+        // Her own words must not open a new window: wake-word-only from here.
+        closeFollowUp()
+        quietUntilName = true
         if (canSleep()) goToSleep() else endSession()
     }
+
+    /** After "chup raho" the turn's end must not reopen her no-name window. */
+    private var quietUntilName = false
 
     /** Digits of a PNR heard so far, and until when more pieces are taken (see [trackPnr]). */
     private var pnrDigits = ""

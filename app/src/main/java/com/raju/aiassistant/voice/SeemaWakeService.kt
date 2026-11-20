@@ -61,14 +61,15 @@ class SeemaWakeService : Service() {
         val settings = runCatching { (application as com.raju.aiassistant.RajuApp).container.currentSettings }.getOrNull()
         if (settings != null) {
             lockJob = serviceScope.launch {
-                settings.map { it.wakeWord && !it.assistantPaused }.distinctUntilChanged().collectLatest { on ->
+                settings.map { it.wakeWord to it.assistantPaused }.distinctUntilChanged().collectLatest { (wakeWord, paused) ->
+                    val on = wakeWord && !paused
                     // Keep the notification honest when the wake word is switched on or off.
                     val mayNotify = Build.VERSION.SDK_INT < 33 ||
                         androidx.core.content.ContextCompat.checkSelfPermission(this@SeemaWakeService, android.Manifest.permission.POST_NOTIFICATIONS) ==
                         android.content.pm.PackageManager.PERMISSION_GRANTED
                     if (mayNotify) runCatching {
                         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                            .notify(NOTIFICATION_ID, buildForegroundNotification(on))
+                            .notify(NOTIFICATION_ID, buildForegroundNotification(on, paused))
                     }
                     if (on) {
                         while (true) {
@@ -129,7 +130,7 @@ class SeemaWakeService : Service() {
     }
 
     /** The notification says what is really on: the wake word listening in the background, or only the app. */
-    private fun buildForegroundNotification(wakeWordOn: Boolean = currentWakeWordOn()): Notification {
+    private fun buildForegroundNotification(wakeWordOn: Boolean = currentWakeWordOn(), paused: Boolean = currentPaused()): Notification {
         val tapIntent = PendingIntent.getActivity(
             this,
             0,
@@ -139,22 +140,42 @@ class SeemaWakeService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(if (wakeWordOn) "सीमा 'हे सीमा' सुन रही है (माइक चालू)" else "सीमा AI चालू है")
+            .setContentTitle(
+                when {
+                    paused -> "सीमा का सुनना रुका है (माइक बंद)"
+                    wakeWordOn -> "सीमा सिर्फ़ 'हे सीमा' सुनकर बोलेगी"
+                    else -> "सीमा AI चालू है"
+                },
+            )
             .setContentText(
-                if (wakeWordOn) "बैकग्राउंड में माइक खुला है। बंद करने के लिए ऐप में SEEMA OFF दबाइए।"
-                else "'हे सीमा' बंद है — माइक सिर्फ़ तब खुलता है जब आप ऐप में बोलते हैं।",
+                when {
+                    paused -> "कोई बात नहीं सुनी जा रही। फिर चालू करने के लिए \"🎙 फिर सुनो\" दबाइए।"
+                    wakeWordOn -> "दूसरों से बात कीजिए, सीमा बीच में नहीं बोलेगी। रोकना हो तो \"🔇 सुनना रोको\"।"
+                    else -> "'हे सीमा' बंद है — माइक सिर्फ़ तब खुलता है जब आप ऐप में बोलते हैं।"
+                },
             )
             .setContentIntent(tapIntent)
-            // Talk to her from any app, right from the notification shade.
-            .addAction(0, "🎤 बोलो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_TALK, 1))
-            .addAction(0, "⏹ रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_STOP, 2))
+        if (paused) {
+            // One tap to listen again.
+            builder.addAction(0, "🎙 फिर सुनो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_RESUME_LISTENING, 4))
+        } else {
+            // Talk to her from any app, or stop her listening, right from the notification shade.
+            builder.addAction(0, "🎤 बोलो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_TALK, 1))
+            builder.addAction(0, "🔇 सुनना रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_PAUSE_LISTENING, 3))
+            builder.addAction(0, "⏹ रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_STOP, 2))
+        }
+        return builder
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
+
+    private fun currentPaused(): Boolean = runCatching {
+        (application as com.raju.aiassistant.RajuApp).container.currentSettings.value.assistantPaused
+    }.getOrDefault(false)
 
     private fun currentWakeWordOn(): Boolean = runCatching {
         (application as com.raju.aiassistant.RajuApp).container.currentSettings.value.let { it.wakeWord && !it.assistantPaused }

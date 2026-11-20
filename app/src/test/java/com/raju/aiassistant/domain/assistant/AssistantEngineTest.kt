@@ -1461,11 +1461,12 @@ class AssistantEngineTest {
         val wake = FakeWake()
         val e = sleepyEngine(wake, FakeTranscriber("Seema, mausam kaisa hai?"), AiResult.Success("Saade paanch baje hain."))
         e.startHandsFree()
-        now = 30_000
+        now = 5_000
         voice.onError!!(VoiceError("silence", noSpeech = true))
         runCurrent()
-        assertEquals(AssistantState.Listening, e.state.value) // not yet
-        now = 61_000
+        assertEquals(AssistantState.Listening, e.state.value) // not yet: the tap's window is open
+        // Nobody spoke to her in her window: only her name wakes her now (it used to stay open for a minute).
+        now = 30_000
         voice.onError!!(VoiceError("silence", noSpeech = true))
         runCurrent()
         assertEquals(AssistantState.Sleeping, e.state.value)
@@ -1474,6 +1475,83 @@ class AssistantEngineTest {
         settle()
         assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "mausam kaisa hai?" })
         assertEquals("Saade paanch baje hain.", speaker.spoken.last())
+    }
+
+    // ---------------------------------------------------------------- strict wake-word gate
+
+    @Test
+    fun afterHerSevenSecondsTalkWithSomeoneElseIsNeverAnswered() = runTest {
+        // Raju: "किसी और से बात करता हूँ तो सीमा बीच में बोल पड़ती है।"
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val e = sleepyEngine(FakeWake(), null, AiResult.Success("Haan, saade paanch baje hain."))
+        e.startHandsFree()
+        runCurrent()
+        voice.onResult!!("namaste kaisi ho")
+        settle()
+        assertEquals(1, provider.calls.size) // the tap: for her
+        val spoken = speaker.spoken.size
+        now = 20_000 // her 7 s after the reply are long over
+        voice.onResult?.invoke("haan bhai kal milte hain dukaan pe")
+        settle()
+        assertEquals(1, provider.calls.size) // never sent to the AI
+        assertEquals(spoken, speaker.spoken.size) // never answered
+        assertTrue(e.transcript.value.none { it.text.contains("dukaan") })
+    }
+
+    @Test
+    fun insideTheWindowHeNeedsNoNameButHeySeemaWorksAnyTime() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS, wakeWord = false)
+        val e = sleepyEngine(NoWakeListener, null, AiResult.Success("ठीक है।"), AiResult.Success("अच्छा।"), AiResult.Success("चार हज़ार आए।"))
+        e.startHandsFree()
+        runCurrent()
+        voice.onResult!!("namaste")
+        settle()
+        now = 3_000 // inside the 7 s after her reply
+        voice.onResult!!("aur batao")
+        settle()
+        assertEquals(2, provider.calls.size)
+        now = 30_000
+        voice.onResult!!("bhai sahab chai piyoge")
+        settle()
+        assertEquals(2, provider.calls.size)
+        voice.onResult!!("Hey Seema aaj kitna paisa kata")
+        settle()
+        assertTrue(e.transcript.value.any { it.role == ChatRole.USER && it.text == "aaj kitna paisa kata" })
+    }
+
+    @Test
+    fun talkToAnotherAssistantClosesHerWindow() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, null, AiResult.Success("हाँ जी।"))
+        e.startHandsFree()
+        runCurrent()
+        voice.onResult!!("namaste")
+        settle()
+        now = 2_000 // still inside her window
+        voice.onResult!!("Hey Google aaj ka mausam kaisa hai")
+        settle()
+        assertEquals(1, provider.calls.size)
+        assertEquals(AssistantState.Sleeping, e.state.value)
+    }
+
+    @Test
+    fun seemaChupRahoSaysSoOnceAndThenOnlyHerNameWakesHer() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("aur kya chal raha hai"))
+        e.startHandsFree()
+        runCurrent()
+        voice.onResult!!("Seema chup raho")
+        settle()
+        assertEquals("ठीक है, जब बुलाओगे तभी बोलूँगी।", speaker.spoken.last())
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertTrue(provider.calls.isEmpty())
+        // Right after, without her name: nothing (her own "chup" reply opened no window).
+        wake.onUtterance!!(speech())
+        settle()
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertTrue(e.transcript.value.none { it.text.contains("chal raha") })
     }
 
     @Test

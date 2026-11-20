@@ -33,6 +33,8 @@ object LocalCommands {
         if (SETUP_CHECK.containsMatchIn(text)) return AssistantAction.OpenSetupCheck
         languageSwitch(text)?.let { return it }
         if (SLEEP.matches(text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ").replace(SEEMA_START, ""))) return AssistantAction.GoToSleep
+        // "Seema chup raho", "abhi mat suno", "সীমা চুপ থাকো": wake-word-only mode.
+        if (com.raju.aiassistant.domain.voice.WakeWordGate.isQuietCommand(text)) return AssistantAction.GoToSleep
         // Money questions ("कल कितना कितना पैसा आया", "1 घंटे में किसको भेजा", "3630 किसका आया") and "पैसा आए तो
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
