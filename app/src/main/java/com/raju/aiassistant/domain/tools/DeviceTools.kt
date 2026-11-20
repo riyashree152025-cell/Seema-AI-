@@ -136,6 +136,12 @@ interface DeviceTools {
     fun showHangUpButton(name: String) {}
     /** Front or back camera; [save] keeps the photo in the gallery (Pictures/Seema). */
     suspend fun takePhoto(front: Boolean, save: Boolean): PhotoResult = PhotoResult.Failed("Camera is not supported here.")
+    /** Starts recording a video (camera + microphone) into the gallery (Movies/Seema). */
+    suspend fun startVideo(front: Boolean): com.raju.aiassistant.domain.camera.VideoStart = com.raju.aiassistant.domain.camera.VideoStart.Failed("Video recording is not supported here.")
+    /** Stops the recording and saves it. */
+    suspend fun stopVideo(): com.raju.aiassistant.domain.camera.VideoStop = com.raju.aiassistant.domain.camera.VideoStop.NotRecording
+    /** A video is being recorded right now. */
+    fun recordingVideo(): Boolean = false
     /** A picture of the screen as it is now (not saved), for "screen dekh ke batao". */
     suspend fun captureScreen(): PhotoResult = PhotoResult.Failed("Screen capture is not supported here.")
     fun goHome(): ToolOutcome = ToolOutcome.Failed("Going home is not supported here.")

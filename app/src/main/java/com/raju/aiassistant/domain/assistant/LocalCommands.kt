@@ -36,6 +36,7 @@ object LocalCommands {
         // Money questions ("कल कितना कितना पैसा आया", "1 घंटे में किसको भेजा", "3630 किसका आया") and "पैसा आए तो
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
+        com.raju.aiassistant.domain.camera.CameraVoice.startRequest(text)?.let { return AssistantAction.StartVideo(front = it) }
         // "PC mein Cursor kholo" before the phone's own "X kholo".
         com.raju.aiassistant.domain.remote.RemoteBridge.parse(text)?.let { return AssistantAction.Remote(it) }
         if (com.raju.aiassistant.domain.sms.asksMoneyAlert(text)) return AssistantAction.MoneyAlertOn
@@ -266,15 +267,20 @@ object LocalCommands {
     // ------------------------------------------------------------------ camera
 
     private const val PHOTO = "(?:ek )?(?:photo|foto|picture|pic|tasveer|tasvir|फोटो|फ़ोटो|तस्वीर)"
-    private const val TAKE = "(?:lo|le lo|lelo|khicho|kheencho|kheecho|khincho|khichiye|kheenchiye|click karo|लो|ले लो|लेलो|खींचो|खिंचो|खीचो|खींचिए|क्लिक करो|लीजिए|lijiye)"
+    private const val TAKE = "(?:lo|le lo|lelo|khicho|kheencho|kheecho|khincho|khichiye|kheenchiye|click karo|click kar do|click kar lo|kheench do|khinch do|kheench lo|le do|utaro|utar do|लो|ले लो|लेलो|ले दो|खींचो|खिंचो|खीचो|खींचिए|खींच दो|खींच लो|क्लिक करो|क्लिक कर दो|क्लिक कर लो|उतारो|उतार दो|लीजिए|lijiye)"
     private val PHOTO_BACK = Regex("^(?:(?:back|peeche|piche|पीछे|बैक) (?:camera|कैमरा|कैमरे) (?:se|से) )?$PHOTO $TAKE$")
     private val PHOTO_FRONT = Regex("^(?:front|aage|age|आगे|फ्रंट|सामने) (?:camera|कैमरा|कैमरे) (?:se|से) $PHOTO $TAKE$")
     private val SELFIE = Regex("^(?:ek )?(?:selfie|सेल्फी|सेल्फ़ी)(?: $TAKE)?$")
+    /** "Camera kholo aur photo click karo", "कैमरा खोल के फ़ोटो लो": the photo itself, not just the camera app. */
+    private val CAMERA_THEN_PHOTO = Regex("^(?:camera|कैमरा) (?:kholo|khol ke|kholkar|khol kar|khol do|खोलो|खोल के|खोलकर|खोल कर|खोल दो)(?: (?:aur|और|or|phir|फिर))? $PHOTO $TAKE$")
+    /** Bengali: "একটা ছবি তোলো", "ছবি তুলে দাও", "সেলফি তোলো". */
+    private val PHOTO_BN = Regex("^(?:একটা )?(?:ছবি|ফটো|ফোটো) (?:তোলো|তোল|তুলে দাও|তুলে নাও|ক্লিক করো)$")
+    private val SELFIE_BN = Regex("^(?:একটা )?সেলফি(?: (?:তোলো|তোল|তুলে দাও|নাও))?$")
     private val CAMERA_OPEN = Regex("^(?:camera|कैमरा)(?: (?:kholo|khol do|open karo|open kar do|open|chalu karo|खोलो|खोल दो|ओपन करो|ओपन कर दो|चालू करो))$")
 
     private fun photo(t: String): AssistantAction? = when {
-        PHOTO_FRONT.matches(t) || SELFIE.matches(t) -> AssistantAction.TakePhoto(front = true)
-        PHOTO_BACK.matches(t) -> AssistantAction.TakePhoto(front = false)
+        PHOTO_FRONT.matches(t) || SELFIE.matches(t) || SELFIE_BN.matches(t) -> AssistantAction.TakePhoto(front = true)
+        PHOTO_BACK.matches(t) || CAMERA_THEN_PHOTO.matches(t) || PHOTO_BN.matches(t) -> AssistantAction.TakePhoto(front = false)
         CAMERA_OPEN.matches(t) -> AssistantAction.OpenApp("Camera")
         else -> null
     }

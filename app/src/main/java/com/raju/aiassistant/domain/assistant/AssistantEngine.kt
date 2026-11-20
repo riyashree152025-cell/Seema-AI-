@@ -182,8 +182,14 @@ private const val SPEAKER_RETRY_MS = 1_000L
 /** After cutting a call, the time Android takes to write it to the call log. */
 private const val CALL_LOG_SETTLE_MS = 1_500L
 /** How long she listens for "haan / rehne do" after "Padh ke sunau kya?". */
-private const val READ_REPLY_WINDOW_MS = 7_000L
+private const val READ_REPLY_WINDOW_MS = 10_000L
 /** Extra time for an answer that started inside the window to be transcribed. */
+/** "Padh ke sunao", "पढ़ के सुनाओ", "পড়ে শোনাও" with nothing else: read the newest message. */
+private val BARE_READ = Regex(
+    "^(?:(?:seema|सीमा|সীমা)[, ]+)?(?:(?:haan|हाँ|हां|হ্যাঁ)[, ]+)?(?:padh ke sunao|padhke sunao|padh kar sunao|padh do|padho|" +
+        "पढ़ के सुनाओ|पढ़के सुनाओ|पढ़कर सुनाओ|पढ़ दो|पढ़ो|পড়ে শোনাও|পড়ো|পড়ে দাও)(?: (?:na|ना|তো))?$",
+    RegexOption.IGNORE_CASE,
+)
 private const val READ_REPLY_GRACE_MS = 4_000L
 /** Pause after her question before the microphone opens, so the end of her own voice is not heard. */
 private const val ECHO_SETTLE_MS = 400L
@@ -486,6 +492,7 @@ class AssistantEngine(
         if (handleVoiceConfirm(heard)) return
         if (handleReadReply(heard)) return
         if (handleCallCommand(heard)) return
+        if (handleVideoListening(heard)) return
         // A SIM call is up: the microphone heard the call itself (the caller on the loudspeaker, or the user
         // talking to them). That is never a request — it went to the AI and got a reply in the wrong language.
         if (inPhoneCall()) {
@@ -756,6 +763,12 @@ class AssistantEngine(
                     return@start
                 }
                 if (correctionWait != null) return@start // the stop window: silence means "go ahead"
+                if (videoListening && tools.recordingVideo() && !err.permissionDenied) {
+                    // Recording: silence or noise never ends the listening — "band kar do" can come any moment.
+                    val g = listenGen
+                    scope.launch { delay(if (err.noSpeech || err.unclear) 250 else 800); if (g == listenGen && videoListening && tools.recordingVideo()) listen() }
+                    return@start
+                }
                 if (clock() < callCommandUntil) {
                     // While it rings: "utha lo / kaat do" heard unsurely still counts (never an SMS from
                     // unsure words); silence or noise → listen again for the rest of the ring.
@@ -1108,6 +1121,10 @@ class AssistantEngine(
         }
         if (recordUser) record(ChatRole.USER, text)
         val s = settings.value
+        // "Band kar do" while a video is being recorded (typed, or after "Hey Seema").
+        if (tools.recordingVideo() && com.raju.aiassistant.domain.camera.CameraVoice.isStop(text)) {
+            if (runLocalCommand(AssistantAction.StopVideo, speak = fromVoice || s.autoSpeakReplies)) return
+        }
         // "Mera bhai Amit hai", "mujhe chai pasand hai": kept quietly as a long-term fact; the turn goes on as usual.
         if (s.memoryEnabled) learnFact(text)
 
@@ -1186,6 +1203,10 @@ class AssistantEngine(
         // the phone at once: no AI request, no tokens, and they also work without internet.
         // "Batao" / "haan padho" a little after "Padh ke sunau kya?": read that message.
         if (notificationFollowUp() && readReply(text) == true && text.trim().split(Regex("\\s+")).size <= 6) {
+            if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
+        }
+        // "Padh ke sunao" on its own, later (the question's two minutes are over): the newest message is read.
+        if (BARE_READ.matches(text.trim().trimEnd('.', '!', '?', '।')) && recentMessages().any { !it.isCall }) {
             if (runLocalCommand(AssistantAction.ReadNotification, speak = fromVoice || s.autoSpeakReplies)) return
         }
         // "Rizwan Travels ko kya likhun?" was asked: this sentence is the message (sent after the usual confirm).
@@ -1780,6 +1801,16 @@ class AssistantEngine(
                     )
                 }
             }
+            is AssistantAction.StartVideo -> {
+                trace("offline command: video start")
+                _state.value = AssistantState.Executing
+                startVideo(action, speak)
+            }
+            AssistantAction.StopVideo -> {
+                trace("offline command: video stop")
+                _state.value = AssistantState.Executing
+                stopVideo(action, speak)
+            }
             is AssistantAction.TakePhoto -> {
                 trace("offline command: photo")
                 _state.value = AssistantState.Executing
@@ -2324,6 +2355,11 @@ class AssistantEngine(
         val wasVoice = voiceTurn
         voiceTurn = false
         lastActivityAt = clock() // the sleep timer counts from the end of her answer
+        if (videoListening && tools.recordingVideo() && !s.assistantPaused) {
+            // Recording: the microphone stays open for "band kar do" (whatever the conversation mode).
+            listen()
+            return
+        }
         if (inBackground && canSleep() && _voiceSession.value) {
             // Another app is on screen: listen on only when she just asked something
             // ("किसको भेजना है?"); otherwise wait for "Hey Seema", not for the app's sound.
@@ -2773,6 +2809,12 @@ class AssistantEngine(
         if (replyHandler == null) return false
         val answer = readReply(text)
         trace("read reply: ${answer ?: "unclear"}")
+        // Something that is neither yes nor no (a cough, the TV, the tail of her own voice) used to close the
+        // window, so his "padh ke sunao" a moment later was never heard: inside the window she listens again.
+        if (answer == null && clock() < replyUntil) {
+            listen()
+            return true
+        }
         finishReadReply(answer)
         return true
     }
@@ -2883,6 +2925,8 @@ class AssistantEngine(
             is AssistantAction.FindPhone -> findPhone(action, speak)
             is AssistantAction.AnswerCall -> answerRingingCall()
             is AssistantAction.TakePhoto -> camera(action, action.front, question = null, speak = speak)
+            is AssistantAction.StartVideo -> startVideo(action, speak)
+            AssistantAction.StopVideo -> stopVideo(action, speak)
             is AssistantAction.LookCamera -> narrated(action, speak) { camera(action, action.front, question = action.question, speak = speak) }
             is AssistantAction.EndCall -> if (callRinging()) cutRingingCall() else {
                 val outcome = tools.endCall()
@@ -3894,6 +3938,81 @@ class AssistantEngine(
     }
 
     /** "Photo lo" (saved to the gallery) or, with [question], "dekho kya dikh raha hai" (photo → Gemini → spoken answer). */
+    /** While a video records: only "band kar do" is acted on; everything else heard is ignored (it is the video's sound). */
+    private var videoListening = false
+    private var videoAutoStop: Job? = null
+
+    /**
+     * "Video recording chalu karo": she says so first (so her voice is not on the video), then records with the
+     * phone's camera and microphone. While it records she only listens for "band kar do" — talk in the video never
+     * goes to the AI. It stops by itself after [com.raju.aiassistant.domain.camera.CameraVoice.MAX_SECONDS].
+     */
+    private suspend fun startVideo(action: AssistantAction.StartVideo, speak: Boolean) {
+        if (tools.recordingVideo()) return informational(action, phrase(lang(), "रिकॉर्डिंग पहले से चल रही है। रोकनी हो तो \"बंद कर दो\" बोलिए।", "রেকর্ডিং তো চলছে। থামাতে \"বন্ধ করো\" বলো।"), speak)
+        if (speak) say(phrase(lang(), "ठीक है, रिकॉर्डिंग शुरू कर रही हूँ। रोकनी हो तो बोलिए \"बंद कर दो\"।", "ঠিক আছে, রেকর্ডিং শুরু করছি। থামাতে বলো \"বন্ধ করো\"।"), allowBargeIn = false)
+        var r = tools.startVideo(action.front)
+        if (r is com.raju.aiassistant.domain.camera.VideoStart.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Camera / microphone permission", r.reason, permission = r.permission))
+            r = if (d is Decision.PermissionResult && d.granted) tools.startVideo(action.front)
+            else return report(action, ActionStatus.CANCELLED, "Permission was denied.")
+        }
+        when (r) {
+            com.raju.aiassistant.domain.camera.VideoStart.Started -> {
+                trace("video: recording")
+                report(action, ActionStatus.SUCCESS, phrase(lang(), "वीडियो रिकॉर्ड हो रहा है… \"बंद कर दो\" बोलते ही सेव कर दूँगी।", "ভিডিও রেকর্ড হচ্ছে… \"বন্ধ করো\" বললেই সেভ করে দেব।"))
+                videoAutoStop?.cancel()
+                videoAutoStop = scope.launch {
+                    delay(com.raju.aiassistant.domain.camera.CameraVoice.MAX_SECONDS * 1_000L)
+                    if (tools.recordingVideo()) { trace("video: longest length reached"); stopVideo(AssistantAction.StopVideo, speak = true) }
+                }
+                // The end of this turn opens the microphone for "band kar do" ([finishTurn]).
+                if (speak || voiceTurn) {
+                    videoListening = true
+                    _voiceSession.value = true
+                }
+            }
+            is com.raju.aiassistant.domain.camera.VideoStart.Failed -> {
+                report(action, ActionStatus.FAILED, r.message)
+                if (speak) say(r.message)
+            }
+            is com.raju.aiassistant.domain.camera.VideoStart.NeedsPermission -> report(action, ActionStatus.FAILED, r.reason)
+        }
+    }
+
+    private suspend fun stopVideo(action: AssistantAction, speak: Boolean) {
+        videoListening = false
+        videoAutoStop?.cancel()
+        videoAutoStop = null
+        val bn = lang() == SeemaLanguage.BENGALI
+        when (val r = tools.stopVideo()) {
+            is com.raju.aiassistant.domain.camera.VideoStop.Saved -> {
+                trace("video: saved (${r.seconds} s)")
+                val len = com.raju.aiassistant.domain.camera.CameraVoice.duration(r.seconds, bn)
+                informational(action, phrase(lang(), "रिकॉर्डिंग बंद कर दी। $len का वीडियो गैलरी में Seema फ़ोल्डर में सेव है।", "রেকর্ডিং বন্ধ করেছি। $len-এর ভিডিও গ্যালারিতে Seema ফোল্ডারে সেভ আছে।"), speak)
+            }
+            com.raju.aiassistant.domain.camera.VideoStop.NotRecording ->
+                informational(action, phrase(lang(), "अभी कोई रिकॉर्डिंग नहीं चल रही।", "এখন কোনো রেকর্ডিং চলছে না।"), speak)
+            is com.raju.aiassistant.domain.camera.VideoStop.Failed -> {
+                report(action, ActionStatus.FAILED, r.message)
+                if (speak) say(r.message)
+            }
+        }
+    }
+
+    /** Heard while recording: "band kar do" stops and saves; anything else is the video's own sound — listen on. */
+    private fun handleVideoListening(heard: String): Boolean {
+        if (!videoListening) return false
+        if (!tools.recordingVideo()) { videoListening = false; return false }
+        if (com.raju.aiassistant.domain.camera.CameraVoice.isStop(heard)) {
+            videoListening = false
+            job = scope.launch { stopVideo(AssistantAction.StopVideo, speak = true); finishTurn() }
+            return true
+        }
+        trace("video: speech ignored (${heard.length} chars)")
+        listen()
+        return true
+    }
+
     private suspend fun camera(action: AssistantAction, front: Boolean, question: String?, speak: Boolean) {
         var r = tools.takePhoto(front, save = question == null)
         if (r is PhotoResult.NeedsPermission) {

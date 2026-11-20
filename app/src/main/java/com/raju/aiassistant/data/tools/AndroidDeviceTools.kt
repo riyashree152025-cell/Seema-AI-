@@ -413,6 +413,38 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         return com.raju.aiassistant.domain.tools.PhotoResult.Taken(jpeg, saved)
     }
 
+    override suspend fun startVideo(front: Boolean): com.raju.aiassistant.domain.camera.VideoStart {
+        for (perm in listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) {
+            if (ContextCompat.checkSelfPermission(context, perm) != PackageManager.PERMISSION_GRANTED) {
+                return com.raju.aiassistant.domain.camera.VideoStart.NeedsPermission(perm, "वीडियो रिकॉर्ड करने के लिए कैमरा और माइक्रोफ़ोन की अनुमति चाहिए।")
+            }
+        }
+        if (!appOnScreen()) {
+            // Android lets only the app on screen use the camera: bring Seema forward first.
+            if (openSeema() !is ToolOutcome.Done) return com.raju.aiassistant.domain.camera.VideoStart.Failed(BACKGROUND_BLOCKED)
+            var waited = 0
+            while (!appOnScreen() && waited < 2_500) { kotlinx.coroutines.delay(100); waited += 100 }
+            kotlinx.coroutines.delay(300)
+        }
+        return try {
+            VideoRecorder.start(context, front)
+            com.raju.aiassistant.domain.camera.VideoStart.Started
+        } catch (e: SecurityException) {
+            com.raju.aiassistant.domain.camera.VideoStart.Failed("कैमरा तभी चलता है जब सीमा स्क्रीन पर खुली हो।")
+        } catch (e: Exception) {
+            com.raju.aiassistant.domain.camera.VideoStart.Failed("वीडियो रिकॉर्डिंग शुरू नहीं हो पाई (${e.message ?: e.javaClass.simpleName})।")
+        }
+    }
+
+    override suspend fun stopVideo(): com.raju.aiassistant.domain.camera.VideoStop = try {
+        VideoRecorder.stop(context)?.let { (name, seconds) -> com.raju.aiassistant.domain.camera.VideoStop.Saved(name, seconds) }
+            ?: com.raju.aiassistant.domain.camera.VideoStop.NotRecording
+    } catch (e: Exception) {
+        com.raju.aiassistant.domain.camera.VideoStop.Failed("वीडियो सेव नहीं हो पाया (${e.message ?: e.javaClass.simpleName})।")
+    }
+
+    override fun recordingVideo(): Boolean = VideoRecorder.recording()
+
     /** Saves into the gallery (Pictures/Seema); no storage permission is needed for this on Android 10+. */
     private fun savePhoto(jpeg: ByteArray): String? = runCatching {
         val name = "Seema_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date()) + ".jpg"

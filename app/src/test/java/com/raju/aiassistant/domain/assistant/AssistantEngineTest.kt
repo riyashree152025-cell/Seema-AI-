@@ -77,6 +77,16 @@ class AssistantEngineTest {
     }
 
     private class FakeTools(var contacts: ContactLookup = ContactLookup.Found(emptyList())) : DeviceTools {
+        var videoFront: Boolean? = null
+        var recording = false
+        var videoStops = 0
+        override suspend fun startVideo(front: Boolean): com.raju.aiassistant.domain.camera.VideoStart { videoFront = front; recording = true; return com.raju.aiassistant.domain.camera.VideoStart.Started }
+        override suspend fun stopVideo(): com.raju.aiassistant.domain.camera.VideoStop {
+            if (!recording) return com.raju.aiassistant.domain.camera.VideoStop.NotRecording
+            recording = false; videoStops++
+            return com.raju.aiassistant.domain.camera.VideoStop.Saved("Seema_1.mp4", 65)
+        }
+        override fun recordingVideo() = recording
         val dialed = mutableListOf<Contact>()
         var answered = 0
         var ended = 0
@@ -244,6 +254,39 @@ class AssistantEngineTest {
         settle()
         assertEquals(1, store.mems.size)
         assertNull(e.pending.value) // never asked "याद रख लूँ?"
+    }
+
+    @Test
+    fun videoRecordsUntilBandKarDoAndTalkInBetweenIsIgnored() = runTest {
+        val e = engine()
+        e.submit("सीमा वीडियो रिकॉर्डिंग चालू करो", fromVoice = true)
+        settle()
+        assertEquals(false, tools.videoFront)
+        assertTrue(tools.recording)
+        assertTrue(speaker.spoken.first(), speaker.spoken.first().contains("रिकॉर्डिंग शुरू"))
+        val spokenBefore = speaker.spoken.size
+        voice.onResult!!("haan bhai kal milte hain phir")
+        settle()
+        assertTrue(tools.recording) // ordinary talk is the video's sound
+        assertEquals(spokenBefore, speaker.spoken.size) // she stays quiet
+        assertTrue(provider.calls.isEmpty())
+        voice.onResult!!("ठीक है बंद कर दो")
+        settle()
+        assertFalse(tools.recording)
+        assertEquals(1, tools.videoStops)
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("1 मिनट 5 सेकंड") && speaker.spoken.last().contains("सेव"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun frontCameraVideoAndPhotoPhrases() = runTest {
+        val e = engine()
+        e.submit("front camera se video banao", fromVoice = true)
+        settle()
+        assertEquals(true, tools.videoFront)
+        e.submit("video band karo", fromVoice = true)
+        settle()
+        assertEquals(1, tools.videoStops)
     }
 
     @Test
@@ -3215,10 +3258,10 @@ class AssistantEngineTest {
         var got: Boolean? = true
         e.listenForReadReply { called = true; got = it }
         runCurrent()
-        advanceTimeBy(6_000)
+        advanceTimeBy(12_000)
         runCurrent()
-        assertFalse(called) // an answer begun inside the 7 s window still gets time to be transcribed
-        advanceTimeBy(6_000)
+        assertFalse(called) // an answer begun inside the 10 s window still gets time to be transcribed
+        advanceTimeBy(3_000)
         runCurrent()
         assertTrue(called)
         assertNull(got)
@@ -3237,6 +3280,41 @@ class AssistantEngineTest {
         voice.onError!!(VoiceError("I didn't hear that clearly.", unclear = true, heard = "haan"))
         runCurrent()
         assertEquals(true, got)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun otherWordsInTheReplyWindowDoNotCloseItAndPadhKeSunaoStillReads() = runTest {
+        // Raju: "पढ़ के सुनाओ बोलता हूँ तो कुछ रिप्लाई नहीं करती" — a stray recognised sound had closed the window.
+        val e = engine()
+        var got: Boolean? = null
+        var called = false
+        e.listenForReadReply { called = true; got = it }
+        advanceTimeBy(400); runCurrent()
+        val starts = voice.starts
+        voice.onResult!!("अच्छा")
+        advanceTimeBy(300); runCurrent()
+        assertFalse(called)
+        assertEquals(starts + 1, voice.starts)
+        voice.onResult!!("पढ़ के सुनाओ")
+        runCurrent()
+        assertEquals(true, got)
+        assertEquals(0, provider.calls.size)
+    }
+
+    @Test
+    fun padhKeSunaoLaterReadsTheNewestMessage() = runTest {
+        val e = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { 0L }, nowDescription = { "now" },
+            latestNotification = { "WhatsApp par Rahul ne likha: Kal milte hain" },
+            recentMessages = { listOf(com.raju.aiassistant.domain.notify.IncomingItem("k", "com.whatsapp", "WhatsApp", "Rahul", null, "Kal milte hain")) },
+        ).also { provider = FakeProvider(ArrayDeque()) }
+        e.submit("सीमा पढ़ के सुनाओ", fromVoice = true)
+        settle()
+        assertEquals("WhatsApp par Rahul ne likha: Kal milte hain", speaker.spoken.last())
         assertEquals(0, provider.calls.size)
     }
 

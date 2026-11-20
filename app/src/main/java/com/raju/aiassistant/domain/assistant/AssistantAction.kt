@@ -202,6 +202,15 @@ sealed interface AssistantAction {
     data object AnswerCall : AssistantAction {
         override val label get() = "Answer ringing call"
     }
+    /** "Video recording chalu karo": records until "band kar do" (or [com.raju.aiassistant.domain.camera.CameraVoice.MAX_SECONDS]). */
+    data class StartVideo(val front: Boolean) : AssistantAction {
+        override val label get() = "Video recording"
+    }
+
+    data object StopVideo : AssistantAction {
+        override val label get() = "Stop video"
+    }
+
     data class TakePhoto(val front: Boolean) : AssistantAction {
         override val label get() = if (front) "Take a selfie (front camera)" else "Take a photo (back camera)"
     }
@@ -489,6 +498,8 @@ private fun parseAction(json: String): AssistantAction? {
         "end_call", "cut_call", "hangup", "hang_up" -> AssistantAction.EndCall
         "answer_call", "pick_call", "accept_call", "receive_call" -> AssistantAction.AnswerCall
         "take_photo", "photo", "click_photo" -> AssistantAction.TakePhoto(front = str("camera").equals("front", ignoreCase = true))
+        "record_video", "start_video" -> AssistantAction.StartVideo(front = str("camera").equals("front", ignoreCase = true))
+        "stop_video" -> AssistantAction.StopVideo
         "selfie" -> AssistantAction.TakePhoto(front = true)
         "look", "look_camera", "camera_look", "what_do_you_see" ->
             AssistantAction.LookCamera(front = str("camera").equals("front", ignoreCase = true), question = str("question") ?: "Is photo mein kya dikh raha hai?")
