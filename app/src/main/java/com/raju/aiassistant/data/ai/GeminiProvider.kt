@@ -90,7 +90,11 @@ class GeminiProvider(
         describeImages(model, systemPrompt, question, listOf(jpeg))
 
     /** One question about one or more images (a photo, a screenshot, two pictures to compare). */
-    suspend fun describeImages(model: String, systemPrompt: String, question: String, jpegs: List<ByteArray>): AiResult<String> = withRetry {
+    suspend fun describeImages(model: String, systemPrompt: String, question: String, jpegs: List<ByteArray>): AiResult<String> =
+        describeMedia(model, systemPrompt, question, jpegs.map { it to "image/jpeg" })
+
+    /** One question about media given inline: images, or an audio file (a call recording) with its MIME type. */
+    suspend fun describeMedia(model: String, systemPrompt: String, question: String, media: List<Pair<ByteArray, String>>): AiResult<String> = withRetry {
         val body = buildJsonObject {
             putJsonObject("systemInstruction") { putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } } }
             putJsonArray("contents") {
@@ -98,11 +102,11 @@ class GeminiProvider(
                     put("role", "user")
                     putJsonArray("parts") {
                         addJsonObject { put("text", question) }
-                        jpegs.forEach { jpeg ->
+                        media.forEach { (bytes, mime) ->
                             addJsonObject {
                                 putJsonObject("inline_data") {
-                                    put("mime_type", "image/jpeg")
-                                    put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))
+                                    put("mime_type", mime)
+                                    put("data", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
                                 }
                             }
                         }

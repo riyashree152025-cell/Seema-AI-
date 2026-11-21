@@ -33,6 +33,9 @@
     <!-- Asks once to keep Seema running in the background (the microphone service was killed on Samsung / Xiaomi). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- "Aakhri call recording ka saar batao": the phone's own call recordings, read only on that request. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- "DND chalu karo": only after the user allows Seema in Do Not Disturb access. -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Tatkal alerts at the exact time the user sets (ring on time, even when Seema is closed). -->

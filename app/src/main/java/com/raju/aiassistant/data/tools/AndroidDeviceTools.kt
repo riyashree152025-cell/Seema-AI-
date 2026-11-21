@@ -753,6 +753,32 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         ToolOutcome.Failed("PDF नहीं बन पाई (${e.javaClass.simpleName})।")
     }
 
+    override suspend fun latestCallRecording(): com.raju.aiassistant.domain.tools.CallRecording = withContext(Dispatchers.IO) {
+        val perm = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        if (!granted(perm)) return@withContext com.raju.aiassistant.domain.tools.CallRecording.NeedsPermission(perm, "कॉल रिकॉर्डिंग सुनने के लिए Music & audio की अनुमति चाहिए। रिकॉर्डिंग सिर्फ़ आपके कहने पर Gemini को सार के लिए भेजी जाती है।")
+        val since = (System.currentTimeMillis() - 7 * 86_400_000L) / 1000
+        val uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        // Phones keep call recordings in a "Call" / "Call recordings" / "call_rec" folder, or name the file after the call.
+        val pathColumn = if (Build.VERSION.SDK_INT >= 29) android.provider.MediaStore.MediaColumns.RELATIVE_PATH else android.provider.MediaStore.MediaColumns.DATA
+        val where = "(${pathColumn} LIKE ? OR ${pathColumn} LIKE ? OR ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?) AND ${android.provider.MediaStore.MediaColumns.DATE_ADDED} >= ?"
+        val args = arrayOf("%Call%", "%call_rec%", "%call%", since.toString())
+        val found = runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.MediaStore.MediaColumns._ID, android.provider.MediaStore.MediaColumns.DISPLAY_NAME, android.provider.MediaStore.MediaColumns.SIZE, android.provider.MediaStore.MediaColumns.MIME_TYPE),
+                where, args, "${android.provider.MediaStore.MediaColumns.DATE_ADDED} DESC",
+            )?.use { c ->
+                if (!c.moveToFirst()) null
+                else Triple(android.content.ContentUris.withAppendedId(uri, c.getLong(0)), c.getString(1).orEmpty(), c.getLong(2) to (c.getString(3) ?: "audio/mpeg"))
+            }
+        }.getOrNull() ?: return@withContext com.raju.aiassistant.domain.tools.CallRecording.None
+        val (fileUri, name, sizeMime) = found
+        if (sizeMime.first > com.raju.aiassistant.domain.memory.CallRecordingSummary.MAX_BYTES) return@withContext com.raju.aiassistant.domain.tools.CallRecording.TooBig
+        val bytes = runCatching { context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() } }.getOrNull()
+            ?: return@withContext com.raju.aiassistant.domain.tools.CallRecording.None
+        com.raju.aiassistant.domain.tools.CallRecording.Found(bytes, sizeMime.second, name)
+    }
+
     override fun saveContact(number: String): ToolOutcome = start(
         Intent(Intent.ACTION_INSERT).setType(android.provider.ContactsContract.Contacts.CONTENT_TYPE)
             .putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, number),

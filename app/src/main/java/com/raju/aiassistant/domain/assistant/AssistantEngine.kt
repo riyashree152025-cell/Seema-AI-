@@ -297,6 +297,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** Gemini hears an audio file (a call recording) and answers [prompt]. */
+    private val describeAudio: suspend (ByteArray, String, String) -> AiResult<String> = { _, _, _ -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Audio is not supported here.") },
     /** Today's weather line for the briefing (rain / heat / cold), or null. */
     private val weatherToday: suspend () -> String? = { null },
     /** Saves a routine (Automation screen; a timed one is scheduled), for "roz 9 baje dawai ki yaad dilana". */
@@ -2198,6 +2200,7 @@ class AssistantEngine(
             is AssistantAction.DailyCareAdd -> { trace("offline command: daily care"); dailyCare(action, speak) }
             is AssistantAction.ScheduleMessage -> { trace("offline command: scheduled message"); scheduleMessage(action, speak) }
             AssistantAction.DuesPdf -> { trace("offline command: dues pdf"); duesPdf(action, speak) }
+            AssistantAction.CallRecordingGist -> { trace("offline command: call recording"); _state.value = AssistantState.Thinking; callRecordingGist(action, speak) }
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
@@ -3082,6 +3085,7 @@ class AssistantEngine(
             is AssistantAction.DailyCareAdd -> dailyCare(action, speak)
             is AssistantAction.ScheduleMessage -> scheduleMessage(action, speak)
             AssistantAction.DuesPdf -> duesPdf(action, speak)
+            AssistantAction.CallRecordingGist -> callRecordingGist(action, speak)
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> billPdf(action, speak)
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
@@ -4330,6 +4334,42 @@ class AssistantEngine(
             session.openFor(TAP_GRANT_MS)
             _voiceSession.value = true
             listen()
+        }
+    }
+
+    /** The phone's newest call recording → its gist in 2-3 sentences, and each promise as a reminder. */
+    private suspend fun callRecordingGist(action: AssistantAction, speak: Boolean) {
+        var rec = tools.latestCallRecording()
+        if (rec is com.raju.aiassistant.domain.tools.CallRecording.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Recordings permission", rec.reason, permission = rec.permission))
+            rec = if (d is Decision.PermissionResult && d.granted) tools.latestCallRecording()
+            else return report(action, ActionStatus.CANCELLED, "Permission was denied.")
+        }
+        val r = rec
+        if (r !is com.raju.aiassistant.domain.tools.CallRecording.Found) {
+            val msg = when (r) {
+                com.raju.aiassistant.domain.tools.CallRecording.TooBig -> phrase(lang(), "वो रिकॉर्डिंग बहुत लंबी है, उसका सार नहीं निकाल पाऊँगी।", "রেকর্ডিংটা খুব লম্বা।")
+                else -> phrase(lang(), "पिछले हफ़्ते की कोई कॉल रिकॉर्डिंग नहीं मिली — फ़ोन के Dialer में call recording चालू हो तभी बनती है।", "গত সপ্তাহের কোনো কল রেকর্ডিং পাইনি।")
+            }
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        if (speak) say(phrase(lang(), "सुन रही हूँ, एक मिनट…", "শুনছি, এক মিনিট…"), allowBargeIn = false)
+        val bn = lang() == SeemaLanguage.BENGALI
+        when (val a = describeAudio(r.bytes, r.mime, com.raju.aiassistant.domain.memory.CallRecordingSummary.prompt(bn))) {
+            is AiResult.Failure -> {
+                report(action, ActionStatus.FAILED, a.message)
+                if (speak) say(phrase(lang(), "रिकॉर्डिंग समझ नहीं पाई: ${a.message.take(100)}", "রেকর্ডিং বুঝতে পারিনি।"))
+            }
+            is AiResult.Success -> {
+                trace("call recording: gist (${a.value.length} chars)")
+                informational(action, com.raju.aiassistant.domain.memory.CallRecordingSummary.gist(a.value), speak)
+                val now = Instant.ofEpochMilli(clock()).atZone(zone()).toLocalDateTime()
+                val promises = com.raju.aiassistant.domain.memory.CallRecordingSummary.promises(a.value)
+                    .flatMap { com.raju.aiassistant.domain.memory.CallMemoryExtractor.extract(it, now) }
+                if (promises.isNotEmpty()) saveCommitments(promises, speak)
+            }
         }
     }
 

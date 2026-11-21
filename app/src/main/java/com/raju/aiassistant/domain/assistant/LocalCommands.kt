@@ -40,6 +40,7 @@ object LocalCommands {
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
         com.raju.aiassistant.domain.business.PeriodReport.ask(text)?.let { return AssistantAction.PeriodReportAsk(it) }
         if (com.raju.aiassistant.domain.business.OfficePdfs.asksDuesPdf(text)) return AssistantAction.DuesPdf
+        if (com.raju.aiassistant.domain.memory.CallRecordingSummary.asks(text)) return AssistantAction.CallRecordingGist
         com.raju.aiassistant.domain.business.AmountWatches.parse(text)?.let { return AssistantAction.WatchAmount(it) }
         com.raju.aiassistant.domain.business.OfficePdfs.parseBill(text)?.let { return AssistantAction.BillPdf(it) }
         if (com.raju.aiassistant.domain.business.ActionDiary.asks(text)) return AssistantAction.ActionDiaryAsk

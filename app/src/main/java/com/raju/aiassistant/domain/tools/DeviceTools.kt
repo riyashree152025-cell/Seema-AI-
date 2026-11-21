@@ -19,6 +19,14 @@ sealed interface PhotoResult {
     data class NeedsPermission(val permission: String, val reason: String) : PhotoResult
 }
 
+/** The phone's newest call recording (made by the phone's own dialer). */
+sealed interface CallRecording {
+    class Found(val bytes: ByteArray, val mime: String, val name: String) : CallRecording
+    data object None : CallRecording
+    data object TooBig : CallRecording
+    data class NeedsPermission(val permission: String, val reason: String) : CallRecording
+}
+
 sealed interface ContactLookup {
     data class Found(val contacts: List<Contact>) : ContactLookup
     data class NeedsPermission(val permission: String, val reason: String) : ContactLookup
@@ -63,6 +71,8 @@ interface DeviceTools {
     fun mediaControl(command: MediaCommand): ToolOutcome = ToolOutcome.Failed("Media control is not supported here.")
     fun hasPermission(permission: String): Boolean = true
     fun sendSms(contact: Contact, text: String): ToolOutcome = ToolOutcome.Failed("SMS is not supported here.")
+    /** The newest call recording of the last week, read only when he asks for its summary. */
+    suspend fun latestCallRecording(): CallRecording = CallRecording.None
     /** Writes [page] as a PDF and opens Android's share sheet (WhatsApp or any app). */
     fun sharePdf(page: com.raju.aiassistant.domain.business.PdfPage): ToolOutcome = ToolOutcome.Failed("PDF sharing is not supported here.")
     /** Opens the phone's "new contact" page with [number] filled in (the user saves it there). */
