@@ -2196,6 +2196,7 @@ class AssistantEngine(
             is AssistantAction.DailyCareAdd -> { trace("offline command: daily care"); dailyCare(action, speak) }
             is AssistantAction.ScheduleMessage -> { trace("offline command: scheduled message"); scheduleMessage(action, speak) }
             AssistantAction.DuesPdf -> { trace("offline command: dues pdf"); duesPdf(action, speak) }
+            is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
             AssistantAction.SaveCallerNumber -> { trace("offline command: save number"); saveCallerNumber(action, speak) }
@@ -3079,6 +3080,7 @@ class AssistantEngine(
             is AssistantAction.DailyCareAdd -> dailyCare(action, speak)
             is AssistantAction.ScheduleMessage -> scheduleMessage(action, speak)
             AssistantAction.DuesPdf -> duesPdf(action, speak)
+            is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> billPdf(action, speak)
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
             AssistantAction.SaveCallerNumber -> saveCallerNumber(action, speak)
@@ -4269,6 +4271,50 @@ class AssistantEngine(
             leaveSleep()
             whatsApp(AssistantAction.WhatsApp(who, text), speak = true)
             finishTurn()
+        }
+    }
+
+    /** Amounts he is waiting for ("3750 ka refund aaye to batana"), kept while the app runs. */
+    private val watches = mutableListOf<com.raju.aiassistant.domain.business.AmountWatch>()
+
+    /**
+     * Money came in ([paise], from [payer] when the bank / app names them): a watched amount is announced first; then, if
+     * the payer owes him in the khata, she asks once whether to reduce it — and records it only on his yes.
+     */
+    fun onMoneyIn(paise: Long, payer: String?) {
+        if (paused() || settings.value.safetyMode || pausedForCall) return
+        scope.launch {
+            com.raju.aiassistant.domain.business.AmountWatches.match(watches, paise)?.let { w ->
+                watches.remove(w)
+                trace("money watch: arrived")
+                if (job?.isActive != true) say(com.raju.aiassistant.domain.business.AmountWatches.arrived(w))
+            }
+            val client = com.raju.aiassistant.domain.business.MoneyMatch.client(payer, runCatching { business.allBalances() }.getOrDefault(emptyList())) ?: return@launch
+            if (job?.isActive == true || _pending.value != null) return@launch
+            job = scope.launch {
+                leaveSleep()
+                val ask = com.raju.aiassistant.domain.business.MoneyMatch.question(client, paise)
+                val action = AssistantAction.LedgerRecord(client.name, paise, com.raju.aiassistant.domain.ledger.LedgerKind.GOT)
+                val yes = askOutLoud(PendingRequest(PendingRequest.Kind.CONFIRM, "Khata", ask), spoken = ask, listenForAnswer = true) { yesNo(it) } is Decision.Approve
+                if (yes && runCatching { business.recordLedger(client.name, paise, com.raju.aiassistant.domain.ledger.LedgerKind.GOT) }.getOrNull() != null) {
+                    informational(action, com.raju.aiassistant.domain.business.MoneyMatch.done(client, paise), speak = true)
+                } else {
+                    report(action, ActionStatus.CANCELLED, "Khata not changed.")
+                }
+                finishTurn()
+            }
+        }
+    }
+
+    /** Headphones / earbuds just connected: a short "बोलिए" and her window opens (no name needed for a moment). */
+    fun onHeadphonesConnected() {
+        if (paused() || settings.value.safetyMode || pausedForCall || job?.isActive == true || _state.value == AssistantState.Speaking) return
+        job = scope.launch {
+            leaveSleep()
+            say(phrase(lang(), "हेडफ़ोन लग गए — बोलिए, सुन रही हूँ।", "হেডফোন লেগেছে — বলো, শুনছি।"), allowBargeIn = false)
+            session.openFor(TAP_GRANT_MS)
+            _voiceSession.value = true
+            listen()
         }
     }
 

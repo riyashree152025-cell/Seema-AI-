@@ -30,12 +30,34 @@ class RajuApp : Application() {
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
             )
         }
+        // Wired headphones plugged in: a short "बोलिए" (Bluetooth earbuds are seen through the same audio route change).
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this, headsetReceiver, android.content.IntentFilter(android.media.AudioManager.ACTION_HEADSET_PLUG),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
         // Android's own "battery low" moment (about 15 %): she says it once, softly.
         runCatching {
             androidx.core.content.ContextCompat.registerReceiver(
                 this, batteryLowReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_LOW),
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
             )
+        }
+    }
+
+    private var headsetIn: Boolean? = null
+
+    private val headsetReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val plugged = intent?.getIntExtra("state", 0) == 1
+            val before = headsetIn
+            headsetIn = plugged
+            // The first broadcast only tells the current state (sticky): not a new plug-in.
+            if (before == null || !plugged || before) return
+            val s = container.currentSettings.value
+            if (s.assistantPaused || s.safetyMode) return
+            container.engine.onHeadphonesConnected()
         }
     }
 

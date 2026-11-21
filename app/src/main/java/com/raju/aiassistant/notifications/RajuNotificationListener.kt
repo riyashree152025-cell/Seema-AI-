@@ -117,7 +117,7 @@ class RajuNotificationListener : NotificationListenerService() {
 
     private fun announceMoneyIn(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
         val s = c.currentSettings.value
-        if (!s.announceMoneyIn || s.assistantPaused || s.safetyMode) return
+        if (s.assistantPaused || s.safetyMode) return
         if (!com.raju.aiassistant.domain.sms.isMoneyApp(sbn.packageName)) return
         val n = sbn.notification ?: return
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
@@ -126,6 +126,9 @@ class RajuNotificationListener : NotificationListenerService() {
         val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()
         val money = com.raju.aiassistant.domain.sms.moneyCreditIn(title, text) ?: return
         if (!moneyDeduper.shouldSay(money.paise, System.currentTimeMillis())) return
+        // Watched amounts ("3750 aaye to batana") and the khata ("Rahul का बाकी घटा दूँ?") — whatever the announce setting.
+        c.engine.onMoneyIn(money.paise, money.from)
+        if (!s.announceMoneyIn) return
         val audio = getSystemService(android.media.AudioManager::class.java)
         if (audio?.mode == android.media.AudioManager.MODE_IN_CALL || audio?.mode == android.media.AudioManager.MODE_IN_COMMUNICATION) return
         val language = com.raju.aiassistant.domain.language.SeemaLanguage.fromTag(s.speechLanguage) ?: c.conversationLanguage.value

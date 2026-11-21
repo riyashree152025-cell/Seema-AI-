@@ -369,6 +369,11 @@ sealed interface AssistantAction {
         override val label get() = "Scheduled message"
     }
 
+    /** "3750 ka refund aaye to batana": she says it the moment that amount comes in. */
+    data class WatchAmount(val watch: com.raju.aiassistant.domain.business.AmountWatch) : AssistantAction {
+        override val label get() = "Watch for money"
+    }
+
     /** "Bakaya ki list PDF banao". */
     data object DuesPdf : AssistantAction {
         override val label get() = "Dues PDF"
