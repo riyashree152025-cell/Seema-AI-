@@ -364,6 +364,31 @@ sealed interface AssistantAction {
         override val label get() = "WhatsApp digest"
     }
 
+    /** "Kal 8 baje Amit ko message bhejna ki …": a reminder that sends it (after his yes) at that time. */
+    data class ScheduleMessage(val message: com.raju.aiassistant.domain.business.ScheduledMessage) : AssistantAction {
+        override val label get() = "Scheduled message"
+    }
+
+    /** "Bakaya ki list PDF banao". */
+    data object DuesPdf : AssistantAction {
+        override val label get() = "Dues PDF"
+    }
+
+    /** "Rahul ka bill banao 2 ticket 4500". */
+    data class BillPdf(val bill: com.raju.aiassistant.domain.business.OfficePdfs.Bill) : AssistantAction {
+        override val label get() = "Bill PDF"
+    }
+
+    /** "Aaj tumne kya kya kiya". */
+    data object ActionDiaryAsk : AssistantAction {
+        override val label get() = "Today's work"
+    }
+
+    /** "Ye number save karo": the last caller's number into a new contact. */
+    data object SaveCallerNumber : AssistantAction {
+        override val label get() = "Save number"
+    }
+
     /** "Roz 9 baje dawai ki yaad dilana": a daily routine with her reminder. */
     data class DailyCareAdd(val care: com.raju.aiassistant.domain.automation.DailyCare) : AssistantAction {
         override val label get() = "Daily reminder"

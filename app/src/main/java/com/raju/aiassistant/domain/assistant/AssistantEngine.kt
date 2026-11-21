@@ -2194,6 +2194,11 @@ class AssistantEngine(
             }
             is AssistantAction.SpecialDayAdd -> { trace("offline command: special day"); specialDay(action, speak) }
             is AssistantAction.DailyCareAdd -> { trace("offline command: daily care"); dailyCare(action, speak) }
+            is AssistantAction.ScheduleMessage -> { trace("offline command: scheduled message"); scheduleMessage(action, speak) }
+            AssistantAction.DuesPdf -> { trace("offline command: dues pdf"); duesPdf(action, speak) }
+            is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
+            AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
+            AssistantAction.SaveCallerNumber -> { trace("offline command: save number"); saveCallerNumber(action, speak) }
             is AssistantAction.BusyMode -> { trace("offline command: busy mode"); busyMode(action, speak) }
             is AssistantAction.DoNotDisturb -> {
                 trace("offline command: dnd")
@@ -3072,6 +3077,11 @@ class AssistantEngine(
             is AssistantAction.Remote -> remote(action, speak)
             is AssistantAction.SpecialDayAdd -> specialDay(action, speak)
             is AssistantAction.DailyCareAdd -> dailyCare(action, speak)
+            is AssistantAction.ScheduleMessage -> scheduleMessage(action, speak)
+            AssistantAction.DuesPdf -> duesPdf(action, speak)
+            is AssistantAction.BillPdf -> billPdf(action, speak)
+            AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
+            AssistantAction.SaveCallerNumber -> saveCallerNumber(action, speak)
             is AssistantAction.BusyMode -> busyMode(action, speak)
             is AssistantAction.DoNotDisturb -> report(action, tools.setDoNotDisturb(action.on))
             is AssistantAction.PeriodReportAsk -> periodReport(action, speak)
@@ -4240,6 +4250,62 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, line)
             if (speak) say(line)
         }
+    }
+
+    /** "Kal 8 baje Amit ko message bhejna ki …": one reminder; when it comes, the WhatsApp goes through the confirm. */
+    private suspend fun scheduleMessage(action: AssistantAction.ScheduleMessage, speak: Boolean) {
+        val m = action.message
+        val at = m.at.atZone(zone()).toInstant().toEpochMilli()
+        val outcome = tools.addReminder(at, com.raju.aiassistant.domain.business.ScheduledMessages.reminderText(m))
+        if (outcome !is ToolOutcome.Done) return report(action, outcome).also { if (speak) say(outcome.spokenReason()) }
+        informational(action, com.raju.aiassistant.domain.business.ScheduledMessages.confirmation(m), speak)
+    }
+
+    /** A scheduled message's time came (from the reminder): the usual WhatsApp path, confirm included. */
+    fun sendScheduledMessage(who: String, text: String) {
+        if (paused() || settings.value.safetyMode) return
+        cancelWork()
+        job = scope.launch {
+            leaveSleep()
+            whatsApp(AssistantAction.WhatsApp(who, text), speak = true)
+            finishTurn()
+        }
+    }
+
+    private suspend fun duesPdf(action: AssistantAction, speak: Boolean) {
+        val balances = runCatching { business.allBalances() }.getOrDefault(emptyList())
+        if (balances.none { it.balancePaise > 0 }) return informational(action, phrase(lang(), "किसी का कोई बकाया नहीं है, सूची खाली है।", "কারও কোনো বাকি নেই।"), speak)
+        val page = com.raju.aiassistant.domain.business.OfficePdfs.dues(balances, today())
+        sharePage(action, page, speak)
+    }
+
+    private var billNumber = 0L
+
+    private suspend fun billPdf(action: AssistantAction.BillPdf, speak: Boolean) {
+        billNumber = maxOf(billNumber + 1, clock() / 1000 % 1_000_000)
+        sharePage(action, com.raju.aiassistant.domain.business.OfficePdfs.bill(action.bill, today(), billNumber), speak)
+    }
+
+    private suspend fun sharePage(action: AssistantAction, page: com.raju.aiassistant.domain.business.PdfPage, speak: Boolean) {
+        val outcome = tools.sharePdf(page)
+        report(action, outcome)
+        if (speak) say(if (outcome is ToolOutcome.Done) com.raju.aiassistant.domain.business.OfficePdfs.spokenDone(page) else outcome.spokenReason())
+    }
+
+    private suspend fun saveCallerNumber(action: AssistantAction, speak: Boolean) {
+        val caller = runCatching { tools.recentCaller(30 * 60_000L) }.getOrNull()
+        if (caller == null) return informational(action, phrase(lang(), "पिछले आधे घंटे में कोई कॉल नहीं मिली।", "গত আধ ঘণ্টায় কোনো কল পাইনি।"), speak)
+        val outcome = tools.saveContact(caller.number)
+        report(action, outcome)
+        if (speak) say(if (outcome is ToolOutcome.Done) phrase(lang(), "नया contact खोल दिया है, नंबर भरा हुआ है — बस नाम लिखकर Save दबाइए।", "নতুন কন্টাক্ট খুলেছি, নম্বর দেওয়া আছে — নাম লিখে Save চাপুন।") else outcome.spokenReason())
+    }
+
+    /** What she did today (successful actions, kept while the app runs), for "aaj tumne kya kya kiya". */
+    private val doneLog = ArrayDeque<Pair<Long, String>>()
+
+    private fun doneToday(): List<String> {
+        val start = today().atStartOfDay(zone()).toInstant().toEpochMilli()
+        return doneLog.filter { it.first >= start }.map { it.second }
     }
 
     /** "Roz 9 baje dawai ki yaad dilana": a daily routine whose one step is her reminder. */
@@ -5427,7 +5493,13 @@ class AssistantEngine(
                 } else {
                     status = ActionStatus.SUCCESS
                     lastTicketFile = f.name
-                    msg = com.raju.aiassistant.domain.rail.spokenTicket(ticket)
+                    // The ticket goes into the PNR diary by itself (chart watch and briefing then know it).
+                    val saved = com.raju.aiassistant.domain.business.TicketToDiary.journey(ticket)?.let { j ->
+                        val known = runCatching { business.journeysFrom(j.date) }.getOrDefault(emptyList()).any { it.pnr == j.pnr }
+                        if (known) false else runCatching { business.saveJourney(j) }.isSuccess
+                    } == true
+                    msg = com.raju.aiassistant.domain.rail.spokenTicket(ticket) +
+                        if (saved) phrase(lang(), " यह टिकट डायरी में भी जोड़ दिया है।", " টিকিটটা ডায়েরিতেও রেখে দিয়েছি।") else ""
                 }
             }
         }
@@ -5438,6 +5510,10 @@ class AssistantEngine(
     private suspend fun report(action: AssistantAction, status: ActionStatus, message: String) {
         lastReportStatus = status
         lastReportMessage = message
+        if (status == ActionStatus.SUCCESS && action !is AssistantAction.ActionDiaryAsk) {
+            doneLog.addLast(clock() to action.label)
+            while (doneLog.size > 300) doneLog.removeFirst()
+        }
         val icon = when (status) {
             ActionStatus.SUCCESS -> "✅"
             ActionStatus.FAILED -> "❌"

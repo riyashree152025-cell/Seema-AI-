@@ -136,7 +136,13 @@ class ReminderReceiver : BroadcastReceiver() {
                 try {
                     val s = c.currentSettings.value
                     if (!s.assistantPaused && !s.safetyMode) {
-                        withTimeoutOrNull(REMINDER_SPEAK_MS) { runCatching { c.speaker.speak("याद दिलाना था: ${r.text}") } }
+                        val scheduled = com.raju.aiassistant.domain.business.ScheduledMessages.fromReminder(r.text)
+                        if (scheduled != null) {
+                            // "Kal 8 baje Amit ko message bhejna …": the time has come — the usual WhatsApp path asks first.
+                            c.engine.sendScheduledMessage(scheduled.first, scheduled.second)
+                        } else {
+                            withTimeoutOrNull(REMINDER_SPEAK_MS) { runCatching { c.speaker.speak("याद दिलाना था: ${r.text}") } }
+                        }
                     }
                 } finally {
                     pending.finish()

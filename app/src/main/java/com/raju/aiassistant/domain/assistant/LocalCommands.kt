@@ -39,6 +39,11 @@ object LocalCommands {
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
         com.raju.aiassistant.domain.business.PeriodReport.ask(text)?.let { return AssistantAction.PeriodReportAsk(it) }
+        if (com.raju.aiassistant.domain.business.OfficePdfs.asksDuesPdf(text)) return AssistantAction.DuesPdf
+        com.raju.aiassistant.domain.business.OfficePdfs.parseBill(text)?.let { return AssistantAction.BillPdf(it) }
+        if (com.raju.aiassistant.domain.business.ActionDiary.asks(text)) return AssistantAction.ActionDiaryAsk
+        if (SAVE_NUMBER.matches(text.trim().trimEnd('.', '।', '!'))) return AssistantAction.SaveCallerNumber
+        com.raju.aiassistant.domain.business.ScheduledMessages.parse(text, java.time.LocalDateTime.now())?.let { return AssistantAction.ScheduleMessage(it) }
         com.raju.aiassistant.domain.automation.DailyCareReminder.parse(text)?.let { return AssistantAction.DailyCareAdd(it) }
         com.raju.aiassistant.domain.automation.DailyCareReminder.sayStep(text)?.let { return AssistantAction.Greeting(it) }
         com.raju.aiassistant.domain.automation.CallAutomation.busyCommand(text)?.let { return AssistantAction.BusyMode(it) }
@@ -272,6 +277,12 @@ object LocalCommands {
         }
         return if (hour in 0..23) AssistantAction.SetAlarm(hour, minute, "") else null
     }
+
+    /** "Ye number save karo", "is number ko save kar do", "এই নম্বরটা সেভ করো". */
+    private val SAVE_NUMBER = Regex(
+        "^(?:seema[, ]+)?(?:ye|yeh|is|iss|wo|woh|ये|इस|वो|এই|ওই)\\s+(?:number|नंबर|নম্বর|নম্বরটা)\\s+(?:ko\\s+|को\\s+)?(?:save karo|save kar do|sev karo|सेव करो|सेव कर दो|সেভ করো|সেভ করে দাও)$",
+        RegexOption.IGNORE_CASE,
+    )
 
     // ------------------------------------------------------------------ camera
 

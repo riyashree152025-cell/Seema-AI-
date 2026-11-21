@@ -718,6 +718,47 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     override fun openWebPage(url: String): ToolOutcome =
         start(Intent(Intent.ACTION_VIEW, Uri.parse(url)), "Opened $url", "No browser could open $url")
 
+    override fun sharePdf(page: com.raju.aiassistant.domain.business.PdfPage): ToolOutcome = try {
+        // A4 at 72 dpi; Android's own text drawing shapes Hindi and Bengali correctly.
+        val pdf = android.graphics.pdf.PdfDocument()
+        val titlePaint = android.graphics.Paint().apply { textSize = 18f; isFakeBoldText = true; isAntiAlias = true }
+        val textPaint = android.graphics.Paint().apply { textSize = 13f; isAntiAlias = true }
+        var pageNo = 1
+        var p = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pageNo).create())
+        var y = 60f
+        p.canvas.drawText(page.title, 40f, y, titlePaint)
+        y += 34f
+        for (line in page.lines) {
+            if (y > 800f) {
+                pdf.finishPage(p)
+                pageNo++
+                p = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pageNo).create())
+                y = 60f
+            }
+            p.canvas.drawText(line, 40f, y, textPaint)
+            y += 22f
+        }
+        pdf.finishPage(p)
+        val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+        val file = java.io.File(dir, page.fileName)
+        file.outputStream().use { pdf.writeTo(it) }
+        pdf.close()
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("application/pdf")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        start(Intent.createChooser(send, page.title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "PDF ready: ${page.fileName}", "Could not open the share sheet.")
+    } catch (e: Exception) {
+        ToolOutcome.Failed("PDF नहीं बन पाई (${e.javaClass.simpleName})।")
+    }
+
+    override fun saveContact(number: String): ToolOutcome = start(
+        Intent(Intent.ACTION_INSERT).setType(android.provider.ContactsContract.Contacts.CONTENT_TYPE)
+            .putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, number),
+        "New contact opened.", "Contacts app could not be opened.",
+    )
+
     override fun shareTextFile(name: String, content: String): ToolOutcome = try {
         val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
         val file = java.io.File(dir, name)

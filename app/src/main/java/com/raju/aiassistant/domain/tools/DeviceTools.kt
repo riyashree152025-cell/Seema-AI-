@@ -63,6 +63,10 @@ interface DeviceTools {
     fun mediaControl(command: MediaCommand): ToolOutcome = ToolOutcome.Failed("Media control is not supported here.")
     fun hasPermission(permission: String): Boolean = true
     fun sendSms(contact: Contact, text: String): ToolOutcome = ToolOutcome.Failed("SMS is not supported here.")
+    /** Writes [page] as a PDF and opens Android's share sheet (WhatsApp or any app). */
+    fun sharePdf(page: com.raju.aiassistant.domain.business.PdfPage): ToolOutcome = ToolOutcome.Failed("PDF sharing is not supported here.")
+    /** Opens the phone's "new contact" page with [number] filled in (the user saves it there). */
+    fun saveContact(number: String): ToolOutcome = ToolOutcome.Failed("Saving contacts is not supported here.")
     /** Do Not Disturb on / off (needs the user's "Do Not Disturb access" once). */
     fun setDoNotDisturb(on: Boolean): ToolOutcome = ToolOutcome.Failed("Do Not Disturb is not supported here.")
     /** [rrule] is an iCalendar repeat rule such as "FREQ=DAILY", or null for a one-time event. */
