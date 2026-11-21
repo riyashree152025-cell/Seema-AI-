@@ -71,6 +71,8 @@ interface DeviceTools {
     fun mediaControl(command: MediaCommand): ToolOutcome = ToolOutcome.Failed("Media control is not supported here.")
     fun hasPermission(permission: String): Boolean = true
     fun sendSms(contact: Contact, text: String): ToolOutcome = ToolOutcome.Failed("SMS is not supported here.")
+    /** Saves where the phone is now as [name] and watches for arriving there again. */
+    suspend fun savePlaceHere(name: String): ToolOutcome = ToolOutcome.Failed("Places are not supported here.")
     /** The newest call recording of the last week, read only when he asks for its summary. */
     suspend fun latestCallRecording(): CallRecording = CallRecording.None
     /** Writes [page] as a PDF and opens Android's share sheet (WhatsApp or any app). */

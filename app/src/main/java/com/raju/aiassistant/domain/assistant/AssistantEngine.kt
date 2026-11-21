@@ -2206,6 +2206,7 @@ class AssistantEngine(
             AssistantAction.DuesPdf -> { trace("offline command: dues pdf"); duesPdf(action, speak) }
             AssistantAction.CallRecordingGist -> { trace("offline command: call recording"); _state.value = AssistantState.Thinking; callRecordingGist(action, speak) }
             AssistantAction.BillScanAsk -> { trace("offline command: bill scan"); _state.value = AssistantState.Executing; billScan(action, speak) }
+            is AssistantAction.SavePlace -> { trace("offline command: save place"); savePlace(action, speak) }
             is AssistantAction.TeachWord -> { trace("offline command: teach word"); teachWord(action, speak) }
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
@@ -3093,6 +3094,7 @@ class AssistantEngine(
             AssistantAction.DuesPdf -> duesPdf(action, speak)
             AssistantAction.CallRecordingGist -> callRecordingGist(action, speak)
             AssistantAction.BillScanAsk -> billScan(action, speak)
+            is AssistantAction.SavePlace -> savePlace(action, speak)
             is AssistantAction.TeachWord -> teachWord(action, speak)
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> billPdf(action, speak)
@@ -4343,6 +4345,18 @@ class AssistantEngine(
             _voiceSession.value = true
             listen()
         }
+    }
+
+    private suspend fun savePlace(action: AssistantAction.SavePlace, speak: Boolean) {
+        val outcome = tools.savePlaceHere(action.name)
+        if (outcome is ToolOutcome.Done) informational(action, com.raju.aiassistant.domain.automation.Places.saved(action.name), speak)
+        else { report(action, outcome); if (speak) say(outcome.spokenReason()) }
+    }
+
+    /** He arrived at a saved place: the place and today's remaining tasks, said once when she is idle. */
+    fun onArrivedAt(name: String) {
+        if (paused() || settings.value.safetyMode || pausedForCall) return
+        announce(com.raju.aiassistant.domain.automation.Places.arrival(name, runCatching { tools.listReminders() }.getOrDefault(emptyList()), clock(), zone()))
     }
 
     /** Words he taught ("mitthu" → "Mitu"), applied to everything heard. */

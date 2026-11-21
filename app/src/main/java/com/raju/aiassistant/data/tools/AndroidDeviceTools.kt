@@ -753,6 +753,21 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         ToolOutcome.Failed("PDF नहीं बन पाई (${e.javaClass.simpleName})।")
     }
 
+    @android.annotation.SuppressLint("MissingPermission") // checked just below
+    override suspend fun savePlaceHere(name: String): ToolOutcome {
+        if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            // Location "while using" first; for arrivals while the app is closed Android also wants "Allow all the time".
+            runCatching {
+                context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return ToolOutcome.Failed("जगह याद रखने के लिए Location की अनुमति चाहिए — जो पेज खुला है उसमें Permissions → Location → \"Allow all the time\" चुनिए, फिर दोबारा बोलिए।")
+        }
+        val loc = com.raju.aiassistant.data.weather.CoarseLocation(context).locate()
+            ?: return ToolOutcome.Failed("अभी location नहीं मिल पाई — Location चालू करके फिर बोलिए।")
+        com.raju.aiassistant.notifications.PlaceAlerts.save(context, com.raju.aiassistant.notifications.PlaceAlerts.Place(name, loc.latitude, loc.longitude))
+        return ToolOutcome.Done("Place saved: $name")
+    }
+
     override suspend fun latestCallRecording(): com.raju.aiassistant.domain.tools.CallRecording = withContext(Dispatchers.IO) {
         val perm = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         if (!granted(perm)) return@withContext com.raju.aiassistant.domain.tools.CallRecording.NeedsPermission(perm, "कॉल रिकॉर्डिंग सुनने के लिए Music & audio की अनुमति चाहिए। रिकॉर्डिंग सिर्फ़ आपके कहने पर Gemini को सार के लिए भेजी जाती है।")

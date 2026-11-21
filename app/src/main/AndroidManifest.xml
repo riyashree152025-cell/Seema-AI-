@@ -19,6 +19,9 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Weather on the 3D dashboard (city-level only, asked when the user taps the weather panel). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- "Is jagah ko dukaan naam se yaad rakho": arriving there later (Android's proximity alert, on the phone only). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Call-style audio (echo cancellation) while you talk with Seema hands-free, so you can interrupt her. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -184,6 +187,9 @@
             android:exported="false" />
         <receiver
             android:name=".notifications.RoutineAlarmReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".notifications.PlaceArrivalReceiver"
             android:exported="false" />
         <!-- Home-screen widget: "🎤 बोलो" and "📋 आज का हाल" (both only open the app). -->
         <receiver

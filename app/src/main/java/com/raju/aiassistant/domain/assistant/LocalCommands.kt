@@ -42,6 +42,7 @@ object LocalCommands {
         if (com.raju.aiassistant.domain.business.OfficePdfs.asksDuesPdf(text)) return AssistantAction.DuesPdf
         if (com.raju.aiassistant.domain.memory.CallRecordingSummary.asks(text)) return AssistantAction.CallRecordingGist
         if (com.raju.aiassistant.domain.business.BillScan.asks(text)) return AssistantAction.BillScanAsk
+        com.raju.aiassistant.domain.automation.Places.saveRequest(text)?.let { return AssistantAction.SavePlace(it) }
         com.raju.aiassistant.domain.language.SpeechCorrections.teach(text)?.let { (h, m) -> return AssistantAction.TeachWord(h, m) }
         com.raju.aiassistant.domain.business.AmountWatches.parse(text)?.let { return AssistantAction.WatchAmount(it) }
         com.raju.aiassistant.domain.business.OfficePdfs.parseBill(text)?.let { return AssistantAction.BillPdf(it) }

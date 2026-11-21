@@ -374,6 +374,11 @@ sealed interface AssistantAction {
         override val label get() = "Watch for money"
     }
 
+    /** "Is jagah ko dukaan naam se yaad rakho". */
+    data class SavePlace(val name: String) : AssistantAction {
+        override val label get() = "Save place"
+    }
+
     /** "Bill ki photo lo aur kharcha likho". */
     data object BillScanAsk : AssistantAction {
         override val label get() = "Bill to khata"

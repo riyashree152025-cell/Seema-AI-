@@ -23,6 +23,8 @@ class RajuApp : Application() {
         runCatching { container.ringDucker.restoreAfterRestart() }
         runCatching { container.audioInterruptions.start() }
         runCatching { container.watchAudioDevices() }
+        // Saved places' arrival alerts (Android drops them on a restart).
+        runCatching { com.raju.aiassistant.notifications.PlaceAlerts.arm(this) }
         // The 9 AM / 9 PM check-in: when he unlocks the phone within two hours after it, Seema says the briefing
         // once (only while the app's process is alive; the WorkManager notification covers the rest).
         runCatching {
