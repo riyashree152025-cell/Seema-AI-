@@ -297,6 +297,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** "Only my voice": the speaker check for wake-ups. */
+    private val voiceId: com.raju.aiassistant.domain.voice.VoiceIdPort = com.raju.aiassistant.domain.voice.NoVoiceId,
     /** Gemini hears an audio file (a call recording) and answers [prompt]. */
     private val describeAudio: suspend (ByteArray, String, String) -> AiResult<String> = { _, _, _ -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "Audio is not supported here.") },
     /** Today's weather line for the briefing (rain / heat / cold), or null. */
@@ -1042,6 +1044,12 @@ class AssistantEngine(
             return
         }
         if (wakeListener.spotsWakeWord) {
+            // "Only my voice": someone else saying her name does not wake her (no voice print / too short: allowed).
+            if (pcm.isNotEmpty() && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { voiceId.matchesOwner(pcm) } == false) {
+                trace("wake word: not the owner's voice, ignored")
+                armWakeListener()
+                return
+            }
             // The offline detector heard "Hey Seema" on the phone itself: wake and listen.
             trace("wake word (offline)")
             onWake()
@@ -2207,6 +2215,7 @@ class AssistantEngine(
             AssistantAction.CallRecordingGist -> { trace("offline command: call recording"); _state.value = AssistantState.Thinking; callRecordingGist(action, speak) }
             AssistantAction.BillScanAsk -> { trace("offline command: bill scan"); _state.value = AssistantState.Executing; billScan(action, speak) }
             is AssistantAction.SavePlace -> { trace("offline command: save place"); savePlace(action, speak) }
+            is AssistantAction.VoiceIdSetup -> { trace("offline command: voice id"); voiceIdSetup(action, speak) }
             is AssistantAction.TeachWord -> { trace("offline command: teach word"); teachWord(action, speak) }
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
@@ -3095,6 +3104,7 @@ class AssistantEngine(
             AssistantAction.CallRecordingGist -> callRecordingGist(action, speak)
             AssistantAction.BillScanAsk -> billScan(action, speak)
             is AssistantAction.SavePlace -> savePlace(action, speak)
+            is AssistantAction.VoiceIdSetup -> voiceIdSetup(action, speak)
             is AssistantAction.TeachWord -> teachWord(action, speak)
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> billPdf(action, speak)
@@ -4345,6 +4355,27 @@ class AssistantEngine(
             _voiceSession.value = true
             listen()
         }
+    }
+
+    /** "Meri awaaz pehchano": model once (28 MB), then 6 s of his voice → his voice print. "Band karo": deleted. */
+    private suspend fun voiceIdSetup(action: AssistantAction.VoiceIdSetup, speak: Boolean) {
+        if (!action.enroll) {
+            voiceId.disable()
+            return informational(action, phrase(lang(), "ठीक है, आवाज़ पहचानना बंद। अब कोई भी \"हे सीमा\" बोलेगा तो जागूँगी।", "ঠিক আছে, গলা চেনা বন্ধ।"), speak)
+        }
+        if (speak) say(phrase(lang(), "ठीक है। पहले एक बार 28 MB का आवाज़ वाला model लाना होगा, एक मिनट…", "ঠিক আছে, একবার মডেল আনতে হবে, এক মিনিট…"), allowBargeIn = false)
+        if (!voiceId.ensureModel()) {
+            val msg = phrase(lang(), "आवाज़ वाला model नहीं आ पाया — इंटरनेट देखकर फिर बोलिए।", "মডেল আনা গেল না।")
+            report(action, ActionStatus.FAILED, msg); if (speak) say(msg); return
+        }
+        if (speak) say(phrase(lang(), "अब छह सेकंड तक अपनी आम आवाज़ में कुछ भी बोलते रहिए… शुरू कीजिए।", "এখন ছয় সেকেন্ড কিছু বলতে থাকো… শুরু করো।"), allowBargeIn = false)
+        listenGen++
+        voice.stop()
+        releaseMic()
+        val ok = voiceId.enroll()
+        restoreMic()
+        if (ok) informational(action, phrase(lang(), "हो गया, आपकी आवाज़ पहचान ली। अब \"हे सीमा\" सिर्फ़ आपकी आवाज़ पर जागूँगी। बंद करना हो तो बोलिए \"आवाज़ पहचानना बंद करो\"।", "হয়ে গেছে, তোমার গলা চিনে রেখেছি।"), speak)
+        else { val msg = phrase(lang(), "आवाज़ साफ़ नहीं मिली — शांत जगह पर फिर कोशिश कीजिए।", "গলা পরিষ্কার পাইনি।"); report(action, ActionStatus.FAILED, msg); if (speak) say(msg) }
     }
 
     private suspend fun savePlace(action: AssistantAction.SavePlace, speak: Boolean) {

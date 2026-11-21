@@ -374,6 +374,11 @@ sealed interface AssistantAction {
         override val label get() = "Watch for money"
     }
 
+    /** "Meri awaaz pehchano" (true) / "awaaz pehchanna band karo" (false). */
+    data class VoiceIdSetup(val enroll: Boolean) : AssistantAction {
+        override val label get() = "Voice ID"
+    }
+
     /** "Is jagah ko dukaan naam se yaad rakho". */
     data class SavePlace(val name: String) : AssistantAction {
         override val label get() = "Save place"

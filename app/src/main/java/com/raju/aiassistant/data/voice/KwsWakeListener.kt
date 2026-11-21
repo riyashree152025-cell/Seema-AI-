@@ -75,9 +75,13 @@ class KwsWakeListener(
         job = scope.launch(Dispatchers.IO) {
             val heard = runCatching { listenForWakeWord() }.onFailure { log("kws error ${it.javaClass.simpleName}") }.getOrNull()
             if (!isActive) return@launch
-            if (heard == true) onUtterance(ByteArray(0)) else onError()
+            // The last two seconds (her name in his voice) go along, for "only my voice" checking.
+            if (heard == true) onUtterance(lastWakeAudio) else onError()
         }
     }
+
+    /** 16 kHz mono PCM16 of the ~2 s before the wake word was spotted. */
+    @Volatile private var lastWakeAudio: ByteArray = ByteArray(0)
 
     override fun stop() {
         hubListener?.stop() // a no-op unless the shared microphone was used
@@ -167,9 +171,15 @@ class KwsWakeListener(
             val buf = ShortArray(FRAME)
             val floats = FloatArray(FRAME)
             var lastLevelLog = 0L
+            // A ring of the last 2 s of audio (kept in memory only, never stored).
+            val ring = ShortArray(RATE * 2)
+            var ringPos = 0
+            var ringFilled = 0
             while (currentCoroutineContext().isActive) {
                 val n = recorder.read(buf, 0, buf.size)
                 if (n <= 0) return false // microphone taken away (call, another app) or stopped
+                for (i in 0 until n) { ring[ringPos] = buf[i]; ringPos = (ringPos + 1) % ring.size }
+                ringFilled = minOf(ring.size, ringFilled + n)
                 var sum = 0.0
                 for (i in 0 until n) {
                     floats[i] = buf[i] / 32768f
@@ -189,6 +199,10 @@ class KwsWakeListener(
                     if (kws.getResult(stream).keyword.isNotBlank()) {
                         log("kws: wake word")
                         kws.reset(stream)
+                        val out = java.nio.ByteBuffer.allocate(ringFilled * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        val start = (ringPos - ringFilled + ring.size) % ring.size
+                        for (k in 0 until ringFilled) out.putShort(ring[(start + k) % ring.size])
+                        lastWakeAudio = out.array()
                         return true
                     }
                 }

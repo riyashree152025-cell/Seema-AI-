@@ -151,6 +151,8 @@ class AppContainer(context: Context) {
     /** Call-style audio (echo cancellation) during hands-free conversations. */
     val conversationAudio by lazy { ConversationAudio(appContext) }
     val audioPlayer by lazy { AudioPlayer(appContext) { conversationAudio.active } }
+    /** "Only my voice" for wake-ups (sherpa-onnx speaker check). */
+    val speakerId by lazy { com.raju.aiassistant.data.voice.SpeakerId(appContext, http) }
     /** The offline "Hey Seema" model download. */
     val wakeModels by lazy {
         com.raju.aiassistant.data.voice.VoiceModelManager(appContext, http, appScope, listOf(com.raju.aiassistant.domain.voice.WAKE_WORD_MODEL))
@@ -552,6 +554,7 @@ class AppContainer(context: Context) {
             saveRoutine = { r -> com.raju.aiassistant.notifications.RoutineStore.save(appContext, r) },
             weatherToday = { weather.briefingLine() },
             describeAudio = { bytes, mime, prompt -> askAboutAudio(bytes, mime, prompt) },
+            voiceId = speakerId,
             replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
             sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },
             log = { android.util.Log.i("SeemaVoice", it) },
