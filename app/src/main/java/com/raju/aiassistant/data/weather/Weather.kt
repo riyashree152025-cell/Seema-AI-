@@ -68,6 +68,22 @@ class OpenMeteoClient(private val http: OkHttpClient, private val baseUrl: Strin
         }
     }
 
+    /** Today's rain chance (%) and highest / lowest temperature, for the morning briefing. */
+    suspend fun today(lat: Double, lon: Double): Triple<Int?, Double?, Double?>? {
+        val url = "$baseUrl/v1/forecast".toHttpUrl().newBuilder()
+            .addQueryParameter("latitude", "%.3f".format(java.util.Locale.ROOT, lat))
+            .addQueryParameter("longitude", "%.3f".format(java.util.Locale.ROOT, lon))
+            .addQueryParameter("daily", "precipitation_probability_max,temperature_2m_max,temperature_2m_min")
+            .addQueryParameter("forecast_days", "1")
+            .addQueryParameter("timezone", "auto")
+            .build()
+        val r = http.fetch(Request.Builder().url(url).get().build()) as? AiResult.Success ?: return null
+        if (r.value.first !in 200..299) return null
+        val daily = runCatching { (JsonFormat.parseToJsonElement(r.value.second) as JsonObject)["daily"] as JsonObject }.getOrNull() ?: return null
+        fun first(k: String) = (daily[k] as? kotlinx.serialization.json.JsonArray)?.firstOrNull() as? JsonPrimitive
+        return Triple(first("precipitation_probability_max")?.intOrNull, first("temperature_2m_max")?.doubleOrNull, first("temperature_2m_min")?.doubleOrNull)
+    }
+
     internal fun parseCurrent(body: String, now: Long): CurrentWeather? {
         val cur = runCatching { (JsonFormat.parseToJsonElement(body) as JsonObject)["current"] as JsonObject }.getOrNull() ?: return null
         val temp = (cur["temperature_2m"] as? JsonPrimitive)?.doubleOrNull ?: return null
@@ -115,6 +131,14 @@ class CoarseLocation(private val context: Context) {
 
 /** Weather for the dashboard, cached for 30 minutes (no repeated calls while the screen stays open). */
 class WeatherRepository(private val client: OpenMeteoClient, private val location: CoarseLocation, private val online: () -> Boolean) {
+    /** One line for the morning briefing when the day's weather matters (rain, heat, cold); null otherwise. */
+    suspend fun briefingLine(): String? {
+        if (!location.hasPermission() || !online()) return null
+        val loc = location.locate() ?: return null
+        val (rain, max, min) = client.today(loc.latitude, loc.longitude) ?: return null
+        return com.raju.aiassistant.domain.automation.WeatherLine.line(rain, max, min)
+    }
+
     @Volatile private var cached: CurrentWeather? = null
 
     suspend fun load(force: Boolean = false): WeatherState {

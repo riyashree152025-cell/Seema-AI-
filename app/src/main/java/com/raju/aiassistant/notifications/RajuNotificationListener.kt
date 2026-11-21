@@ -42,6 +42,7 @@ class RajuNotificationListener : NotificationListenerService() {
         val settings = c.currentSettings.value
         noteMoney(c, sbn)
         announceMoneyIn(c, sbn)
+        findPhoneBySms(c, sbn)
         if (!settings.announcementsActive) return
         if (sbn.packageName !in settings.announceApps) return
         val n = sbn.notification ?: return
@@ -137,6 +138,27 @@ class RajuNotificationListener : NotificationListenerService() {
             // After her current sentence, not over it.
             kotlinx.coroutines.withTimeoutOrNull(20_000) { while (c.speaker.speaking.value) kotlinx.coroutines.delay(300) }
             c.speaker.speak(line)
+        }
+    }
+
+    /**
+     * "SEEMA FIND <word>" arrived by SMS (seen in the SMS app's notification; the sender's number is taken from the
+     * inbox): with the saved word, the phone rings and texts back its location. No extra permission is needed.
+     */
+    private fun findPhoneBySms(c: com.raju.aiassistant.di.AppContainer, sbn: StatusBarNotification) {
+        val extras = sbn.notification?.extras ?: return
+        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString() ?: return
+        if (!text.trim().startsWith("seema find", ignoreCase = true)) return
+        c.appScope.launch {
+            val word = runCatching { c.secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.FIND_PHONE_WORD) }.getOrNull()
+            if (!com.raju.aiassistant.domain.automation.FindPhoneSms.matches(text.trim(), word)) return@launch
+            val inbox = c.deviceTools.smsInbox(System.currentTimeMillis() - 10 * 60_000L)
+            val from = (inbox as? com.raju.aiassistant.domain.sms.SmsInbox.Messages)?.list
+                ?.firstOrNull { com.raju.aiassistant.domain.automation.FindPhoneSms.matches(it.body, word) }?.sender ?: return@launch
+            c.engine.findPhoneRemote(from) {
+                val loc = runCatching { com.raju.aiassistant.data.weather.CoarseLocation(applicationContext).locate() }.getOrNull()
+                com.raju.aiassistant.domain.automation.FindPhoneSms.reply(loc?.latitude, loc?.longitude)
+            }
         }
     }
 

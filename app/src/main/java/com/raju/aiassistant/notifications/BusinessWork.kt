@@ -46,6 +46,7 @@ object BusinessScheduler {
     private val OLD = listOf("morning_briefing", "evening_heads_up")
     private const val WEEKLY = "weekly_expense_report"
     private const val PNR_WATCH = "pnr_watch"
+    private const val BRIDGE_WATCH = "bridge_watch"
     private const val EVENING = "evening_check_in_9pm"
 
     fun schedule(context: Context) {
@@ -68,6 +69,13 @@ object BusinessScheduler {
         wm.enqueueUniquePeriodicWork(
             PNR_WATCH, ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<PnrWatchWorker>(30, TimeUnit.MINUTES)
+                .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+                .build(),
+        )
+        // The PC / VPS bridge every 30 minutes (does nothing when no bridge address is saved).
+        wm.enqueueUniquePeriodicWork(
+            BRIDGE_WATCH, ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<BridgeWatchWorker>(30, TimeUnit.MINUTES)
                 .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
                 .build(),
         )
@@ -190,6 +198,23 @@ class WeeklyReportWorker(context: Context, params: WorkerParameters) : Coroutine
     }
 }
 
+/** The PC / VPS bridge health check: alerts when it stops answering or its disk is nearly full (once each). */
+class BridgeWatchWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val c = (applicationContext as? com.raju.aiassistant.RajuApp)?.container ?: return Result.success()
+        val prefs = applicationContext.getSharedPreferences("bridge_watch", Context.MODE_PRIVATE)
+        val before = com.raju.aiassistant.domain.automation.BridgeHealth.State(
+            prefs.getInt("failures", 0), prefs.getBoolean("down", false), prefs.getBoolean("disk", false),
+        )
+        val result = runCatching { c.pcSyncClient.sendAction("system_info", mapOf("target" to "watch")) }
+            .getOrDefault(com.raju.aiassistant.domain.remote.RemoteResult.Unreachable)
+        val (after, alert) = com.raju.aiassistant.domain.automation.BridgeHealth.check(result, before)
+        prefs.edit().putInt("failures", after.failures).putBoolean("down", after.alertedDown).putBoolean("disk", after.alertedDisk).apply()
+        alert?.let { BusinessNotifier(applicationContext).show(BusinessNotifier.BRIDGE_ID, "🖥 Seema: PC / VPS", it, LaunchRequest.ACTION_CHAT) }
+        return Result.success()
+    }
+}
+
 class BusinessNotifier(private val context: Context) {
     fun createChannel() {
         val channel = NotificationChannel(CHANNEL_ID, "Briefings & khata", NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -228,6 +253,7 @@ class BusinessNotifier(private val context: Context) {
         const val CHANNEL_ID = "business_briefings"
         const val MORNING_ID = 4201
         const val WEEKLY_ID = 4202
+        const val BRIDGE_ID = 4205
         const val EVENING_ID = 4203
         const val PNR_ID_BASE = 4300
     }

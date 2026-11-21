@@ -182,6 +182,18 @@
         <receiver
             android:name=".notifications.RoutineAlarmReceiver"
             android:exported="false" />
+        <!-- Home-screen widget: "🎤 बोलो" and "📋 आज का हाल" (both only open the app). -->
+        <receiver
+            android:name=".ui.SeemaWidget"
+            android:exported="true"
+            android:label="Seema AI">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/seema_widget_info" />
+        </receiver>
         <!-- Device admin: only to lock the screen on request (see res/xml/device_admin.xml). -->
         <receiver
             android:name=".notifications.SeemaDeviceAdmin"

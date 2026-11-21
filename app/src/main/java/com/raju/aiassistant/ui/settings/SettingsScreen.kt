@@ -271,6 +271,30 @@ fun SettingsScreen(
                             secretStatus = state.secrets[SecretId.PNR_STATUS_TOKEN] ?: SecretStatus(),
                             viewModel = viewModel,
                         )
+                        Spacer(Modifier.height(16.dp))
+                        Text("🖥 PC / VPS Bridge", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
+                        Text("PC पर Seema Companion चलाइए; उसका https / Tailscale पता और token यहाँ। \"PC में Cursor खोलो\", \"VPS status check करो\" और हर आधे घंटे की निगरानी इसी से।", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp)
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.PC_SYNC_ENDPOINT,
+                            title = "PC / VPS Bridge URL",
+                            secretStatus = state.secrets[SecretId.PC_SYNC_ENDPOINT] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.PC_SYNC_TOKEN,
+                            title = "PC / VPS Bridge Secret Token",
+                            secretStatus = state.secrets[SecretId.PC_SYNC_TOKEN] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("📱 फ़ोन खो जाए तो", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE)))
+                        Text("एक गुप्त शब्द रखिए (कम से कम 4 अक्षर)। किसी भी फ़ोन से SMS भेजें: SEEMA FIND <शब्द> — यह फ़ोन ज़ोर से बजेगा और अपनी location वापस भेजेगा। SMS पढ़ने की अनुमति चाहिए।", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp)
+                        VoiceEngineSecretCard(
+                            secretId = SecretId.FIND_PHONE_WORD,
+                            title = "Phone-find secret word",
+                            secretStatus = state.secrets[SecretId.FIND_PHONE_WORD] ?: SecretStatus(),
+                            viewModel = viewModel,
+                        )
                     }
                 )
             }

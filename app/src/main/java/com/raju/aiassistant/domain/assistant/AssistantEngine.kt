@@ -297,6 +297,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** Today's weather line for the briefing (rain / heat / cold), or null. */
+    private val weatherToday: suspend () -> String? = { null },
     /** Saves a routine (Automation screen; a timed one is scheduled), for "roz 9 baje dawai ki yaad dilana". */
     private val saveRoutine: suspend (com.raju.aiassistant.domain.routine.Routine) -> Unit = {},
     /** When Raju last talked to her (kept on the phone), for "kahan the itni der se?" and late-night care. */
@@ -3252,7 +3254,8 @@ class AssistantEngine(
             is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> com.raju.aiassistant.domain.automation.BillDues.line(inbox.list, today, z)
             else -> null
         }
-        return listOfNotNull(special, brief, bills, journeys).joinToString("\n")
+        val weather = runCatching { withTimeoutOrNull(6_000) { weatherToday() } }.getOrNull()
+        return listOfNotNull(special, brief, weather, bills, journeys).joinToString("\n")
     }
 
     /** The check-in said by itself (phone unlocked after 9 AM / 9 PM): only while Seema is idle and allowed to speak. */
@@ -3817,6 +3820,18 @@ class AssistantEngine(
         }
         trace("beacon started")
         report(action, ActionStatus.SUCCESS, "घंटी बज रही है — फोन उठाते, अनलॉक करते, आवाज़ का बटन दबाते या \"मिल गया\" बोलते ही बंद हो जाएगी।")
+    }
+
+    /**
+     * "SEEMA FIND <word>" came by SMS (the word matched): the phone rings loudly as for "mera phone dhundo" — even when
+     * Seema is switched off or in Safety Mode, since the phone may be lost — and [reply] is sent back to [from].
+     */
+    fun findPhoneRemote(from: String, reply: suspend () -> String) {
+        scope.launch {
+            trace("find phone by SMS")
+            findPhone(AssistantAction.FindPhone, speak = false)
+            runCatching { tools.sendSms(Contact("", from), reply()) }
+        }
     }
 
     /** What Seema says after a media key (it used to say "गाना बंद कर दिया" for every key, next too). */

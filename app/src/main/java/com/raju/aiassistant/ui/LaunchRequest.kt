@@ -16,6 +16,8 @@ sealed interface LaunchRequest {
         const val ACTION_CHAT = "com.raju.aiassistant.action.CHAT"
         const val ACTION_BRIEFING = "com.raju.aiassistant.action.BRIEFING"
         const val ACTION_WEEKLY_REPORT = "com.raju.aiassistant.action.WEEKLY_REPORT"
+        /** The home-screen widget's "आज का हाल". */
+        const val ACTION_TODAY = "com.raju.aiassistant.action.TODAY"
         const val ACTION_SETUP = com.raju.aiassistant.domain.tools.ACTION_SETUP_CHECK
 
         /** What Seema is asked when the user taps the morning or weekly notification. */
@@ -27,6 +29,7 @@ sealed interface LaunchRequest {
             ACTION_CHAT -> Chat
             ACTION_BRIEFING -> Ask(BRIEFING_REQUEST)
             ACTION_WEEKLY_REPORT -> Ask(WEEKLY_REQUEST)
+            ACTION_TODAY -> Ask("aaj ka update do")
             ACTION_SETUP -> Setup
             Intent.ACTION_SEND -> intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 ?.let { Ask(buildSharedTextRequest(it, intent.getStringExtra(Intent.EXTRA_SUBJECT))) }

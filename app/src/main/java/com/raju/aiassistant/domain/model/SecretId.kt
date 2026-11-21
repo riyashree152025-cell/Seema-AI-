@@ -14,6 +14,8 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     OLLAMA_ENDPOINT("ollama_endpoint", "Ollama Host (PC Local AI)", ""),
     PC_SYNC_ENDPOINT("pc_sync_endpoint", "PC / VPS Bridge URL", ""),
     PC_SYNC_TOKEN("pc_sync_token", "PC / VPS Bridge Secret Token", ""),
+    /** "SEEMA FIND <this word>" by SMS from any phone makes this phone ring and send its location. */
+    FIND_PHONE_WORD("find_phone_word", "Phone-find secret word (SMS: SEEMA FIND <word>)", ""),
     TAVILY_API_KEY("tavily_api_key", "Tavily web-search API key", "https://app.tavily.com"),
     SARVAM_API_KEY("sarvam_api_key", "Sarvam AI voice (Bulbul) API key", "https://dashboard.sarvam.ai"),
     CARTESIA_API_KEY("cartesia_api_key", "Cartesia voice API key", "https://play.cartesia.ai/keys"),
