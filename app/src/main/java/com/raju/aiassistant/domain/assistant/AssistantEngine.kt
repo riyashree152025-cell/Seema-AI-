@@ -458,6 +458,7 @@ class AssistantEngine(
 
     /** Loads saved chat history into the transcript (call once at startup). */
     suspend fun load() {
+        loadCorrections()
         if (!settings.value.saveHistory) return
         runCatching { history.recent(100) }.onSuccess { saved ->
             _transcript.value = saved + _transcript.value
@@ -500,7 +501,10 @@ class AssistantEngine(
      */
     private fun onHeard(rawHeard: String) {
         // Hindi written in another Indian script by the recogniser ("గీతా") is read as Devanagari.
-        val heard = com.raju.aiassistant.domain.language.fixCommonMishearings(com.raju.aiassistant.domain.language.toDevanagari(rawHeard))
+        // Words he taught her ("mitthu" → "Mitu") are put right first.
+        val heard = com.raju.aiassistant.domain.language.SpeechCorrections.apply(
+            com.raju.aiassistant.domain.language.fixCommonMishearings(com.raju.aiassistant.domain.language.toDevanagari(rawHeard)), corrections,
+        )
         // Switched off: nothing that was heard is acted on or answered.
         if (settings.value.assistantPaused) { trace("off: heard result dropped"); return }
         trace("recognized (${heard.length} chars)")
@@ -2201,6 +2205,8 @@ class AssistantEngine(
             is AssistantAction.ScheduleMessage -> { trace("offline command: scheduled message"); scheduleMessage(action, speak) }
             AssistantAction.DuesPdf -> { trace("offline command: dues pdf"); duesPdf(action, speak) }
             AssistantAction.CallRecordingGist -> { trace("offline command: call recording"); _state.value = AssistantState.Thinking; callRecordingGist(action, speak) }
+            AssistantAction.BillScanAsk -> { trace("offline command: bill scan"); _state.value = AssistantState.Executing; billScan(action, speak) }
+            is AssistantAction.TeachWord -> { trace("offline command: teach word"); teachWord(action, speak) }
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> { trace("offline command: bill pdf"); billPdf(action, speak) }
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
@@ -3086,6 +3092,8 @@ class AssistantEngine(
             is AssistantAction.ScheduleMessage -> scheduleMessage(action, speak)
             AssistantAction.DuesPdf -> duesPdf(action, speak)
             AssistantAction.CallRecordingGist -> callRecordingGist(action, speak)
+            AssistantAction.BillScanAsk -> billScan(action, speak)
+            is AssistantAction.TeachWord -> teachWord(action, speak)
             is AssistantAction.WatchAmount -> { watches += action.watch; informational(action, com.raju.aiassistant.domain.business.AmountWatches.confirmation(action.watch), speak) }
             is AssistantAction.BillPdf -> billPdf(action, speak)
             AssistantAction.ActionDiaryAsk -> informational(action, com.raju.aiassistant.domain.business.ActionDiary.summary(doneToday()), speak)
@@ -4335,6 +4343,53 @@ class AssistantEngine(
             _voiceSession.value = true
             listen()
         }
+    }
+
+    /** Words he taught ("mitthu" → "Mitu"), applied to everything heard. */
+    @Volatile private var corrections: List<Pair<String, String>> = emptyList()
+
+    private suspend fun loadCorrections() {
+        corrections = runCatching { memories.all().mapNotNull { com.raju.aiassistant.domain.language.SpeechCorrections.fromFact(it.text) } }.getOrDefault(emptyList())
+    }
+
+    private suspend fun teachWord(action: AssistantAction.TeachWord, speak: Boolean) {
+        runCatching {
+            memories.all().filter { com.raju.aiassistant.domain.language.SpeechCorrections.fromFact(it.text)?.first.equals(action.heard, true) }.forEach { memories.delete(it.id) }
+            memories.add(com.raju.aiassistant.domain.language.SpeechCorrections.factText(action.heard, action.meant))
+        }.onFailure { return report(action, ActionStatus.FAILED, "Could not save it.") }
+        loadCorrections()
+        informational(action, com.raju.aiassistant.domain.language.SpeechCorrections.confirmation(action.heard, action.meant), speak)
+    }
+
+    /** One photo of a bill → its total and shop (Gemini) → "खाते में लिख दूँ?" → saved as an expense on his yes. */
+    private suspend fun billScan(action: AssistantAction, speak: Boolean) {
+        var r = tools.takePhoto(front = false, save = false)
+        if (r is PhotoResult.NeedsPermission) {
+            val d = ask(PendingRequest(PendingRequest.Kind.PERMISSION, "Camera permission", r.reason, permission = r.permission))
+            r = if (d is Decision.PermissionResult && d.granted) tools.takePhoto(front = false, save = false)
+            else return report(action, ActionStatus.CANCELLED, "Camera permission was denied.")
+        }
+        val photo = r as? PhotoResult.Taken ?: run {
+            val msg = (r as? PhotoResult.Failed)?.message ?: phrase(lang(), "फ़ोटो नहीं ले पाई।", "ছবি তুলতে পারিনি।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        _state.value = AssistantState.Thinking
+        val bill = (describeImage(photo.jpeg, com.raju.aiassistant.domain.business.BillScan.PROMPT) as? AiResult.Success)?.value
+            ?.let { com.raju.aiassistant.domain.business.BillScan.parse(it) }
+        if (bill == null) {
+            val msg = phrase(lang(), "बिल की रकम साफ़ नहीं पढ़ पाई — बिल को रोशनी में सीधा रखकर फिर बोलिए।", "বিলের টাকা পরিষ্কার পড়তে পারিনি।")
+            report(action, ActionStatus.FAILED, msg)
+            if (speak) say(msg)
+            return
+        }
+        val ask = com.raju.aiassistant.domain.business.BillScan.question(bill)
+        val yes = askOutLoud(PendingRequest(PendingRequest.Kind.CONFIRM, "Khata", ask), spoken = ask.takeIf { speak }, listenForAnswer = speak && voiceTurn) { yesNo(it) } is Decision.Approve
+        if (!yes) return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं लिखा।", "ঠিক আছে, লিখিনি।"))
+        val saved = runCatching { business.addExpense(bill.amountPaise, bill.payee ?: "bill", bill.category) }.isSuccess
+        if (saved) informational(action, phrase(lang(), "लिख दिया — ${formatRupees(bill.amountPaise)} का खर्च खाते में।", "লিখে দিয়েছি।"), speak)
+        else report(action, ActionStatus.FAILED, "Could not save the expense.")
     }
 
     /** The phone's newest call recording → its gist in 2-3 sentences, and each promise as a reminder. */
