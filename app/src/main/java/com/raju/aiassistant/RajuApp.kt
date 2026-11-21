@@ -30,6 +30,22 @@ class RajuApp : Application() {
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
             )
         }
+        // Android's own "battery low" moment (about 15 %): she says it once, softly.
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this, batteryLowReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_LOW),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+    }
+
+    private val batteryLowReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val s = container.currentSettings.value
+            if (s.assistantPaused || s.safetyMode) return
+            val pct = runCatching { getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) }.getOrDefault(15)
+            container.engine.onBatteryLow(pct)
+        }
     }
 
     private val unlockReceiver = object : android.content.BroadcastReceiver() {

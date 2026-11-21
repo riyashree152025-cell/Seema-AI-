@@ -199,6 +199,9 @@ class AppContainer(context: Context) {
         }
     }
 
+    /** The phone rang and the call has not been answered (yet). */
+    @Volatile private var rangUnanswered = false
+
     /** Phone calls and headphone disconnects (started in RajuApp). */
     val audioInterruptions: com.raju.aiassistant.core.audio.AudioInterruptions by lazy {
         com.raju.aiassistant.core.audio.AudioInterruptions(
@@ -206,6 +209,7 @@ class AppContainer(context: Context) {
             onCall = { phase ->
                 when (phase) {
                     com.raju.aiassistant.core.audio.CallPhase.RINGING -> {
+                        rangUnanswered = true
                         engine.onCallRinging()
                         val s = currentSettings.value
                         // The ringtone down to ~20 % while she announces and listens; restored below.
@@ -213,6 +217,7 @@ class AppContainer(context: Context) {
                         announceRingingIfNobodyDid()
                     }
                     com.raju.aiassistant.core.audio.CallPhase.ACTIVE -> {
+                        rangUnanswered = false
                         ringDucker.restore()
                         engine.pauseForCall()
                         if (currentSettings.value.micHub) micHub.pauseForCall()
@@ -224,6 +229,9 @@ class AppContainer(context: Context) {
                         com.raju.aiassistant.notifications.CallControls.clear(appContext)
                         engine.resumeAfterCall()
                         if (currentSettings.value.micHub) micHub.resumeAfterCall()
+                        // It rang and was never answered: a missed call ("वापस लगाऊँ?", or the busy-mode SMS).
+                        if (rangUnanswered) engine.onMissedCall()
+                        rangUnanswered = false
                     }
                 }
             },
@@ -497,6 +505,7 @@ class AppContainer(context: Context) {
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             remoteBridge = { action, params -> pcSyncClient.sendAction(action, params) },
             presence = com.raju.aiassistant.data.prefs.PresencePrefs(appContext),
+            saveRoutine = { r -> com.raju.aiassistant.notifications.RoutineStore.save(appContext, r) },
             replyTargets = { com.raju.aiassistant.notifications.NotificationReplies.targets() },
             sendNotificationReply = { key, text -> com.raju.aiassistant.notifications.NotificationReplies.send(appContext, key, text) },
             log = { android.util.Log.i("SeemaVoice", it) },

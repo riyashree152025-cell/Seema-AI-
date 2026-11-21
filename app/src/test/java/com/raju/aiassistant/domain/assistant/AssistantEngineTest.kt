@@ -290,6 +290,33 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aMissedCallIsCalledBackOnlyOnYes() = runTest {
+        tools.lastCaller = Contact("Rahul", "+91 98000 00011")
+        val e = engine()
+        e.onMissedCall()
+        advanceTimeBy(2_000); runCurrent()
+        assertTrue(e.pending.value!!.message.contains("Rahul का कॉल छूट गया"))
+        e.resolve(Decision.Approve())
+        settle()
+        assertEquals(listOf(Contact("Rahul", "+91 98000 00011")), tools.dialed)
+    }
+
+    @Test
+    fun inBusyModeAMissedCallerGetsTheSmsOnceAnHour() = runTest {
+        tools.lastCaller = Contact("Rahul", "+91 98000 00011")
+        val e = engine()
+        e.submit("busy mode on karo", fromVoice = true)
+        settle()
+        e.onMissedCall()
+        advanceTimeBy(2_000); runCurrent()
+        e.onMissedCall()
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(listOf("+91 98000 00011" to com.raju.aiassistant.domain.automation.CallAutomation.BUSY_SMS), tools.sms)
+        assertTrue(tools.dialed.isEmpty())
+        assertNull(e.pending.value)
+    }
+
+    @Test
     fun aBirthdayIsRememberedWithoutTheAi() = runTest {
         val e = engine()
         e.submit("Rahul ka birthday 5 March ko hai", fromVoice = true)

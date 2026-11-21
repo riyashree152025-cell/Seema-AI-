@@ -297,6 +297,8 @@ class AssistantEngine(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     /** Messages that came in during the last hours (in memory only), for the spoken summary. */
     private val recentMessages: () -> List<com.raju.aiassistant.domain.notify.IncomingItem> = { emptyList() },
+    /** Saves a routine (Automation screen; a timed one is scheduled), for "roz 9 baje dawai ki yaad dilana". */
+    private val saveRoutine: suspend (com.raju.aiassistant.domain.routine.Routine) -> Unit = {},
     /** When Raju last talked to her (kept on the phone), for "kahan the itni der se?" and late-night care. */
     private val presence: PresenceStore = InMemoryPresenceStore(),
     /** The PC / VPS bridge: sends the companion's action and params, says what it answered. */
@@ -2191,6 +2193,14 @@ class AssistantEngine(
                 whatsAppDigest(action, speak)
             }
             is AssistantAction.SpecialDayAdd -> { trace("offline command: special day"); specialDay(action, speak) }
+            is AssistantAction.DailyCareAdd -> { trace("offline command: daily care"); dailyCare(action, speak) }
+            is AssistantAction.BusyMode -> { trace("offline command: busy mode"); busyMode(action, speak) }
+            is AssistantAction.DoNotDisturb -> {
+                trace("offline command: dnd")
+                val outcome = tools.setDoNotDisturb(action.on)
+                report(action, outcome)
+                if (speak) say(if (outcome is ToolOutcome.Done) phrase(lang(), if (action.on) "DND चालू कर दिया, अब कोई आवाज़ परेशान नहीं करेगी।" else "DND बंद कर दिया।", if (action.on) "DND চালু করেছি।" else "DND বন্ধ করেছি।") else outcome.spokenReason())
+            }
             is AssistantAction.PeriodReportAsk -> { trace("offline command: period report"); _state.value = AssistantState.Thinking; periodReport(action, speak) }
             is AssistantAction.DuesRemind -> { trace("offline command: dues reminder"); duesRemind(action, speak) }
             is AssistantAction.Remote -> {
@@ -2266,7 +2276,9 @@ class AssistantEngine(
             finishTurn()
             return
         }
-        runSteps(actions, speak, intro = phrase(lang(), "${r.name} routine चला रही हूँ।", "${r.name} রুটিন চালাচ্ছি।"))
+        // A daily reminder ("याद: दवाई") is only her words: no "routine चला रही हूँ" before them.
+        val intro = if (r.name.startsWith("याद:")) null else phrase(lang(), "${r.name} routine चला रही हूँ।", "${r.name} রুটিন চালাচ্ছি।")
+        runSteps(actions, speak, intro = intro)
     }
 
     /** A routine's set time came (RoutineAlarms): run it now, unless Seema is switched off. */
@@ -2694,6 +2706,7 @@ class AssistantEngine(
     /** "Utha lo" / "kaat do" while a call rings is handled here at once, without the AI. True when it was a call command. */
     private fun handleCallCommand(text: String): Boolean {
         if (clock() >= callCommandUntil) return false
+        callCutByVoiceAt = clock()
         // "Bol do abhi busy hoon" / "10 minute mein call karta hoon": cut the call, send those words by SMS.
         callReplyText(text)?.let { reply ->
             callCommandUntil = 0
@@ -3058,6 +3071,9 @@ class AssistantEngine(
             AssistantAction.WhatsAppDigest -> whatsAppDigest(action, speak)
             is AssistantAction.Remote -> remote(action, speak)
             is AssistantAction.SpecialDayAdd -> specialDay(action, speak)
+            is AssistantAction.DailyCareAdd -> dailyCare(action, speak)
+            is AssistantAction.BusyMode -> busyMode(action, speak)
+            is AssistantAction.DoNotDisturb -> report(action, tools.setDoNotDisturb(action.on))
             is AssistantAction.PeriodReportAsk -> periodReport(action, speak)
             is AssistantAction.DuesRemind -> duesRemind(action, speak)
             is AssistantAction.GoHome -> {
@@ -3219,7 +3235,12 @@ class AssistantEngine(
         trace("briefing: cash ${if (cash == null) "unread" else "read"}, ${balances.size} balances, ${reminders.size} reminders")
         // Birthdays and anniversaries he told her about, every year on the day.
         val special = com.raju.aiassistant.domain.memory.SpecialDays.todayLine(runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()), today)
-        return listOfNotNull(special, brief, journeys).joinToString("\n")
+        // Bills due in the next three days (from the last month's SMS).
+        val bills = when (val inbox = runCatching { tools.smsInbox(start - 30 * 86_400_000L) }.getOrNull()) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> com.raju.aiassistant.domain.automation.BillDues.line(inbox.list, today, z)
+            else -> null
+        }
+        return listOfNotNull(special, brief, bills, journeys).joinToString("\n")
     }
 
     /** The check-in said by itself (phone unlocked after 9 AM / 9 PM): only while Seema is idle and allowed to speak. */
@@ -4218,6 +4239,76 @@ class AssistantEngine(
         else {
             report(action, ActionStatus.FAILED, line)
             if (speak) say(line)
+        }
+    }
+
+    /** "Roz 9 baje dawai ki yaad dilana": a daily routine whose one step is her reminder. */
+    private suspend fun dailyCare(action: AssistantAction.DailyCareAdd, speak: Boolean) {
+        val c = action.care
+        val r = com.raju.aiassistant.domain.routine.Routine(
+            id = clock(), name = com.raju.aiassistant.domain.automation.DailyCareReminder.name(c),
+            steps = listOf(com.raju.aiassistant.domain.automation.DailyCareReminder.step(c)), hour = c.hour, minute = c.minute,
+        )
+        runCatching { saveRoutine(r) }.onFailure { return report(action, ActionStatus.FAILED, "Could not save the daily reminder.") }
+        informational(action, com.raju.aiassistant.domain.automation.DailyCareReminder.confirmation(c), speak)
+    }
+
+    /** Busy mode: on = every missed caller gets an SMS (at most once an hour each); off = back to asking. */
+    private var busy = false
+    private val busySmsAt = mutableMapOf<String, Long>()
+
+    private suspend fun busyMode(action: AssistantAction.BusyMode, speak: Boolean) {
+        busy = action.on
+        informational(
+            action,
+            if (action.on) phrase(lang(), "ठीक है, busy mode चालू। जिसका कॉल छूटेगा उसे SMS चला जाएगा: \"${com.raju.aiassistant.domain.automation.CallAutomation.BUSY_SMS}\"", "ঠিক আছে, ব্যস্ত মোড চালু। যার কল মিস হবে তাকে SMS চলে যাবে।")
+            else phrase(lang(), "busy mode बंद कर दिया।", "ব্যস্ত মোড বন্ধ করেছি।"),
+            speak,
+        )
+    }
+
+    /**
+     * A call rang and nobody answered (not cut by her on his word): in busy mode the caller gets the SMS; otherwise
+     * she asks "X का कॉल छूट गया — वापस लगाऊँ?" and calls only on his yes.
+     */
+    fun onMissedCall() {
+        if (paused() || settings.value.safetyMode || (callCutByVoiceAt != null && clock() - callCutByVoiceAt!! < 60_000L)) return
+        scope.launch {
+            delay(1_500) // the call log is written a moment after the ring ends
+            val caller = runCatching { tools.recentCaller(2 * 60_000L) }.getOrNull() ?: return@launch
+            if (busy) {
+                val last = busySmsAt[caller.number]
+                if (last != null && clock() - last < com.raju.aiassistant.domain.automation.CallAutomation.SMS_GAP_MS) return@launch
+                busySmsAt[caller.number] = clock()
+                val outcome = tools.sendSms(caller, com.raju.aiassistant.domain.automation.CallAutomation.BUSY_SMS)
+                trace("busy mode: missed call, SMS ${if (outcome is ToolOutcome.Done) "sent" else "failed"}")
+                return@launch
+            }
+            if (job?.isActive == true || _pending.value != null) return@launch
+            job = scope.launch {
+                leaveSleep()
+                val ask = com.raju.aiassistant.domain.automation.CallAutomation.missedQuestion(caller.name.takeIf { it.isNotBlank() && it != caller.number }, lang() == SeemaLanguage.BENGALI)
+                val action = AssistantAction.Call(caller.name.ifBlank { null }, caller.number)
+                val yes = askOutLoud(PendingRequest(PendingRequest.Kind.CONFIRM, "Missed call", ask), spoken = ask, listenForAnswer = true) { yesNo(it) } is Decision.Approve
+                if (yes) {
+                    report(action, tools.dial(caller, direct = settings.value.directCalling))
+                } else {
+                    report(action, ActionStatus.CANCELLED, "Not called back.")
+                }
+                finishTurn()
+            }
+        }
+    }
+
+    /** When she cut a ringing call on his word (no "call back?" for that one). */
+    private var callCutByVoiceAt: Long? = null
+
+    /** Battery low (Android's own warning): said once while she is idle. */
+    fun onBatteryLow(percent: Int) {
+        if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || pausedForCall) return
+        job = scope.launch {
+            say(com.raju.aiassistant.domain.automation.CallAutomation.lowBatteryLine(percent))
+            finishTurn()
         }
     }
 

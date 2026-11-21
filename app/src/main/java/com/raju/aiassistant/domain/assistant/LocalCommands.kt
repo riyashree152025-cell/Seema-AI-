@@ -39,6 +39,10 @@ object LocalCommands {
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
         com.raju.aiassistant.domain.business.PeriodReport.ask(text)?.let { return AssistantAction.PeriodReportAsk(it) }
+        com.raju.aiassistant.domain.automation.DailyCareReminder.parse(text)?.let { return AssistantAction.DailyCareAdd(it) }
+        com.raju.aiassistant.domain.automation.DailyCareReminder.sayStep(text)?.let { return AssistantAction.Greeting(it) }
+        com.raju.aiassistant.domain.automation.CallAutomation.busyCommand(text)?.let { return AssistantAction.BusyMode(it) }
+        com.raju.aiassistant.domain.automation.CallAutomation.dndCommand(text)?.let { return AssistantAction.DoNotDisturb(it) }
         com.raju.aiassistant.domain.business.DuesReminder.who(text)?.let { return AssistantAction.DuesRemind(it) }
         com.raju.aiassistant.domain.memory.SpecialDays.parse(withoutLeadingFillers(text))?.let { return AssistantAction.SpecialDayAdd(it) }
         com.raju.aiassistant.domain.camera.CameraVoice.startRequest(text)?.let { return AssistantAction.StartVideo(front = it) }

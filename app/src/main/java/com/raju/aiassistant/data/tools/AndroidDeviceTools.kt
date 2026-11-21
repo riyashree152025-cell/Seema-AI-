@@ -610,6 +610,19 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
     }
 
     @Suppress("DEPRECATION")
+    override fun setDoNotDisturb(on: Boolean): ToolOutcome {
+        val nm = context.getSystemService(android.app.NotificationManager::class.java) ?: return ToolOutcome.Failed("DND नहीं बदल पाई।")
+        if (!nm.isNotificationPolicyAccessGranted) {
+            // Android asks the user once: open the "Do Not Disturb access" page for Seema.
+            runCatching {
+                context.startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return ToolOutcome.Failed("DND बदलने के लिए एक बार अनुमति चाहिए — जो पेज खुला है उसमें Seema AI को Allow कीजिए, फिर दोबारा बोलिए।")
+        }
+        nm.setInterruptionFilter(if (on) android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY else android.app.NotificationManager.INTERRUPTION_FILTER_ALL)
+        return ToolOutcome.Done(if (on) "Do Not Disturb on." else "Do Not Disturb off.")
+    }
+
     override fun sendSms(contact: Contact, text: String): ToolOutcome {
         if (!granted(Manifest.permission.SEND_SMS)) return ToolOutcome.NeedsPermission(Manifest.permission.SEND_SMS, "SMS permission is required.")
         val number = contact.number.filter { it.isDigit() || it == '+' }

@@ -364,6 +364,21 @@ sealed interface AssistantAction {
         override val label get() = "WhatsApp digest"
     }
 
+    /** "Roz 9 baje dawai ki yaad dilana": a daily routine with her reminder. */
+    data class DailyCareAdd(val care: com.raju.aiassistant.domain.automation.DailyCare) : AssistantAction {
+        override val label get() = "Daily reminder"
+    }
+
+    /** "Busy mode on": missed callers get an SMS by themselves. */
+    data class BusyMode(val on: Boolean) : AssistantAction {
+        override val label get() = "Busy mode"
+    }
+
+    /** "DND chalu karo". */
+    data class DoNotDisturb(val on: Boolean) : AssistantAction {
+        override val label get() = "Do Not Disturb"
+    }
+
     /** "Rahul ka birthday 5 March ko hai": remembered, and said every year that morning. */
     data class SpecialDayAdd(val day: com.raju.aiassistant.domain.memory.SpecialDay) : AssistantAction {
         override val label get() = "Special day"
