@@ -16,6 +16,8 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     PC_SYNC_TOKEN("pc_sync_token", "PC / VPS Bridge Secret Token", ""),
     /** "SEEMA FIND <this word>" by SMS from any phone makes this phone ring and send its location. */
     FIND_PHONE_WORD("find_phone_word", "Phone-find secret word (SMS: SEEMA FIND <word>)", ""),
+    /** The password the nightly automatic backup (data + API keys) is locked with. */
+    AUTO_BACKUP_PASSWORD("auto_backup_password", "Auto-backup password", ""),
     TAVILY_API_KEY("tavily_api_key", "Tavily web-search API key", "https://app.tavily.com"),
     SARVAM_API_KEY("sarvam_api_key", "Sarvam AI voice (Bulbul) API key", "https://dashboard.sarvam.ai"),
     CARTESIA_API_KEY("cartesia_api_key", "Cartesia voice API key", "https://play.cartesia.ai/keys"),

@@ -4430,6 +4430,12 @@ class AssistantEngine(
     /** When she cut a ringing call on his word (no "call back?" for that one). */
     private var callCutByVoiceAt: Long? = null
 
+    /** One line said by itself when she is idle (car mode on, …). */
+    fun announce(line: String) {
+        if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || pausedForCall) return
+        job = scope.launch { say(line); finishTurn() }
+    }
+
     /** Battery low (Android's own warning): said once while she is idle. */
     fun onBatteryLow(percent: Int) {
         if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || pausedForCall) return

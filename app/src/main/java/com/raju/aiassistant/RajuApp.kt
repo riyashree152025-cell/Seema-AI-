@@ -22,6 +22,7 @@ class RajuApp : Application() {
         // Volumes a killed process left lowered (ring at 10 %) or raised are given back first.
         runCatching { container.ringDucker.restoreAfterRestart() }
         runCatching { container.audioInterruptions.start() }
+        runCatching { container.watchAudioDevices() }
         // The 9 AM / 9 PM check-in: when he unlocks the phone within two hours after it, Seema says the briefing
         // once (only while the app's process is alive; the WorkManager notification covers the rest).
         runCatching {

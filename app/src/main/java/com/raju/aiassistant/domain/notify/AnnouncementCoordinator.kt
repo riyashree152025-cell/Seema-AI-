@@ -32,6 +32,8 @@ class AnnouncementCoordinator(
     private val followUpMs: Long = 120_000,
     /** People with a khata (their messages come before others). */
     private val knownPeople: () -> Set<String> = { emptySet() },
+    /** Car mode: messages are read without asking first. */
+    private val autoRead: () -> Boolean = { false },
 ) {
     /** The message she last asked about, until it is read or declined (silence keeps it). */
     private var followUp: Pair<Long, IncomingItem>? = null
@@ -155,6 +157,8 @@ class AnnouncementCoordinator(
                 item.preview == null -> speaker.speak(hiddenPreviewText(item, s.userName))
                 // A scam ("KYC update karo", "lottery", "account block — link par click"): warned, never offered to read.
                 MessageTriage.looksLikeFraud(item.preview) -> speaker.speak(MessageTriage.fraudWarning(item))
+                // Driving: read it straight away (codes and passwords stay unread, as always).
+                autoRead() && speakablePreview(item.preview) != null -> speaker.speak(readPreviewText(item))
                 else -> {
                     val p = PendingAnnouncement(nextId++, item)
                     _pending.value = p

@@ -47,6 +47,7 @@ object BusinessScheduler {
     private const val WEEKLY = "weekly_expense_report"
     private const val PNR_WATCH = "pnr_watch"
     private const val BRIDGE_WATCH = "bridge_watch"
+    private const val AUTO_BACKUP = "auto_backup_nightly"
     private const val EVENING = "evening_check_in_9pm"
 
     fun schedule(context: Context) {
@@ -70,6 +71,13 @@ object BusinessScheduler {
             PNR_WATCH, ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<PnrWatchWorker>(30, TimeUnit.MINUTES)
                 .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+                .build(),
+        )
+        // The nightly locked backup (data + API keys) into Download/Seema, only when its password is saved.
+        wm.enqueueUniquePeriodicWork(
+            AUTO_BACKUP, ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<AutoBackupWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(delayUntil(now, now.toLocalDate().plusDays(1).atTime(LocalTime.of(2, 0))), TimeUnit.MILLISECONDS)
                 .build(),
         )
         // The PC / VPS bridge every 30 minutes (does nothing when no bridge address is saved).
@@ -195,6 +203,46 @@ class WeeklyReportWorker(context: Context, params: WorkerParameters) : Coroutine
             summarizeExpenses(expenses, Period.WEEK, hindi = true), LaunchRequest.ACTION_WEEKLY_REPORT,
         )
         return Result.success()
+    }
+}
+
+/**
+ * Every night: the same password-locked backups the Backup screen makes, written over yesterday's in Download/Seema
+ * (seema-auto-backup.seemabak and seema-auto-keys.seemakeys). Nothing happens until the auto-backup password is saved.
+ */
+class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val c = (applicationContext as? com.raju.aiassistant.RajuApp)?.container ?: return Result.success()
+        val pw = runCatching { c.secureKeyStore.get(com.raju.aiassistant.domain.model.SecretId.AUTO_BACKUP_PASSWORD) }.getOrNull()
+            ?.takeIf { it.length >= com.raju.aiassistant.domain.backup.BackupCrypto.MIN_PASSWORD } ?: return Result.success()
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return Result.success()
+        runCatching {
+            downloadsFile("seema-auto-backup.seemabak")?.let { c.backupManager.export(it, pw.toCharArray()) }
+            val keys = c.secureKeyStore.exportAll()
+            if (keys.isNotEmpty()) downloadsFile("seema-auto-keys.seemakeys")?.let { uri ->
+                val bytes = com.raju.aiassistant.domain.backup.KeyBackup.lock(keys, pw.toCharArray(), System.currentTimeMillis())
+                applicationContext.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+            }
+        }
+        return Result.success()
+    }
+
+    /** Download/Seema/[name]: the existing file (overwritten) or a new one. */
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.Q)
+    private fun downloadsFile(name: String): android.net.Uri? {
+        val resolver = applicationContext.contentResolver
+        val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        resolver.query(
+            collection, arrayOf(android.provider.MediaStore.MediaColumns._ID),
+            "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${android.provider.MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+            arrayOf(name, "%Seema%"), null,
+        )?.use { cur -> if (cur.moveToFirst()) return android.content.ContentUris.withAppendedId(collection, cur.getLong(0)) }
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Seema")
+        }
+        return resolver.insert(collection, values)
     }
 }
 

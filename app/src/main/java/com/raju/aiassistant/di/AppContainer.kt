@@ -427,6 +427,7 @@ class AppContainer(context: Context) {
                 }
             },
             knownPeople = { knownClients },
+            autoRead = { carMode },
         ).also { coordinator ->
             appScope.launch { coordinator.pending.collect { consentNotifier.show(it) } }
             // The names in his khata, refreshed now and then (their messages are announced first).
@@ -437,6 +438,38 @@ class AppContainer(context: Context) {
                 }
             }
         }
+    }
+
+    /** A car stereo is connected over Bluetooth (see [watchAudioDevices]). */
+    @Volatile var carMode = false
+        private set
+
+    /**
+     * Bluetooth audio coming and going (no Bluetooth permission needed: only the audio route's product name is read):
+     * a car stereo turns car mode on (messages read without asking), earbuds / a headset get "बोलिए".
+     */
+    fun watchAudioDevices() {
+        val am = appContext.getSystemService(android.media.AudioManager::class.java) ?: return
+        val bt = setOf(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+        am.registerAudioDeviceCallback(object : android.media.AudioDeviceCallback() {
+            private var started = false
+            override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>) {
+                // The first call lists what is already connected: not a new connection.
+                if (!started) { started = true; carMode = added.any { it.type in bt && com.raju.aiassistant.domain.automation.CarMode.isCar(it.productName?.toString()) }; return }
+                val device = added.firstOrNull { it.type in bt && it.isSink } ?: return
+                val s = currentSettings.value
+                if (s.assistantPaused || s.safetyMode) return
+                if (com.raju.aiassistant.domain.automation.CarMode.isCar(device.productName?.toString())) {
+                    if (!carMode) { carMode = true; engine.announce(com.raju.aiassistant.domain.automation.CarMode.ON) }
+                } else {
+                    engine.onHeadphonesConnected()
+                }
+            }
+
+            override fun onAudioDevicesRemoved(removed: Array<out android.media.AudioDeviceInfo>) {
+                if (carMode && removed.any { it.type in bt && com.raju.aiassistant.domain.automation.CarMode.isCar(it.productName?.toString()) }) carMode = false
+            }
+        }, android.os.Handler(android.os.Looper.getMainLooper()))
     }
 
     /** Names in the khata (cached), for announcing their messages first. */

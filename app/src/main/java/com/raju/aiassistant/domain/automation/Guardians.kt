@@ -62,3 +62,21 @@ object FindPhoneSms {
         if (lat != null && lon != null) "Seema: phone is ringing. Location: https://maps.google.com/?q=${"%.5f".format(java.util.Locale.US, lat)},${"%.5f".format(java.util.Locale.US, lon)}"
         else "Seema: phone is ringing. Location is not available (location off or no permission)."
 }
+
+/**
+ * Car mode: the phone's Bluetooth audio connects to a car stereo (its name says so: "My Car", "Maruti", "Hyundai",
+ * "Android Auto"…). While driving Seema reads new messages without asking "padh ke sunau?" and keeps calls hands-free;
+ * it ends when the car disconnects.
+ */
+object CarMode {
+    private val CAR = Regex(
+        "(?<![a-z])(?:car|auto|vehicle|carkit|car kit|carplay|android auto|sync|uconnect|mylink|bluelink|maruti|suzuki|hyundai|tata|mahindra|" +
+            "honda|toyota|kia|mg|renault|nissan|skoda|volkswagen|vw|ford|bmw|mercedes|audi|jeep|swift|dzire|baleno|creta|nexon|scorpio|bolero|innova)(?![a-z])",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun isCar(deviceName: String?): Boolean = !deviceName.isNullOrBlank() && CAR.containsMatchIn(deviceName)
+
+    const val ON = "गाड़ी मोड चालू — नए मैसेज मैं खुद पढ़ दूँगी, आप बस गाड़ी पर ध्यान दो।"
+    const val OFF = "गाड़ी मोड बंद।"
+}

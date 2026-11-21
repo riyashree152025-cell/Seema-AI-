@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,6 +70,22 @@ fun BackupPanel(viewModel: SettingsViewModel) {
         Button(onClick = { create.launch("seema-backup-${LocalDate.now()}.seemabak") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Backup banao") }
         OutlinedButton(onClick = { open.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Backup se wapas laao") }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White) }
+    }
+
+    HudPanel(title = "रोज़ रात अपने-आप backup") {
+        Text(
+            "यहाँ एक password रख दीजिए (कम से कम 6 अक्षर)। हर रात लगभग 2 बजे Download/Seema फ़ोल्डर में दो locked files बनेंगी: " +
+                "seema-auto-backup.seemabak (खाता, डायरी, memory, settings) और seema-auto-keys.seemakeys (API keys)। " +
+                "ऊपर के \"वापस लाओ\" बटन से इसी password से खुलेंगी। Password लिखकर रख लीजिए।",
+            style = MaterialTheme.typography.bodySmall, color = TextSecondary,
+        )
+        val ui by viewModel.uiState.collectAsStateWithLifecycle()
+        VoiceEngineSecretCard(
+            secretId = com.raju.aiassistant.domain.model.SecretId.AUTO_BACKUP_PASSWORD,
+            title = "Auto-backup password",
+            secretStatus = ui.secrets[com.raju.aiassistant.domain.model.SecretId.AUTO_BACKUP_PASSWORD] ?: SecretStatus(),
+            viewModel = viewModel,
+        )
     }
 
     HudPanel(title = "API keys backup (password se locked)") {
