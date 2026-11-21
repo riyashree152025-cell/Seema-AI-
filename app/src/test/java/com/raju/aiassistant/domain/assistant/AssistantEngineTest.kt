@@ -290,6 +290,27 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun aBirthdayIsRememberedWithoutTheAi() = runTest {
+        val e = engine()
+        e.submit("Rahul ka birthday 5 March ko hai", fromVoice = true)
+        settle()
+        assertEquals(listOf("खास दिन: Rahul का जन्मदिन — 5 March"), store.mems.map { it.text })
+        assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Rahul का जन्मदिन याद रखूँगी"))
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun aHeadacheIsAskedAboutHoursLater() = runTest {
+        val e = sleepyEngine(NoWakeListener, null, AiResult.Success("ओह, आराम करो।"), AiResult.Success("अच्छा।"))
+        e.submit("aaj sir dard ho raha hai")
+        settle()
+        now = 5 * 3_600_000L
+        e.submit("kya chal raha hai")
+        settle()
+        assertTrue(provider.systems.last(), provider.systems.last().contains("CARE: earlier he mentioned सिर दर्द"))
+    }
+
+    @Test
     fun aPcInstructionIsSentOnlyAfterYes() = runTest {
         val e = engine()
         e.submit("PC ko command bhejo: backup chala do")

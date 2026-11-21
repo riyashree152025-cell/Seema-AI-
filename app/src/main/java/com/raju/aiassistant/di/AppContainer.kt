@@ -418,10 +418,21 @@ class AppContainer(context: Context) {
                     }
                 }
             },
+            knownPeople = { knownClients },
         ).also { coordinator ->
             appScope.launch { coordinator.pending.collect { consentNotifier.show(it) } }
+            // The names in his khata, refreshed now and then (their messages are announced first).
+            appScope.launch {
+                while (true) {
+                    knownClients = runCatching { businessRepository.allBalances().map { it.name }.toSet() }.getOrDefault(knownClients)
+                    kotlinx.coroutines.delay(10 * 60_000L)
+                }
+            }
         }
     }
+
+    /** Names in the khata (cached), for announcing their messages first. */
+    @Volatile private var knownClients: Set<String> = emptySet()
 
     /** Set by MainActivity for shortcuts and shared text; consumed by the navigation host. */
     val launchRequests = MutableStateFlow<LaunchRequest?>(null)

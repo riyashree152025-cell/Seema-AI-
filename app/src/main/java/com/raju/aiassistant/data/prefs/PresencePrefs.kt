@@ -13,7 +13,18 @@ class PresencePrefs(context: Context) : PresenceStore {
         prefs.edit().putLong(KEY, atMillis).apply()
     }
 
+    override fun concern(): Pair<String, Long>? {
+        val c = prefs.getString(CONCERN, null) ?: return null
+        return c to prefs.getLong(CONCERN_AT, 0L)
+    }
+
+    override fun setConcern(concern: String?, atMillis: Long) {
+        prefs.edit().apply { if (concern == null) remove(CONCERN).remove(CONCERN_AT) else putString(CONCERN, concern).putLong(CONCERN_AT, atMillis) }.apply()
+    }
+
     private companion object {
         const val KEY = "last_interaction_timestamp"
+        const val CONCERN = "care_concern"
+        const val CONCERN_AT = "care_concern_at"
     }
 }

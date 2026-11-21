@@ -30,6 +30,8 @@ class AnnouncementCoordinator(
     private val now: () -> Long = { System.currentTimeMillis() },
     /** How long after "Padh ke sunau kya?" a later "batao / padho" still reads that message. */
     private val followUpMs: Long = 120_000,
+    /** People with a khata (their messages come before others). */
+    private val knownPeople: () -> Set<String> = { emptySet() },
 ) {
     /** The message she last asked about, until it is read or declined (silence keeps it). */
     private var followUp: Pair<Long, IncomingItem>? = null
@@ -60,7 +62,13 @@ class AnnouncementCoordinator(
             queue[idx] = item.copy(count = queue[idx].count + 1)
         } else {
             if (queue.size >= maxQueue) queue.removeFirst()
-            queue.addLast(item)
+            // Money, railway and his own clients' messages are said first; the others keep their order.
+            if (MessageTriage.isPriority(item, knownPeople())) {
+                val firstOrdinary = queue.indexOfFirst { !MessageTriage.isPriority(it, knownPeople()) }
+                if (firstOrdinary >= 0) queue.add(firstOrdinary, item) else queue.addLast(item)
+            } else {
+                queue.addLast(item)
+            }
         }
         pump()
     }
@@ -145,6 +153,8 @@ class AnnouncementCoordinator(
             // Only who sent it is said, never the text on its own: the content is read after a "haan".
             when {
                 item.preview == null -> speaker.speak(hiddenPreviewText(item, s.userName))
+                // A scam ("KYC update karo", "lottery", "account block — link par click"): warned, never offered to read.
+                MessageTriage.looksLikeFraud(item.preview) -> speaker.speak(MessageTriage.fraudWarning(item))
                 else -> {
                     val p = PendingAnnouncement(nextId++, item)
                     _pending.value = p

@@ -38,6 +38,9 @@ object LocalCommands {
         // Money questions ("कल कितना कितना पैसा आया", "1 घंटे में किसको भेजा", "3630 किसका आया") and "पैसा आए तो
         // बताना", before the QR / UPI and SMS commands ("UPI से कितना भेजा" is a question, not "send my UPI ID").
         if (com.raju.aiassistant.domain.notify.WhatsAppDigest.asks(text)) return AssistantAction.WhatsAppDigest
+        com.raju.aiassistant.domain.business.PeriodReport.ask(text)?.let { return AssistantAction.PeriodReportAsk(it) }
+        com.raju.aiassistant.domain.business.DuesReminder.who(text)?.let { return AssistantAction.DuesRemind(it) }
+        com.raju.aiassistant.domain.memory.SpecialDays.parse(withoutLeadingFillers(text))?.let { return AssistantAction.SpecialDayAdd(it) }
         com.raju.aiassistant.domain.camera.CameraVoice.startRequest(text)?.let { return AssistantAction.StartVideo(front = it) }
         // "PC mein Cursor kholo" before the phone's own "X kholo".
         com.raju.aiassistant.domain.remote.RemoteBridge.parse(text)?.let { return AssistantAction.Remote(it) }

@@ -364,6 +364,21 @@ sealed interface AssistantAction {
         override val label get() = "WhatsApp digest"
     }
 
+    /** "Rahul ka birthday 5 March ko hai": remembered, and said every year that morning. */
+    data class SpecialDayAdd(val day: com.raju.aiassistant.domain.memory.SpecialDay) : AssistantAction {
+        override val label get() = "Special day"
+    }
+
+    /** "Is mahine ka hisaab": bank in/out, khata expenses, journeys, dues. */
+    data class PeriodReportAsk(val period: com.raju.aiassistant.domain.business.ReportPeriod) : AssistantAction {
+        override val label get() = "Period report"
+    }
+
+    /** "Rahul ko bakaya yaad dilao": a polite WhatsApp with what he owes (after Raju's yes). */
+    data class DuesRemind(val name: String) : AssistantAction {
+        override val label get() = "Dues reminder"
+    }
+
     /** "PC mein Cursor kholo", "VPS status check karo", "PC ko command bhejo: …" through the PC / VPS bridge. */
     data class Remote(val command: com.raju.aiassistant.domain.remote.RemoteCommand) : AssistantAction {
         override val label get() = "PC / VPS bridge"

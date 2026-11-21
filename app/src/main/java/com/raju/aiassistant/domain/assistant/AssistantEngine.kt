@@ -149,6 +149,10 @@ private const val AUTO_ACTION_WAIT_MS = 14_000L
 private const val UNSENT_RETRY_MS = 3 * 60_000L
 /** How long the quick AI may take for a short summary before the local one is said. */
 private const val QUICK_AI_TIMEOUT_MS = 8_000L
+/** A call this long or longer gets "कॉल में कुछ तय हुआ?" afterwards. */
+private const val POST_CALL_ASK_AFTER_MS = 30_000L
+/** How long he has to answer that question without her name. */
+private const val POST_CALL_ANSWER_MS = 20_000L
 /** How long the PC / VPS bridge may take to answer. */
 private const val REMOTE_TIMEOUT_MS = 15_000L
 /** How long after a call what Raju says is checked for promises ("Rahul kal 5000 dega"). */
@@ -1191,6 +1195,16 @@ class AssistantEngine(
         val lastTalk = presence.lastInteraction()
         feelingNow = EmotionStateTracker.promptLine(EmotionStateTracker.cues(clock(), lastTalk, zone()), clock(), lastTalk, lang() == SeemaLanguage.BENGALI)
         presence.markInteraction(clock())
+        // "Sir dard hai": remembered; hours later she asks how he is (once, in the next AI reply).
+        careAsked = false
+        val concern = com.raju.aiassistant.domain.memory.CareFollowUp.concernOf(text)
+        if (concern != null) presence.setConcern(concern, clock())
+        else presence.concern()?.let { (c, at) ->
+            com.raju.aiassistant.domain.memory.CareFollowUp.promptLine(c, at, clock(), lang() == SeemaLanguage.BENGALI)?.let { line ->
+                feelingNow = listOfNotNull(feelingNow, line).joinToString("\n")
+                careAsked = true
+            } ?: run { if (clock() - at > com.raju.aiassistant.domain.memory.CareFollowUp.FORGET_AFTER_MS) presence.setConcern(null, clock()) }
+        }
         if (feelingNow != null) trace("feeling: ${EmotionStateTracker.cues(clock(), lastTalk, zone()).joinToString { it.name.lowercase() }}")
         // "Band kar do" while a video is being recorded (typed, or after "Hey Seema").
         if (tools.recordingVideo() && com.raju.aiassistant.domain.camera.CameraVoice.isStop(text)) {
@@ -1440,6 +1454,8 @@ class AssistantEngine(
             language = lang(), languageUnclear = languageUnclear, documents = documents, savedPayment = savedPaymentLine(s),
             feeling = feelingNow,
         )
+        // The care question goes into this reply: asked once.
+        if (careAsked) presence.setConcern(null, clock())
         // The mood the user's own words show, for this answer only (nothing is stored).
         val mood = moodOf(text)
         if (mood != null) trace("mood: ${mood.name.lowercase()}")
@@ -2174,6 +2190,9 @@ class AssistantEngine(
                 _state.value = AssistantState.Thinking
                 whatsAppDigest(action, speak)
             }
+            is AssistantAction.SpecialDayAdd -> { trace("offline command: special day"); specialDay(action, speak) }
+            is AssistantAction.PeriodReportAsk -> { trace("offline command: period report"); _state.value = AssistantState.Thinking; periodReport(action, speak) }
+            is AssistantAction.DuesRemind -> { trace("offline command: dues reminder"); duesRemind(action, speak) }
             is AssistantAction.Remote -> {
                 trace("offline command: remote bridge")
                 _state.value = AssistantState.Thinking
@@ -2925,6 +2944,7 @@ class AssistantEngine(
         callCommandUntil = 0
         if (pausedForCall) return
         pausedForCall = true
+        callStartedAt = clock()
         handsFreeBeforeCall = handsFree
         trace("phone call: pause")
         cancelWork()
@@ -2950,8 +2970,26 @@ class AssistantEngine(
         // For a few minutes after a call, what Raju tells Seema is checked for promises ("Rahul kal 5000 dega").
         postCallUntil = clock() + POST_CALL_MS
         if (settings.value.assistantPaused) return
+        // A real conversation (half a minute or more): she asks once what was agreed, and listens for the answer
+        // without "Hey Seema" (it becomes a reminder or a khata entry). Short calls get no question.
+        if (clock() - callStartedAt >= POST_CALL_ASK_AFTER_MS && !settings.value.safetyMode && job?.isActive != true) {
+            job = scope.launch {
+                delay(1_500) // the phone's own call-ended sound first
+                if (pausedForCall || paused()) return@launch
+                leaveSleep()
+                say(phrase(lang(), "कॉल में कुछ तय हुआ? बता दो, याद रख लूँगी।", "ফোনে কিছু ঠিক হল? বলো, মনে রেখে দেব।"), allowBargeIn = false)
+                session.openFor(POST_CALL_ANSWER_MS)
+                followUpUntil = maxOf(followUpUntil, clock() + POST_CALL_ANSWER_MS)
+                _voiceSession.value = true
+                listen()
+            }
+            return
+        }
         if (wasHandsFree && handsFree && !inBackground) startHandsFree() else returnToStandby()
     }
+
+    /** When the current SIM call began (for the "what was agreed?" question). */
+    private var callStartedAt = 0L
 
     fun interrupt() {
         speaker.stop()
@@ -3019,6 +3057,9 @@ class AssistantEngine(
             AssistantAction.NotificationSummary -> informational(action, com.raju.aiassistant.domain.notify.notificationDigest(recentMessages(), hindi = lang() != SeemaLanguage.BENGALI), speak)
             AssistantAction.WhatsAppDigest -> whatsAppDigest(action, speak)
             is AssistantAction.Remote -> remote(action, speak)
+            is AssistantAction.SpecialDayAdd -> specialDay(action, speak)
+            is AssistantAction.PeriodReportAsk -> periodReport(action, speak)
+            is AssistantAction.DuesRemind -> duesRemind(action, speak)
             is AssistantAction.GoHome -> {
                 val outcome = tools.goHome()
                 report(action, outcome)
@@ -3176,7 +3217,9 @@ class AssistantEngine(
             today, runCatching { business.journeysFrom(today) }.getOrDefault(emptyList()), emptyList(), emptyList(), z,
         )
         trace("briefing: cash ${if (cash == null) "unread" else "read"}, ${balances.size} balances, ${reminders.size} reminders")
-        return listOfNotNull(brief, journeys).joinToString("\n")
+        // Birthdays and anniversaries he told her about, every year on the day.
+        val special = com.raju.aiassistant.domain.memory.SpecialDays.todayLine(runCatching { memories.all().map { it.text } }.getOrDefault(emptyList()), today)
+        return listOfNotNull(special, brief, journeys).joinToString("\n")
     }
 
     /** The check-in said by itself (phone unlocked after 9 AM / 9 PM): only while Seema is idle and allowed to speak. */
@@ -4018,6 +4061,8 @@ class AssistantEngine(
     /** "Photo lo" (saved to the gallery) or, with [question], "dekho kya dikh raha hai" (photo → Gemini → spoken answer). */
     /** How she feels as he speaks this time (back after hours, late night), for this reply only. */
     private var feelingNow: String? = null
+    /** This turn carries "how is your headache now?". */
+    private var careAsked = false
 
     /** While a video records: only "band kar do" is acted on; everything else heard is ignored (it is the video's sound). */
     private var videoListening = false
@@ -4174,6 +4219,50 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, line)
             if (speak) say(line)
         }
+    }
+
+    /** "Rahul ka birthday 5 March": one memory line (an older one for the same person and day kind is replaced). */
+    private suspend fun specialDay(action: AssistantAction.SpecialDayAdd, speak: Boolean) {
+        val d = action.day
+        runCatching {
+            memories.all().filter { m -> com.raju.aiassistant.domain.memory.SpecialDays.fromFact(m.text)?.let { it.who.equals(d.who, true) && it.kind == d.kind } == true }
+                .forEach { memories.delete(it.id) }
+            memories.add(com.raju.aiassistant.domain.memory.SpecialDays.factText(d))
+        }.onFailure { return report(action, ActionStatus.FAILED, "Could not save it.") }
+        informational(action, com.raju.aiassistant.domain.memory.SpecialDays.confirmation(d), speak)
+    }
+
+    /** "Is mahine ka hisaab": the bank SMS, the khata, the diary and the dues for that period. */
+    private suspend fun periodReport(action: AssistantAction.PeriodReportAsk, speak: Boolean) {
+        val z = zone()
+        val (from, to) = com.raju.aiassistant.domain.business.PeriodReport.range(action.period, today())
+        val start = from.atStartOfDay(z).toInstant().toEpochMilli()
+        val end = to.plusDays(1).atStartOfDay(z).toInstant().toEpochMilli()
+        val cash = when (val inbox = runCatching { tools.smsInbox(start) }.getOrNull()) {
+            is com.raju.aiassistant.domain.sms.SmsInbox.Messages -> {
+                val notes = runCatching { moneyNotes.since(start) }.getOrDefault(emptyList()).filter { it.atMillis < end }
+                com.raju.aiassistant.domain.business.DailyBriefing.cashflow(
+                    com.raju.aiassistant.domain.sms.moneyEvents(inbox.list.filter { it.atMillis in start until end }, notes),
+                )
+            }
+            else -> null
+        }
+        val expenses = runCatching { business.expensesBetween(start, end) }.getOrDefault(emptyList()).sumOf { it.amountPaise }
+        val journeys = runCatching { business.journeysFrom(from) }.getOrDefault(emptyList()).count { !it.date.isAfter(to) }
+        val balances = runCatching { business.allBalances() }.getOrDefault(emptyList())
+        trace("period report: ${action.period.name.lowercase()}")
+        informational(action, com.raju.aiassistant.domain.business.PeriodReport.build(action.period, cash, expenses, journeys, balances, lang() == SeemaLanguage.BENGALI), speak)
+    }
+
+    /** "Rahul ko bakaya yaad dilao": what the khata says he owes, in a polite WhatsApp (the usual confirm first). */
+    private suspend fun duesRemind(action: AssistantAction.DuesRemind, speak: Boolean) {
+        val balances = runCatching { business.allBalances() }.getOrDefault(emptyList())
+        val client = balances.firstOrNull { it.name.equals(action.name, true) }
+            ?: balances.firstOrNull { it.name.lowercase().startsWith(action.name.lowercase()) || action.name.lowercase().startsWith(it.name.lowercase()) }
+        if (client == null || client.balancePaise <= 0) {
+            return informational(action, phrase(lang(), "${action.name} का खाते में कोई बकाया नहीं मिला।", "${action.name}-এর খাতায় কোনো বাকি নেই।"), speak)
+        }
+        whatsApp(AssistantAction.WhatsApp(client.name, com.raju.aiassistant.domain.business.DuesReminder.message(client.name, client.balancePaise)), speak)
     }
 
     /** One short answer from the quick AI (Groq), else Gemini; null when neither answers in time. */

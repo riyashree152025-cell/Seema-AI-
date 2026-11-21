@@ -50,9 +50,15 @@ object EmotionStateTracker {
 interface PresenceStore {
     fun lastInteraction(): Long?
     fun markInteraction(atMillis: Long)
+    /** The trouble he mentioned last ("सिर दर्द") and when, for asking about it later. */
+    fun concern(): Pair<String, Long>? = null
+    fun setConcern(concern: String?, atMillis: Long) {}
 }
 
 class InMemoryPresenceStore(private var last: Long? = null) : PresenceStore {
+    private var worry: Pair<String, Long>? = null
     override fun lastInteraction() = last
     override fun markInteraction(atMillis: Long) { last = atMillis }
+    override fun concern() = worry
+    override fun setConcern(concern: String?, atMillis: Long) { worry = concern?.let { it to atMillis } }
 }
