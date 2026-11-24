@@ -148,4 +148,60 @@ class HardenedMobileRoutingTest {
         val l9 = parseLedger("Mohan ko 500 diye")
         assertEquals(LedgerCommand.Record("Mohan", 50000L, LedgerKind.GAVE), l9)
     }
+
+    // =========================================================================
+    // 4. Compound "do" (2), Bengali Numbers & Zero Commission Tests
+    // =========================================================================
+
+    @Test
+    fun compoundNumbersWithDoAreParsedCorrectly() {
+        // "ek sau do" -> 102 (not "100 do")
+        val parsed102 = com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("ek sau do")
+        assertEquals(102L, parsed102)
+
+        val rep502 = com.raju.aiassistant.domain.language.HindiNumberParser.replaceHindiNumbers("आनंद से पांच सौ दो लेना है")
+        assertTrue("Expected 502 in '$rep502'", rep502.contains("502"))
+
+        val ledger502 = parseLedger("आनंद से पांच सौ दो लेना है")
+        assertNotNull(ledger502)
+        assertEquals(LedgerCommand.Record("आनंद", 50200L, LedgerKind.GAVE), ledger502)
+
+        // Verbs like "hata do" or "kar do" are NOT converted to 2
+        val repVerb = com.raju.aiassistant.domain.language.HindiNumberParser.replaceHindiNumbers("आखिरी एंट्री हटा दो")
+        assertEquals("आखिरी एंट्री हटा दो", repVerb)
+    }
+
+    @Test
+    fun bengaliNumbersAndZeroSupport() {
+        assertEquals(1000L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("এক হাজার"))
+        assertEquals(500L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("পাঁচ শো"))
+        assertEquals(200000L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("দুই লাখ"))
+        assertEquals(0L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("zero"))
+        assertEquals(0L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("शून्य"))
+        assertEquals(0L, com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber("শূন্য"))
+    }
+
+    @Test
+    fun intentRouterSupportsAlternativeFieldNames() {
+        val action = IntentRouter.toAction("""{"type":"remote_task","task":"find today's ticket"}""")
+        assertNotNull(action)
+        assertTrue(action is AssistantAction.Remote)
+        val cmd = (action as AssistantAction.Remote).command
+        assertTrue(cmd is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask)
+        assertEquals("find today's ticket", (cmd as com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask).goal)
+    }
+
+    @Test
+    fun twoStageNarrationReadTicketIsConcise() {
+        val plan = TwoStageNarration.plan(AssistantAction.ReadTicket)
+        assertNotNull(plan)
+        assertTrue(plan!!.hindi.contains("टिकट चेक कर रही हूँ"))
+    }
+
+    @Test
+    fun bengaliReminderRecognition() {
+        val ask = com.raju.aiassistant.domain.reminder.parseTatkalReminder("Anand er tatkal booking mone koriye dio")
+        assertNotNull(ask)
+        assertEquals("Anand", ask!!.name)
+    }
 }

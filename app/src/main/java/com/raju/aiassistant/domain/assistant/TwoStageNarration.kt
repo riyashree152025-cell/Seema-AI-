@@ -22,7 +22,7 @@ object TwoStageNarration {
             is AssistantAction.TrainFare -> Line("राजू, ${action.travelClass} का किराया देख रही हूँ… बस एक पल।", "রাজু, ${action.travelClass} ভাড়া দেখছি… এক মুহূর্ত।")
             is AssistantAction.LookCamera -> Line("राजू, कैमरे से ध्यान से देख रही हूँ… एक पल, फिर बताती हूँ क्या दिखा।", "রাজু, ক্যামেরায় ভালো করে দেখছি… এক মুহূর্ত, তারপর বলছি কী দেখলাম।")
             is AssistantAction.WhatsAppPeek -> Line("राजू, WhatsApp में ${action.contact} की चैट खोलकर देख रही हूँ… क्या क्या आया है, बस एक पल में बताती हूँ।", "রাজু, হোয়াটসঅ্যাপে ${action.contact}-এর চ্যাট খুলে দেখছি… কী কী এসেছে, এক মুহূর্তে বলছি।")
-            is AssistantAction.ReadTicket -> Line("राजू, अभी वाला टिकट खोल रही हूँ… PNR, ट्रेन, तारीख और यात्रियों के नाम पढ़कर बताती हूँ।", "রাজু, এখনকার টিকিট খুলছি… PNR, ট্রেন, তারিখ আর যাত্রীদের নাম পড়ে বলছি।")
+            is AssistantAction.ReadTicket -> Line("राजू, टिकट चेक कर रही हूँ…", "রাজু, টিকিট দেখছি…")
             else -> null
         }
     }

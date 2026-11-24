@@ -10,11 +10,11 @@ import java.time.LocalDateTime
  * before the next opening (AC 10:00, or Sleeper 11:00 when "sleeper" is said). Any other "yaad dila dena"
  * without a time gets one short question back instead of a guess.
  */
-private val REMIND = Regex("yaad\\s*dila|yad\\s*dila|remind|याद\\s*दिला|रिमाइंड", RegexOption.IGNORE_CASE)
-private val TATKAL = Regex("tatkal|tatkaal|tatakal|तत्काल|ततकाल", RegexOption.IGNORE_CASE)
+private val REMIND = Regex("yaad\\s*dila|yad\\s*dila|remind|याद\\s*दिला|रिमाइंड|mone\\s*koriye|mone\\s*koraye|mone\\s*rakh|মনে\\s*করিয়ে|মনে\\s*করাবে|মনে\\s*রাখ", RegexOption.IGNORE_CASE)
+private val TATKAL = Regex("tatkal|tatkaal|tatakal|तत्काल|ततकाल|তাত্কাল|ততকাল", RegexOption.IGNORE_CASE)
 private val SLEEPER = Regex("sleeper|slipar|स्लीपर|non ?ac|नॉन ?एसी", RegexOption.IGNORE_CASE)
-private val CLOCK = Regex("\\d{1,2}[:.]\\d{2}|\\d{1,2}\\s*(?:baje|बजे|minute|मिनट|ghante|घंटे|am|pm)", RegexOption.IGNORE_CASE)
-private val NAME = Regex("^(?:(?:hey|hi|ok|हे)\\s+)?(?:seema|सीमा)?[,\\s]*(.+?)\\s+(?:ka|ki|ke|का|की|के)\\s+(?:(?:sleeper|slipar|ac|एसी|स्लीपर)\\s+)?(?:tatkal|tatkaal|tatakal|तत्काल|ततकाल)", RegexOption.IGNORE_CASE)
+private val CLOCK = Regex("\\d{1,2}[:.]\\d{2}|\\d{1,2}\\s*(?:baje|बजे|minute|मिनट|ghante|घंटे|am|pm|টায়)", RegexOption.IGNORE_CASE)
+private val NAME = Regex("^(?:(?:hey|hi|ok|हे)\\s+)?(?:seema|सीमा)?[,\\s]*(.+?)\\s+(?:ka|ki|ke|er|ar|का|की|के|এর|র)\\s+(?:(?:sleeper|slipar|ac|एसी|स्लीपर)\\s+)?(?:tatkal|tatkaal|tatakal|तत्काल|ततकाल|তাত্কাল|ততকাল)", RegexOption.IGNORE_CASE)
 
 data class TatkalReminderAsk(val name: String?, val sleeper: Boolean)
 
@@ -40,5 +40,5 @@ fun tatkalReminderAt(now: LocalDateTime, sleeper: Boolean): LocalDateTime {
 fun isReminderWithoutTime(text: String): Boolean {
     val t = text.trim()
     return t.length <= 160 && REMIND.containsMatchIn(t) && !CLOCK.containsMatchIn(t) && !TATKAL.containsMatchIn(t) &&
-        !Regex("kal|aaj|parso|subah|shaam|raat|dopahar|कल|आज|परसों|सुबह|शाम|रात|दोपहर|batao|dikhao|hatao|बताओ|दिखाओ|हटाओ", RegexOption.IGNORE_CASE).containsMatchIn(t)
+        !Regex("kal|aaj|parso|subah|shaam|raat|dopahar|कल|आज|परसों|सुबह|शाम|रात|दोपहर|কাল|আজ|সকাল|সন্ধ্যা|রাত|দুপুর|batao|dikhao|hatao|बताओ|दिखाओ|हटाओ|বলো|দেখাও", RegexOption.IGNORE_CASE).containsMatchIn(t)
 }

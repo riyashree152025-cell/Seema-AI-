@@ -22,29 +22,29 @@ object HindiNumberParser {
 
     private val DIGITS_MAP: Map<String, Long> = mapOf(
         // 0-9
-        "shunya" to 0L, "sifar" to 0L, "शून्य" to 0L, "सिफर" to 0L,
-        "ek" to 1L, "एक" to 1L,
-        "do" to 2L, "दो" to 2L,
-        "teen" to 3L, "तीन" to 3L,
-        "char" to 4L, "chaar" to 4L, "चार" to 4L,
-        "paanch" to 5L, "panch" to 5L, "पांच" to 5L, "पाँच" to 5L,
-        "chhe" to 6L, "chhah" to 6L, "छह" to 6L, "छः" to 6L, "छे" to 6L,
-        "saat" to 7L, "सात" to 7L,
-        "aath" to 8L, "आठ" to 8L,
-        "nau" to 9L, "नौ" to 9L,
+        "shunya" to 0L, "sifar" to 0L, "शून्य" to 0L, "सिफर" to 0L, "শূন্য" to 0L, "zero" to 0L,
+        "ek" to 1L, "एक" to 1L, "এক" to 1L,
+        "do" to 2L, "दो" to 2L, "দুই" to 2L,
+        "teen" to 3L, "तीन" to 3L, "তিন" to 3L,
+        "char" to 4L, "chaar" to 4L, "चार" to 4L, "চার" to 4L,
+        "paanch" to 5L, "panch" to 5L, "पांच" to 5L, "पाँच" to 5L, "পাঁচ" to 5L,
+        "chhe" to 6L, "chhah" to 6L, "छह" to 6L, "छः" to 6L, "छे" to 6L, "ছয়" to 6L,
+        "saat" to 7L, "सात" to 7L, "সাত" to 7L,
+        "aath" to 8L, "आठ" to 8L, "আট" to 8L,
+        "nau" to 9L, "नौ" to 9L, "নয়" to 9L,
         // 10-19
-        "das" to 10L, "दस" to 10L,
-        "gyarah" to 11L, "ग्यारह" to 11L,
-        "barah" to 12L, "बारह" to 12L,
-        "terah" to 13L, "तेरह" to 13L,
-        "chaudah" to 14L, "चौदह" to 14L,
-        "pandrah" to 15L, "पंद्रह" to 15L, "पन्द्रह" to 15L,
-        "solah" to 16L, "सोलह" to 16L,
-        "satrah" to 17L, "सत्रह" to 17L,
-        "atharah" to 18L, "अठारह" to 18L,
-        "unnis" to 19L, "उन्नीस" to 19L,
+        "das" to 10L, "दस" to 10L, "দশ" to 10L,
+        "gyarah" to 11L, "ग्यारह" to 11L, "এগারো" to 11L,
+        "barah" to 12L, "बारह" to 12L, "বারো" to 12L,
+        "terah" to 13L, "तेरह" to 13L, "তেরো" to 13L,
+        "chaudah" to 14L, "चौदह" to 14L, "চোদ্দ" to 14L,
+        "pandrah" to 15L, "पंद्रह" to 15L, "पन्द्रह" to 15L, "পনেরো" to 15L,
+        "solah" to 16L, "सोलह" to 16L, "ষোলো" to 16L,
+        "satrah" to 17L, "सत्रह" to 17L, "সতেরো" to 17L,
+        "atharah" to 18L, "अठारह" to 18L, "আঠারো" to 18L,
+        "unnis" to 19L, "उन्नीस" to 19L, "উনিশ" to 19L,
         // 20-29
-        "bees" to 20L, "बीस" to 20L,
+        "bees" to 20L, "बीस" to 20L, "কুড়ি" to 20L,
         "ikkees" to 21L, "ikkis" to 21L, "इक्कीस" to 21L,
         "baees" to 22L, "bais" to 22L, "बाईस" to 22L,
         "teis" to 23L, "तेईस" to 23L,
@@ -77,7 +77,7 @@ object HindiNumberParser {
         "adhtalees" to 48L, "adhtalis" to 48L, "अड़तालीस" to 48L,
         "unchaas" to 49L, "unchas" to 49L, "उनचास" to 49L,
         // 50-59
-        "pachaas" to 50L, "pachas" to 50L, "पचास" to 50L,
+        "pachaas" to 50L, "pachas" to 50L, "पचास" to 50L, "পঞ্চাশ" to 50L,
         "ikyavan" to 51L, "इक्यावन" to 51L,
         "baavan" to 52L, "बावन" to 52L,
         "tirepan" to 53L, "तिरेपन" to 53L,
@@ -131,13 +131,16 @@ object HindiNumberParser {
         "santanve" to 97L, "सत्तानवे" to 97L,
         "athanve" to 98L, "अट्ठानवे" to 98L,
         "ninyanve" to 99L, "निन्यानवे" to 99L,
+        // Bengali numerals
+        "০" to 0L, "১" to 1L, "২" to 2L, "৩" to 3L, "৪" to 4L,
+        "৫" to 5L, "৬" to 6L, "৭" to 7L, "৮" to 8L, "৯" to 9L,
     )
 
     private val MULTIPLIERS = mapOf(
-        "sau" to 100L, "so" to 100L, "सौ" to 100L,
-        "hazar" to 1000L, "hazaar" to 1000L, "hajar" to 1000L, "हज़ार" to 1000L, "हजार" to 1000L, "k" to 1000L,
-        "lakh" to 100000L, "lac" to 100000L, "लाख" to 100000L,
-        "crore" to 10000000L, "karod" to 10000000L, "करोड़" to 10000000L,
+        "sau" to 100L, "so" to 100L, "सौ" to 100L, "শত" to 100L, "শো" to 100L, "একশো" to 100L,
+        "hazar" to 1000L, "hazaar" to 1000L, "hajar" to 1000L, "हज़ार" to 1000L, "हजार" to 1000L, "হাজার" to 1000L, "k" to 1000L,
+        "lakh" to 100000L, "lac" to 100000L, "लाख" to 100000L, "লাখ" to 100000L,
+        "crore" to 10000000L, "karod" to 10000000L, "करोड़" to 10000000L, "কোটি" to 10000000L,
     )
 
     /**
@@ -262,6 +265,7 @@ object HindiNumberParser {
         }
 
         val result = total + currentChunk
+        if (result == 0L && (trimmed in setOf("zero", "0", "shunya", "sifar", "शून्य", "सिफर", "শূন্য"))) return 0L
         return result.takeIf { it > 0 }
     }
 
@@ -282,19 +286,28 @@ object HindiNumberParser {
         fun isNumToken(index: Int): Boolean {
             val s = tokens[index].trim().lowercase()
             if (s.isEmpty()) return false
-            if (s in setOf("do", "दो")) {
+            if (s in setOf("do", "दो", "দুই")) {
                 var prev: String? = null
                 for (k in index - 1 downTo 0) {
                     if (tokens[k].isNotBlank()) { prev = tokens[k].trim().lowercase(); break }
                 }
                 if (prev in VERB_BEFORE_DO) return false
 
+                // If preceded by a number word or multiplier (e.g. "ek sau do", "paanch sau do", "hazar do", "do hazaar do"),
+                // it is unambiguously part of the compound number!
+                val prevIsNum = prev != null && (
+                    MULTIPLIERS.containsKey(prev) || DIGITS_MAP.containsKey(prev) ||
+                    prev.all { it.isDigit() } ||
+                    prev in setOf("sau", "so", "सौ", "hazar", "hazaar", "हज़ार", "हजार", "lakh", "लाख", "crore", "करोड़", "শত", "শো", "একশো", "হাজার")
+                )
+                if (prevIsNum) return true
+
                 var next: String? = null
                 for (k in index + 1 until tokens.size) {
                     if (tokens[k].isNotBlank()) { next = tokens[k].trim().lowercase(); break }
                 }
                 if (next == null) return false
-                if (next !in MULTIPLIERS && next !in setOf("hazar", "हज़ार", "sau", "सौ", "lakh", "लाख", "crore", "करोड़", "rupaye", "रुपये", "rupay", "baje", "बजे", "log", "लोग")) {
+                if (next !in MULTIPLIERS && next !in setOf("hazar", "हज़ार", "sau", "सौ", "lakh", "लाख", "crore", "करोड़", "rupaye", "रुपये", "rupay", "baje", "बजे", "log", "लोग", "টাকা", "হাজার", "লাখ")) {
                     return false
                 }
             }

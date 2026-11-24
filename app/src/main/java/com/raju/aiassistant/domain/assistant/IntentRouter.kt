@@ -40,19 +40,19 @@ Today: $today
             // A payment QR / UPI ID is shared on WhatsApp by Seema itself — never "open Paytm/PhonePe".
             "send_qr" -> AssistantAction.SendPaymentQr(
                 str("contact").orEmpty(),
-                str("amount")?.filter { it.isDigit() }?.toLongOrNull(),
+                str("amount")?.filter { it.isDigit() }?.toLongOrNull() ?: str("amount")?.let { com.raju.aiassistant.domain.payments.PaymentShare.amount(it) },
                 str("include_hisab")?.toBooleanStrictOrNull() ?: (str("hisab")?.toBooleanStrictOrNull() ?: false),
             )
             "send_upi" -> AssistantAction.SendUpiId(
                 str("contact").orEmpty(),
                 str("label"),
-                str("amount")?.filter { it.isDigit() }?.toLongOrNull(),
+                str("amount")?.filter { it.isDigit() }?.toLongOrNull() ?: str("amount")?.let { com.raju.aiassistant.domain.payments.PaymentShare.amount(it) },
                 str("include_hisab")?.toBooleanStrictOrNull() ?: (str("hisab")?.toBooleanStrictOrNull() ?: false),
             )
             "ticket_pdf_hisab", "whatsapp_ticket_hisab" -> (str("contact") ?: str("name"))?.let {
                 AssistantAction.TicketPdfHisab(it, str("extra")?.filter { c -> c.isDigit() }?.toLongOrNull())
             }
-            "remote_task", "pc_task", "mona_task" -> str("goal")?.let {
+            "remote_task", "pc_task", "mona_task" -> (str("goal") ?: str("task") ?: str("query") ?: str("prompt"))?.let {
                 AssistantAction.Remote(com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask(goal = it))
             }
             "remote_abort", "pc_abort", "stop_pc" -> AssistantAction.Remote(

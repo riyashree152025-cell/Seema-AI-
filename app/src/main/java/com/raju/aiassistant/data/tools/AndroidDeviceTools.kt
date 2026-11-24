@@ -166,11 +166,6 @@ class AndroidDeviceTools(private val context: Context) : DeviceTools {
         val label = match.loadLabel(pm).toString()
         val packageName = match.activityInfo.packageName
 
-        // Strict Non-Banking & Financial Security Shield
-        if (isFinancialOrBankingApp(packageName, label)) {
-            return ToolOutcome.Failed("सुरक्षा कारणों से बैंकिंग और UPI ऐप्स ($label) को Seema AI द्वारा नियंत्रित करना पूरी तरह ब्लॉक है।")
-        }
-
         val intent = pm.getLaunchIntentForPackage(packageName)
             ?: return ToolOutcome.Failed("$label cannot be opened.")
         return start(intent, "Opened $label.", "$label could not be opened.")

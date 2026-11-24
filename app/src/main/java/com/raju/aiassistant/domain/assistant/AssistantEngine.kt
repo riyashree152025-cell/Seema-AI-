@@ -514,10 +514,15 @@ class AssistantEngine(
                 }
                 return
             }
-            val rate = com.raju.aiassistant.domain.payments.PaymentShare.amount(trimmed)
-                ?: com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber(trimmed)
-                ?: trimmed.filter { it.isDigit() }.toLongOrNull()
-            if (rate != null && rate > 0) {
+            val lower = trimmed.lowercase()
+            val isZero = lower in setOf("zero", "0", "shunya", "sifar", "शून्य", "सिफर", "শূন্য", "kuch nahi", "कुछ नहीं", "कुछ नही", "koi nahi", "koi charge nahi", "no charge", "free", "koi extra nahi", "কিছু না") ||
+                Regex("^(?:zero|0|shunya|शून्य|कुछ नहीं|কিছু না)\\s*(?:rupaye|rupay|रुपये|টাকা)?$").matches(lower)
+            val rate = if (isZero) 0L else {
+                com.raju.aiassistant.domain.payments.PaymentShare.amount(trimmed)
+                    ?: com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber(trimmed)
+                    ?: trimmed.filter { it.isDigit() }.toLongOrNull()
+            }
+            if (rate != null && rate >= 0L) {
                 pendingTicketHisab = null
                 job = scope.launch {
                     saveTicketHisab(pendingHisab, rate, speak = fromVoice || settings.value.autoSpeakReplies)
