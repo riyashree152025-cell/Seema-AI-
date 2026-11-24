@@ -85,11 +85,9 @@ object SensitiveScreens {
             val hasSearchBox = s.elements.any { it.editable && it.id.contains("search") }
             if (hasChatBox || hasSearchBox) return null // Normal chat / search: completely safe
 
-            val hasUpiPinText = s.elements.any {
-                val t = it.text.lowercase()
-                t.contains("enter upi pin") || t.contains("upi pin दर्ज करें") || t.contains("यूपीआई पिन डालें")
+            if (s.elements.any { SECRET_TEXT.containsMatchIn(it.text) || SECRET_TEXT.containsMatchIn(it.hint) }) {
+                return "PIN / OTP / पासवर्ड वाली स्क्रीन"
             }
-            if (hasUpiPinText) return "PIN / OTP / पासवर्ड वाली स्क्रीन"
             return null
         }
 

@@ -39,10 +39,20 @@ private val ASKS_REFUND = Regex(
 )
 private val AMOUNT_IN_QUESTION = Regex("(?:rs\\.?|inr|₹|रु\\.?|रुपये|रुपया)?\\s*(\\d{1,3}(?:,\\d{2,3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)")
 
+private val KHATA_COLLISION_KEYWORDS = Regex(
+    "\\b(?:hisab|hisaab|khata|khaata|udhaar|udhar|bakaya|baki|baaki)\\b|हिसाब|হিসাব|खाता|ख़ाता|খাতা|उधार|बकाया|बाकी|baki\\s*hai|बाकी\\s*है|lena\\s*hai|lene\\s*hai|lene\\s*hain|लेना\\s*है|लेना\\s*बाकी|dena\\s*hai|dene\\s*hai|dene\\s*hain|देना\\s*है|देना\\s*बाकी",
+    RegexOption.IGNORE_CASE,
+)
+private val EXPLICIT_BANK_SMS = Regex(
+    "bank\\s*sms|बैंक\\s*sms|बैंक\\s*एसएमएस|paisa\\s*kata|पैसा\\s*कटा|balance\\s*check|बैलेंस\\s*चेक|bank\\s*balance|बैंक\\s*बैलेंस",
+    RegexOption.IGNORE_CASE,
+)
+
 /** "Seema 3750.75 ka refund aaya ki nahi check karo" → 375075 paise; null when it is not this question. */
 fun parsePaymentQuestion(text: String): PaymentQuery? {
     val t = asciiDigits(text).trim()
     if (t.length > 120 || !ASKS_REFUND.containsMatchIn(t)) return null
+    if (KHATA_COLLISION_KEYWORDS.containsMatchIn(t) && !EXPLICIT_BANK_SMS.containsMatchIn(t)) return null
     // "6840828103 pnr check karo" is a train ticket, never ₹68 crore: PNR / train words or a 10-digit number.
     if (NOT_MONEY.containsMatchIn(t) || Regex("(?<![\\d,.])\\d{10,}(?![\\d,.])").containsMatchIn(t)) return null
     // "15 तारीख का कितना डेबिट, कितना क्रेडिट हुआ" asks for a day's account, not for one amount: both sides

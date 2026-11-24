@@ -115,7 +115,7 @@ object HindiNumberParser {
         "bayasi" to 82L, "बयासी" to 82L,
         "tirasi" to 83L, "तिरासी" to 83L,
         "chaurasi" to 84L, "चौरासी" to 84L,
-        "pachasi" to 85L, "पचासी" to 85L,
+        "pachasi" to 85L, "pichasi" to 85L, "pichyasi" to 85L, "पचासी" to 85L, "पिच्यासी" to 85L, "पिचासी" to 85L,
         "chhiyasi" to 86L, "छियासी" to 86L,
         "satasi" to 87L, "सतासी" to 87L,
         "athasi" to 88L, "अठासी" to 88L,
@@ -135,7 +135,7 @@ object HindiNumberParser {
 
     private val MULTIPLIERS = mapOf(
         "sau" to 100L, "so" to 100L, "सौ" to 100L,
-        "hazar" to 1000L, "hajar" to 1000L, "हज़ार" to 1000L, "हजार" to 1000L, "k" to 1000L,
+        "hazar" to 1000L, "hazaar" to 1000L, "hajar" to 1000L, "हज़ार" to 1000L, "हजार" to 1000L, "k" to 1000L,
         "lakh" to 100000L, "lac" to 100000L, "लाख" to 100000L,
         "crore" to 10000000L, "karod" to 10000000L, "करोड़" to 10000000L,
     )

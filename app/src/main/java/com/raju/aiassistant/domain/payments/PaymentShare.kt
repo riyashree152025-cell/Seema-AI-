@@ -44,7 +44,9 @@ object PaymentShare {
 
     /** The amount said in rupees ("500 rupaye", "₹1,200", "हज़ार रुपए", "do hazaar", "डेढ़ हज़ार"), or null. */
     fun amount(text: String): Long? {
-        AMOUNT.find(text.replace(",", ""))?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).toLongOrNull()?.let { return it } }
+        val numConverted = com.raju.aiassistant.domain.language.HindiNumberParser.replaceHindiNumbers(text)
+        AMOUNT.find(numConverted.replace(",", ""))?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).toLongOrNull()?.let { return it } }
+        com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber(text)?.let { return it }
         val m = WORD_AMOUNT.find(text) ?: return null
         val count = m.groupValues[1].trim().lowercase().let { w -> if (w.isEmpty()) 1.0 else w.toDoubleOrNull() ?: NUMBER_WORDS[w] ?: return null }
         val unit = when (m.groupValues[2].lowercase()) {

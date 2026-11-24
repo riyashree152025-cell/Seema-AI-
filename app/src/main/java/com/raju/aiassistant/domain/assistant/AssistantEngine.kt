@@ -515,6 +515,7 @@ class AssistantEngine(
                 return
             }
             val rate = com.raju.aiassistant.domain.payments.PaymentShare.amount(trimmed)
+                ?: com.raju.aiassistant.domain.language.HindiNumberParser.parseHindiNumber(trimmed)
                 ?: trimmed.filter { it.isDigit() }.toLongOrNull()
             if (rate != null && rate > 0) {
                 pendingTicketHisab = null
@@ -2532,28 +2533,14 @@ class AssistantEngine(
             if (amountFound != null && amountFound > 0) baseFare = amountFound
         }
 
-        // 2. If base fare still 0, check local ticket PDF
-        if (baseFare == 0L) {
-            when (val f = tools.latestTicketPdf()) {
-                is com.raju.aiassistant.domain.tools.TicketPdf.Found -> {
-                    val ticket = com.raju.aiassistant.domain.rail.IrctcTicketParser.parse(f.text)
-                    if (ticket != null) {
-                        passengers = maxOf(1, ticket.passengers.size)
-                        baseFare = ticket.totalFare ?: com.raju.aiassistant.domain.rail.IrctcTicketParser.extractFare(f.text) ?: 0L
-                    }
-                }
-                else -> Unit
-            }
-        }
-
-        // 3. If extra charge per passenger is already provided in the voice command
+        // 2. If extra charge per passenger is already provided in the voice command
         val extra = action.extraPerPassenger
         if (extra != null && extra > 0) {
             saveTicketHisab(PendingTicketHisab(action.contact, baseFare, passengers, clock() + 60_000), extra, speak)
             return
         }
 
-        // 4. Otherwise ask Raju interactively
+        // 3. Otherwise ask Raju interactively (never scrape WhatsApp attachments)
         pendingTicketHisab = PendingTicketHisab(action.contact, baseFare, passengers, clock() + 60_000)
         followUpUntil = maxOf(followUpUntil, clock() + 10_000)
         val q = phrase(lang(), "प्रति पैसेंजर कितना एक्स्ट्रा चार्ज जोड़ना है?", "যাত্রী প্রতি কত টাকা এক্সট্রা চার্জ যোগ করতে হবে?")
@@ -5962,40 +5949,28 @@ class AssistantEngine(
     private var lastTicketFile: String? = null
 
     private suspend fun readTicket(action: AssistantAction.ReadTicket, speak: Boolean) {
-        val msg: String
-        val status: ActionStatus
-        when (val f = tools.latestTicketPdf()) {
-            com.raju.aiassistant.domain.tools.TicketPdf.NoFolder -> {
-                status = ActionStatus.FAILED
-                msg = phrase(lang(), "टिकट वाला फ़ोल्डर अभी चुना नहीं है। Apps & Tools में \"टिकट फ़ोल्डर चुनें\" दबाकर Download फ़ोल्डर चुन दीजिए, फिर मैं सबसे नया टिकट पढ़ लूँगी।", "টিকিটের ফোল্ডার এখনও বাছা হয়নি। Apps & Tools-এ \"টিকিট ফোল্ডার\" বেছে Download দিন।")
-            }
-            com.raju.aiassistant.domain.tools.TicketPdf.NoPdf -> {
-                status = ActionStatus.FAILED
-                msg = phrase(lang(), "चुने हुए फ़ोल्डर में कोई PDF टिकट नहीं मिला।", "বাছা ফোল্ডারে কোনো PDF টিকিট পাইনি।")
-            }
-            is com.raju.aiassistant.domain.tools.TicketPdf.Unreadable -> {
-                status = ActionStatus.FAILED
-                msg = phrase(lang(), "\"${f.name}\" खुला, पर उसका लिखा पढ़ा नहीं जा सका — शायद स्कैन की हुई फ़ोटो है।", "\"${f.name}\" খুলেছি, কিন্তু লেখা পড়া গেল না।")
-            }
-            is com.raju.aiassistant.domain.tools.TicketPdf.Found -> {
-                val ticket = com.raju.aiassistant.domain.rail.IrctcTicketParser.parse(f.text)
-                if (ticket == null) {
-                    status = ActionStatus.FAILED
-                    msg = phrase(lang(), "सबसे नई PDF \"${f.name}\" रेलवे टिकट नहीं लगती।", "সবচেয়ে নতুন PDF \"${f.name}\" রেলের টিকিট মনে হচ্ছে না।")
-                } else {
-                    status = ActionStatus.SUCCESS
-                    lastTicketFile = f.name
-                    // The ticket goes into the PNR diary by itself (chart watch and briefing then know it).
-                    val saved = com.raju.aiassistant.domain.business.TicketToDiary.journey(ticket)?.let { j ->
-                        val known = runCatching { business.journeysFrom(j.date) }.getOrDefault(emptyList()).any { it.pnr == j.pnr }
-                        if (known) false else runCatching { business.saveJourney(j) }.isSuccess
-                    } == true
-                    msg = com.raju.aiassistant.domain.rail.spokenTicket(ticket) +
-                        if (saved) phrase(lang(), " यह टिकट डायरी में भी जोड़ दिया है।", " টিকিটটা ডায়েরিতেও রেখে দিয়েছি।") else ""
-                }
+        // 1. Forward directly to MONA PC autonomous task if PC Bridge is connected
+        val pcRes = withTimeoutOrNull(2_500) {
+            runCatching { remoteAutonomousTask("Read latest railway ticket PDF, describe PNR and journey details", "", null) }.getOrNull()
+        }
+        if (pcRes is com.raju.aiassistant.domain.remote.RemoteResult.Done) {
+            val reply = pcRes.fields["message"] ?: pcRes.fields["reply"]
+            if (!reply.isNullOrBlank()) {
+                report(action, ActionStatus.SUCCESS, reply)
+                record(ChatRole.ASSISTANT, reply)
+                if (speak) say(reply)
+                return
             }
         }
-        report(action, status, msg)
+
+        // 2. If without PC connection: reply clearly in 1 sentence
+        val msg = phrase(
+            lang(),
+            "टिकट PDF पढ़ने का काम सिर्फ़ PC वाली MONA से होगा; फ़ोन पर सीधा अमाउंट बोलकर उधार खाते में लिखवा सकते हैं।",
+            "টিকিট PDF পড়ার কাজ শুধু PC-র MONA দিয়ে হবে; ফোনে সরাসরি অ্যামাউন্ট বলে খাতায় লিখে নিতে পারেন।"
+        )
+        report(action, ActionStatus.FAILED, msg)
+        record(ChatRole.ASSISTANT, msg)
         if (speak) say(msg)
     }
 

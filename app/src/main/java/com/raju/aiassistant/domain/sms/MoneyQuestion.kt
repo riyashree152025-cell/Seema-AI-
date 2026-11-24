@@ -74,7 +74,15 @@ private val WENT = Regex(
     RegexOption.IGNORE_CASE,
 )
 private val HOW_MUCH = Regex(
-    word("kitna|kitne|kitni|kitna kitna|कितना|कितने|कितनी|কত|কতো|কতটা|how much|check|चेक|batao|बताओ|बता|dekho|देखो|হিসাব|हिसाब|hisab|hisaab|বলো|দেখো"),
+    word("kitna|kitne|kitni|kitna kitna|कितना|कितने|कितनी|কত|কতো|কতটা|how much|check|चेक|batao|बताओ|बता|dekho|देखो|বলো|দেখো"),
+    RegexOption.IGNORE_CASE,
+)
+private val EXPLICIT_BANK_SMS = Regex(
+    "bank\\s*sms|बैंक\\s*sms|बैंक\\s*एसएमएस|paisa\\s*kata|पैसा\\s*कटा|balance\\s*check|बैलेंस\\s*चेक|bank\\s*balance|बैंक\\s*बैलेंस",
+    RegexOption.IGNORE_CASE,
+)
+private val KHATA_COLLISION_KEYWORDS = Regex(
+    "\\b(?:hisab|hisaab|khata|khaata|udhaar|udhar|bakaya|baki|baaki)\\b|हिसाब|হিসাব|खाता|ख़ाता|খাতা|उधार|बकाया|बाकी|baki\\s*hai|बाकी\\s*है|lena\\s*hai|lene\\s*hai|lene\\s*hain|लेना\\s*है|लेना\\s*बाकी|dena\\s*hai|dene\\s*hai|dene\\s*hain|देना\\s*है|देना\\s*बाकी",
     RegexOption.IGNORE_CASE,
 )
 /** "किसने / किसका" — from whom (money in). */
@@ -163,6 +171,7 @@ private fun paiseOf(raw: String): Long? {
 fun parseMoneyQuestion(text: String, today: LocalDate = LocalDate.now()): MoneyAsk? {
     val t = asciiDigitsOf(text).trim()
     if (t.isEmpty() || t.length > 160 || ORDER.containsMatchIn(t)) return null
+    if (KHATA_COLLISION_KEYWORDS.containsMatchIn(t) && !EXPLICIT_BANK_SMS.containsMatchIn(t)) return null
     // "सब मिला के बोलो" is "add it all up", not "मिला" (received).
     val came = CAME.containsMatchIn(TOTAL_ONLY.replace(t, " "))
     val went = WENT.containsMatchIn(t)

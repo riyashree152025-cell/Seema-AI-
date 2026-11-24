@@ -36,7 +36,7 @@ fun balanceOf(lines: List<LedgerLine>): Long =
 private const val AMOUNT = "(\\d[\\d,]*(?:\\.\\d{1,2})?)\\s*(hazar|hajar|हज़ार|हजार|k)?"
 private const val RUPEE_WORD = "(?:rupaye|rupay|rupee|rupees|rs|rupya|रुपये|रुपए|रुपये|रुपया|₹)?"
 
-private val GOT = Regex("^(.+?) (?:se|से) $AMOUNT\\s*$RUPEE_WORD\\s*(?:wapas\\s+)?(?:mil(?:e|a|gaye|gaya|\\s*gaye)?|aaye|aaya|jama(?:\\s+karo|\\s+kiye|\\s+hua)?|received|वापस\\s*मिले|मिले|मिला|मिल\\s*गए|आए|आ\\s*गए|जमा|लौटाए|लौटा\\s*दिए|वापस\\s*किए)\\s*$", RegexOption.IGNORE_CASE)
+private val GOT = Regex("^(.+?) (?:se|से) $AMOUNT\\s*$RUPEE_WORD\\s*(?:wapas\\s+)?(?:mil(?:e|a|gaye|gaya|\\s*gaye)?|aaye|aaya|aa(?:\\s*gaye|\\s*gaya)?|jama(?:\\s+karo|\\s+kiye|\\s+hua)?|received|वापस\\s*मिले|मिले|मिला|मिल\\s*गए|आए|आ\\s*गए|जमा|लौटाए|लौटा\\s*दिए|वापस\\s*किए)\\s*$", RegexOption.IGNORE_CASE)
 private val GAVE = Regex("^(.+?) (?:ko|को) $AMOUNT\\s*$RUPEE_WORD\\s*(?:(?:de|diye|diya|di)\\b|de\\s*diye|de\\s*diya|payment\\s+kar\\s+diya|pay\\s+kar\\s+diya|udhaar\\s+(?:diye|diya|de)|udhar\\s+(?:diye|diya|de)|दिए|दिया|दे\\s*दिए|दे\\s*दिया|पेमेंट\\s*कर\\s*दिया|भुगतान\\s*कर\\s*दिया|उधार\\s*दिए|उधार\\s*दिया)\\s*$", RegexOption.IGNORE_CASE)
 // "Rahul ne mujhe 500 diye" (he paid me) and "Rahul ne mujhse 500 liye" (he took from me).
 private val GOT_NE = Regex("^(.+?) (?:ne|ने) (?:mujhe |mujhko |muje |मुझे |मुझको )?$AMOUNT\\s*$RUPEE_WORD\\s*(?:wapas\\s+|वापस\\s*)?(?:diye|diya|de diye|lautaye|lauta diye|दिए|दिया|दे दिए|लौटाए|लौटा\\s*दिए)\\s*$", RegexOption.IGNORE_CASE)
@@ -72,31 +72,38 @@ private val WILL_PAY = Regex("^(.+?) $AMOUNT\\s*$RUPEE_WORD\\s*(?:dega|देग
 /** "Mohan ko 500 rupaye dene baki hain" / "Mohan ko 500 dena hai": I owe them (as if they gave it to me). */
 private val I_OWE = Regex("^(.+?) (?:ko|को) $AMOUNT\\s*$RUPEE_WORD\\s*(?:dene|देने|dena|देना|baaki|baki|बाकी)(?:\\s+(?:baki|baaki|बाकी|hai|hain|है|हैं))?(?:\\s+(?:hai|hain|है|हैं))?$", RegexOption.IGNORE_CASE)
 
+private val NON_CURRENCY_ITEMS = Regex("(?<![\\p{L}\\p{M}])(?:ticket|tickets|टिकट|टिकिट|টিকিট|pass|passes|पास|seat|seats|सीट|file|files|फाइल|फ़ाइल|photo|photos|फोटो|डॉक्यूमेंट|document)(?![\\p{L}\\p{M}])", RegexOption.IGNORE_CASE)
+private val EXPLICIT_CURRENCY = Regex("(?<![\\p{L}\\p{M}])(?:rupaye|rupay|rupee|rupees|rs|rupya|रुपये|रुपए|रुपया|₹|हज़ार|हजार|hazar|hajar|hazaar|sau|so|सौ|lakh|लाख|crore|करोड़|টাকা|পয়সা)(?![\\p{L}\\p{M}])", RegexOption.IGNORE_CASE)
+
 fun parseLedger(text: String): LedgerCommand? {
     val numConverted = com.raju.aiassistant.domain.language.HindiNumberParser.replaceHindiNumbers(text)
     val t = numConverted.trim().replace(Regex("\\s+"), " ").trimEnd('.', '!', '?', '।').replace(MEMO_PREFIX, "")
     if (t.length > 120) return null
+    if (NON_CURRENCY_ITEMS.containsMatchIn(text) || NON_CURRENCY_ITEMS.containsMatchIn(t)) return null
     if (UNDO.matches(t)) return LedgerCommand.Undo
     if (ALL_PENDING.matches(t)) return LedgerCommand.AllPending
     SETTLE.matchEntire(t)?.let { m -> val name = m.groupValues[1].trim(); return if (isName(name)) LedgerCommand.Settle(name) else null }
-    OWED_TO_ME.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE) }
-    WILL_PAY.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE) }
-    I_OWE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT) }
+    OWED_TO_ME.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE, t) }
+    WILL_PAY.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE, t) }
+    I_OWE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT, t) }
     BALANCE.matchEntire(t)?.let { m ->
         val name = (m.groupValues[1].ifEmpty { m.groupValues[2] }).trim()
         return if (isName(name)) LedgerCommand.Balance(name) else null
     }
-    GOT.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT) }
-    GAVE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE) }
-    GOT_NE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT) }
-    GAVE_NE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE) }
+    GOT.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT, t) }
+    GAVE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE, t) }
+    GOT_NE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GOT, t) }
+    GAVE_NE.matchEntire(t)?.let { m -> return record(m.groupValues[1], m.groupValues[2], m.groupValues[3], LedgerKind.GAVE, t) }
     return null
 }
 
-private fun record(name: String, number: String, multiplier: String, kind: LedgerKind): LedgerCommand? {
+private fun record(name: String, number: String, multiplier: String, kind: LedgerKind, contextText: String = ""): LedgerCommand? {
+    if (NON_CURRENCY_ITEMS.containsMatchIn(contextText)) return null
     val n = name.trim()
     if (!isName(n)) return null
     val paise = parseAmountPaise(number, multiplier.ifEmpty { null }) ?: return null
+    val rupees = paise / 100
+    if (rupees < 50 && !EXPLICIT_CURRENCY.containsMatchIn(contextText)) return null
     return LedgerCommand.Record(n, paise, kind)
 }
 
