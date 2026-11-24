@@ -19,12 +19,12 @@ import kotlin.math.roundToInt
 object EdgeTts {
     const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
     /** The Edge (Chromium) version the requests present; Sec-MS-GEC-Version is "1-" + it. */
-    const val CHROMIUM_FULL_VERSION = "130.0.2849.68"
+    const val CHROMIUM_FULL_VERSION = "131.0.2903.86"
     const val SEC_MS_GEC_VERSION = "1-$CHROMIUM_FULL_VERSION"
     const val WSS_BASE = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
     const val ORIGIN = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
     val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/${CHROMIUM_FULL_VERSION.substringBefore('.')}.0.0.0 Safari/537.36 Edg/${CHROMIUM_FULL_VERSION.substringBefore('.')}.0.0.0"
+        "Chrome/${CHROMIUM_FULL_VERSION.substringBefore('.')}.0.0.0 Safari/537.36 Edg/$CHROMIUM_FULL_VERSION"
     /** 24 kHz mono MP3: the format the read-aloud service serves. */
     const val OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
 

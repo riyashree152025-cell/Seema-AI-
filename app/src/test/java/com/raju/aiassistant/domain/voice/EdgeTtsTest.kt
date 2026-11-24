@@ -55,7 +55,7 @@ class EdgeTtsTest {
     fun theConnectionAndMessagesLookLikeTheBrowsers() {
         val url = EdgeTts.connectUrl("abc123", 0L)
         assertTrue(url, url.startsWith("wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&Sec-MS-GEC="))
-        assertTrue(url, url.endsWith("&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=abc123"))
+        assertTrue(url, url.endsWith("&Sec-MS-GEC-Version=${EdgeTts.SEC_MS_GEC_VERSION}&ConnectionId=abc123"))
         assertEquals("Thu Jan 01 1970 00:00:00 GMT+0000 (Coordinated Universal Time)", EdgeTts.timestamp(0L))
         val config = EdgeTts.configMessage(0L)
         assertTrue(config.contains("Path:speech.config\r\n\r\n") && config.contains("\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\""))

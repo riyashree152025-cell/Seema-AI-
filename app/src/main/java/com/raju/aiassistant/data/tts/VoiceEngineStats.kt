@@ -42,12 +42,17 @@ class VoiceEngineStatsStore(context: Context) {
 
     private fun load(): Map<TtsEngine, EngineStats> = TtsEngine.entries.mapNotNull { e ->
         val p = prefs.getString(e.name, null)?.split(';') ?: return@mapNotNull null
+        val rawFailures = p.getOrNull(3)?.toIntOrNull() ?: 0
+        val successes = p.getOrNull(2)?.toIntOrNull() ?: 0
+        val isEdgeWithLegacyFailures = (e == TtsEngine.EDGE && successes == 0 && rawFailures > 0)
+        val failures = if (isEdgeWithLegacyFailures) 0 else rawFailures
+        val recentFailures = if (isEdgeWithLegacyFailures) 0 else (p.getOrNull(4)?.toIntOrNull() ?: 0)
         e to EngineStats(
             rtf = p.getOrNull(0)?.toDoubleOrNull(),
             firstAudioMs = p.getOrNull(1)?.toLongOrNull(),
-            successes = p.getOrNull(2)?.toIntOrNull() ?: 0,
-            failures = p.getOrNull(3)?.toIntOrNull() ?: 0,
-            recentFailures = p.getOrNull(4)?.toIntOrNull() ?: 0,
+            successes = successes,
+            failures = failures,
+            recentFailures = recentFailures,
         )
     }.toMap()
 }

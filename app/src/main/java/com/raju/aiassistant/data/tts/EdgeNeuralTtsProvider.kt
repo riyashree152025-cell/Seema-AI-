@@ -36,15 +36,26 @@ class EdgeNeuralTtsProvider(
     private val isOnline: () -> Boolean,
     /** The mood of the reply being spoken: a little lower pitch when she is upset or whispering. */
     private val mood: () -> VoiceMood? = { null },
+    private val fallbackSynthesizer: SystemTtsSynthesizer? = null,
 ) : TtsProvider {
     override val engine = TtsEngine.EDGE
     override val label = "Edge Neural (free)"
 
-    override suspend fun isAvailable() = isOnline()
+    override suspend fun isAvailable() = isOnline() || (fallbackSynthesizer != null)
 
     override suspend fun synthesize(text: String, languageTag: String, rate: Float): AiResult<PcmAudio> {
         val spoken = WarmProsody.text(text)
         if (spoken.isBlank()) return AiResult.Failure(FailureKind.UNKNOWN, "nothing to say")
+
+        val fallback = fallbackSynthesizer
+        // If offline and local Android fallback is ready, synthesize locally without network delay
+        if (!isOnline() && fallback != null) {
+            val localAudio = runCatching { fallback.synthesize(spoken, languageTag, rate) }.getOrNull()
+            if (localAudio != null) {
+                return AiResult.Success(WarmProsody.withTail(localAudio))
+            }
+        }
+
         val voice = EdgeTts.voiceFor(languageTag)
         val mood = mood()
         val now = java.time.LocalTime.now()
@@ -66,10 +77,25 @@ class EdgeNeuralTtsProvider(
             skewSeconds = result.skewSeconds
             result = fetchMp3(ssml)
         }
-        return when (result) {
+
+        val edgeAudio = when (result) {
             is Fetch.Audio -> withContext(Dispatchers.Default) { decodeMp3(result.mp3) }
-                ?.let { AiResult.Success(WarmProsody.withTail(it)) }
-                ?: AiResult.Failure(FailureKind.UNKNOWN, "Edge audio could not be decoded")
+            else -> null
+        }
+        if (edgeAudio != null) {
+            return AiResult.Success(WarmProsody.withTail(edgeAudio))
+        }
+
+        // Automatic fallback to Android's built-in TextToSpeech if Edge returns 403/timeout/failure
+        if (fallback != null) {
+            val fallbackAudio = runCatching { fallback.synthesize(spoken, languageTag, rate) }.getOrNull()
+            if (fallbackAudio != null) {
+                return AiResult.Success(WarmProsody.withTail(fallbackAudio))
+            }
+        }
+
+        return when (result) {
+            is Fetch.Audio -> AiResult.Failure(FailureKind.UNKNOWN, "Edge audio could not be decoded")
             is Fetch.Refused -> AiResult.Failure(FailureKind.SERVER, "Edge voice refused the request (HTTP ${result.code})")
             is Fetch.Failed -> AiResult.Failure(FailureKind.NETWORK, "Edge voice: ${result.reason}")
         }
@@ -92,6 +118,7 @@ class EdgeNeuralTtsProvider(
                 .header("Origin", EdgeTts.ORIGIN)
                 .header("Pragma", "no-cache")
                 .header("Cache-Control", "no-cache")
+                .header("Accept-Encoding", "gzip, deflate, br")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()
             val audio = ByteArrayOutputStream()

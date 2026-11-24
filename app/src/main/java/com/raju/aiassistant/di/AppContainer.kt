@@ -246,14 +246,21 @@ class AppContainer(context: Context) {
     fun voiceEnginesFor(s: com.raju.aiassistant.domain.model.UserSettings): List<TtsEngine> =
         com.raju.aiassistant.domain.voice.voiceEngineOrder(s.voiceEngineAuto, s.ttsEngine, voiceEngineStats.stats.value)
 
+    val androidSystemTts by lazy { com.raju.aiassistant.data.tts.AndroidSystemTts(appContext) }
+
     val speaker: TtsManager by lazy {
         val providers = listOf(
             SarvamTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value.sarvamSpeaker }),
             CartesiaTtsProvider(http, { secureKeyStore.get(it) }, { online.value }, { currentSettings.value }, mood = { speaker.mood.value }) { v ->
                 settingsRepository.setCartesiaVoice(v.id, v.name)
             },
-            // Free and always there while online: takes over the moment Sarvam or Cartesia fails or runs out.
-            EdgeNeuralTtsProvider(http, { online.value }) { speaker.mood.value },
+            // Free and always there: Microsoft Edge Neural online with automatic fallback to Android's built-in TextToSpeech.
+            EdgeNeuralTtsProvider(
+                http = http,
+                isOnline = { online.value },
+                mood = { speaker.mood.value },
+                fallbackSynthesizer = androidSystemTts,
+            ),
         )
         TtsManager(
             appScope, SpeechPipeline(audioPlayer), providers.map { com.raju.aiassistant.data.tts.MeasuredTtsProvider(it, voiceEngineStats) },
