@@ -15,9 +15,9 @@ data class ScannedBill(val amountPaise: Long, val payee: String?, val category: 
 
 object BillScan {
     private val ASK = Regex(
-        "^(?:seema[, ]+)?(?:(?:is|iss|ye|yeh|इस|ये|এই)\\s+)?(?:bill|receipt|parchi|बिल|रसीद|पर्ची|বিল|রসিদ)\\s*(?:ki|ka|की|का|এর|ের)?\\s*" +
-            "(?:photo|foto|फ़ोटो|फोटो|ছবি)?\\s*(?:lo|le lo|leke|khinch kar|लो|ले लो|लेकर|তুলে)?\\s*(?:aur|और|আর)?\\s*" +
-            "(?:kharcha|kharch|expense|खर्चा|खर्च|খরচ)\\s*(?:khate\\s*(?:me|mein)\\s*)?(?:खाते\\s*में\\s*)?(?:likho|likh do|daalo|daal do|jodo|लिखो|लिख दो|डालो|डाल दो|जोड़ो|লেখো|লিখে দাও)[?।.!]*$",
+        "^(?:seema[, ]+)?(?:(?:is|iss|ye|yeh|is wale|iss wale|इस|ये|এই)\\s+)?(?:dokaner\\s+|দোকানের\\s+)?(?:bill|receipt|parchi|raseed|rasid|বিল|বিলটা|রসিদ|রসিদের|বিলটার|बिल|रसीद|पर्ची)\\s*(?:ki|ka|ko|की|का|को|এর|ের)?\\s*" +
+            "(?:photo|foto|फ़ोटो|फोटो|ছবি)?\\s*(?:lo|le lo|leke|khinch kar|dekh kar|dekho|scan karo|लो|ले लो|लेकर|खींच कर|देख कर|देखो|তুলে)?\\s*(?:aur|और|আর)?\\s*" +
+            "(?:kharcha|kharch|expense|entry|खर्चा|खर्च|খরচ)?\\s*(?:khate\\s*(?:me|mein|par)\\s*)?(?:खाते\\s*में\\s*)?(?:likho|likh do|likh lo|daalo|daal do|jodo|jod do|note karo|note kar lo|scan karo|add karo|লেখো|লিখে দাও|লিখে নাও|লিখুন|যুক্ত করো|लिखो|लिख दो|लिख लो|डालो|डाल दो|जोड़ो|जोड़ दो|नोट करो|नोट कर लो|स्कैन करो)[?।.!]*$",
         RegexOption.IGNORE_CASE,
     )
 
@@ -42,6 +42,7 @@ object BillScan {
         return ScannedBill(Math.round(total * 100), payee, cat)
     }
 
-    fun question(b: ScannedBill): String =
-        "₹${String.format(java.util.Locale.US, "%,d", b.amountPaise / 100)} का खर्च${b.payee?.let { " ($it)" } ?: ""} खाते में लिख दूँ?"
+    fun question(b: ScannedBill, bengali: Boolean = false): String =
+        if (bengali) "বিলের ₹${String.format(java.util.Locale.US, "%,d", b.amountPaise / 100)} খরচ${b.payee?.let { " ($it)" } ?: ""} খাতায় লিখে দেব?"
+        else "₹${String.format(java.util.Locale.US, "%,d", b.amountPaise / 100)} का खर्च${b.payee?.let { " ($it)" } ?: ""} खाते में लिख दूँ?"
 }

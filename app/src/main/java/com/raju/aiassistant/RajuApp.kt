@@ -40,10 +40,14 @@ class RajuApp : Application() {
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
             )
         }
-        // Android's own "battery low" moment (about 15 %): she says it once, softly.
+        // Battery low (about 15%) and full charge (98-100% on charger): she announces softly.
         runCatching {
+            val filter = android.content.IntentFilter().apply {
+                addAction(android.content.Intent.ACTION_BATTERY_LOW)
+                addAction(android.content.Intent.ACTION_BATTERY_CHANGED)
+            }
             androidx.core.content.ContextCompat.registerReceiver(
-                this, batteryLowReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_LOW),
+                this, batteryReceiver, filter,
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
             )
         }
@@ -64,12 +68,31 @@ class RajuApp : Application() {
         }
     }
 
-    private val batteryLowReceiver = object : android.content.BroadcastReceiver() {
+    private var lastFullNotified = false
+
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             val s = container.currentSettings.value
             if (s.assistantPaused || s.safetyMode) return
-            val pct = runCatching { getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) }.getOrDefault(15)
-            container.engine.onBatteryLow(pct)
+            val action = intent?.action ?: return
+            if (action == android.content.Intent.ACTION_BATTERY_LOW) {
+                val pct = runCatching { getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) }.getOrDefault(15)
+                container.engine.onBatteryLow(pct)
+            } else if (action == android.content.Intent.ACTION_BATTERY_CHANGED) {
+                val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+                val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                val pct = if (level >= 0 && scale > 0) (level * 100) / scale else -1
+                if (pct >= 98 && isCharging) {
+                    if (!lastFullNotified) {
+                        lastFullNotified = true
+                        container.engine.onBatteryFull(pct)
+                    }
+                } else if (!isCharging || pct < 90) {
+                    lastFullNotified = false
+                }
+            }
         }
     }
 

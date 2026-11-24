@@ -58,7 +58,8 @@ object LocalCommands {
         com.raju.aiassistant.domain.memory.SpecialDays.parse(withoutLeadingFillers(text))?.let { return AssistantAction.SpecialDayAdd(it) }
         com.raju.aiassistant.domain.camera.CameraVoice.startRequest(text)?.let { return AssistantAction.StartVideo(front = it) }
         // "PC mein Cursor kholo" before the phone's own "X kholo".
-        com.raju.aiassistant.domain.remote.RemoteBridge.parse(text)?.let { return AssistantAction.Remote(it) }
+        com.raju.aiassistant.domain.remote.RemoteBridge.parse(text)?.let { return AssistantAction.Remote(it) }
+        IndianLiveInfo.parse(withoutLeadingFillers(text))?.let { return it }
         if (com.raju.aiassistant.domain.sms.asksMoneyAlert(text)) return AssistantAction.MoneyAlertOn
         com.raju.aiassistant.domain.sms.parseMoneyQuestion(withoutLeadingFillers(text), java.time.LocalDate.now())?.let { return AssistantAction.MoneyQuestion(it) }
         // Payment QR / UPI ID before the general WhatsApp and SMS commands ("X ko UPI ID bhej do").

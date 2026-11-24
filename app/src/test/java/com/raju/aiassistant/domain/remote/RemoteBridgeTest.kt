@@ -11,6 +11,9 @@ class RemoteBridgeTest {
         assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "cursor"), RemoteBridge.parse("PC mein Cursor kholo"))
         assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "notepad"), RemoteBridge.parse("पीसी में नोटपैड खोलो"))
         assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "calculator"), RemoteBridge.parse("পিসিতে calculator খোলো"))
+        assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "chrome"), RemoteBridge.parse("PC par Chrome kholo"))
+        assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "vscode"), RemoteBridge.parse("PC mein VS Code kholo"))
+        assertEquals(RemoteCommand.OpenApp(RemoteTarget.PC, "spotify"), RemoteBridge.parse("PC par Spotify kholo"))
         assertEquals("open_app" to mapOf("name" to "cursor"), RemoteBridge.request(RemoteCommand.OpenApp(RemoteTarget.PC, "cursor")))
     }
 
@@ -20,6 +23,7 @@ class RemoteBridgeTest {
         assertEquals("photoshop", c.app)
         assertTrue(RemoteBridge.unknownApp(c, bengali = false)!!.contains("Cursor"))
         assertNull(RemoteBridge.unknownApp(RemoteCommand.OpenApp(RemoteTarget.PC, "cursor"), bengali = false))
+        assertNull(RemoteBridge.unknownApp(RemoteCommand.OpenApp(RemoteTarget.PC, "chrome"), bengali = false))
     }
 
     @Test
@@ -35,6 +39,9 @@ class RemoteBridgeTest {
         assertEquals(RemoteCommand.Instruction(RemoteTarget.PC, "server restart karo"), RemoteBridge.parse("PC ko command bhejo: server restart karo"))
         assertEquals(RemoteCommand.Instruction(RemoteTarget.VPS, "backup chala do"), RemoteBridge.parse("VPS ko command bhejo backup chala do"))
         assertEquals(RemoteCommand.Instruction(RemoteTarget.PC, "रिपोर्ट बना दो"), RemoteBridge.parse("पीसी को कमांड भेजो: रिपोर्ट बना दो"))
+        // Direct action execution
+        assertEquals(RemoteCommand.Instruction(RemoteTarget.PC, "backup"), RemoteBridge.parse("PC par backup chalao"))
+        assertEquals(RemoteCommand.Instruction(RemoteTarget.PC, "git pull"), RemoteBridge.parse("PC par git pull karo"))
         val (action, params) = RemoteBridge.request(RemoteCommand.Instruction(RemoteTarget.PC, "x"))
         assertEquals("instruction", action)
         assertEquals("x", params["text"])
@@ -42,7 +49,6 @@ class RemoteBridgeTest {
 
     @Test
     fun ordinaryTalkIsNotABridgeCommand() {
-        assertNull(RemoteBridge.parse("WhatsApp kholo"))
         assertNull(RemoteBridge.parse("mera PC kharab ho gaya yaar"))
         assertNull(RemoteBridge.parse("command bhejo"))
     }

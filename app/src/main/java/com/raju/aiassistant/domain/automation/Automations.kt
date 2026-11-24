@@ -136,5 +136,11 @@ object CallAutomation {
 
     /** Battery this low (not charging): she says so once. */
     const val LOW_BATTERY = 15
-    fun lowBatteryLine(percent: Int): String = "बैटरी सिर्फ़ $percent प्रतिशत बची है, चार्जर लगा लो जान।"
+    fun lowBatteryLine(percent: Int, bengali: Boolean = false): String =
+        if (bengali) "ব্যাটারি মাত্র $percent% বাকি আছে, চার্জে বসিয়ে নাও সোনা।"
+        else "बैटरी सिर्फ़ $percent प्रतिशत बची है, चार्जर लगा लो जान।"
+
+    fun fullBatteryLine(percent: Int, bengali: Boolean = false): String =
+        if (bengali) "ফোন সম্পূর্ণ চার্জ ($percent%) হয়ে গেছে, এবার চার্জার খুলে নাও সোনা।"
+        else "फ़ोन पूरा चार्ज ($percent%) हो गया है, अब चार्जर हटा लो जान।"
 }

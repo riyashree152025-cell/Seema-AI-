@@ -46,6 +46,10 @@ object RemoteBridge {
         "calculator" to listOf("calculator", "calc", "कैलकुलेटर", "ক্যালকুলেটর"),
         "terminal" to listOf("terminal", "cmd", "command prompt", "टर्मिनल", "টার্মিনাল"),
         "explorer" to listOf("explorer", "file explorer", "files", "एक्सप्लोरर", "ফাইল এক্সপ্লোরার", "এক্সপ্লোরার"),
+        "chrome" to listOf("chrome", "browser", "google chrome", "क्रोम", "ब्राउज़र", "ব্রাউজার", "ক্রোম"),
+        "vscode" to listOf("vscode", "vs code", "code"),
+        "spotify" to listOf("spotify", "स्पॉटिफ़ाई", "স্পটিফাই"),
+        "whatsapp" to listOf("whatsapp", "व्हाट्सएप", "হোয়াটসঅ্যাপ"),
     )
 
     private val OPEN = Regex(
@@ -58,6 +62,11 @@ object RemoteBridge {
         "^(?:seema[, ]+)?(?:mere\\s+|मेरे\\s+|আমার\\s+)?(?:$PC|$VPS)\\s*(?:ka|ki|का|की|এর|ের)?\\s*" +
             "(?:status|स्टेटस|haal|हाल|স্ট্যাটাস|অবস্থা)\\s*(?:check karo|check kar do|batao|bata do|dekho|चेक करो|बताओ|देखो|চেক করো|বলো|দেখো)?" +
             "|^(?:seema[, ]+)?(?:$PC|$VPS)\\s+(?:chalu hai|chal raha hai|online hai|चालू है|चल रहा है|ऑनलाइन है|চালু আছে|চলছে)\\s*(?:kya|क्या|কি)?$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val DIRECT_ACTION = Regex(
+        "^(?:seema[, ]+)?(?:$PC|$VPS)\\s*(?:par|pe|mein|me|पर|पे|में|তে|এ)?\\s+(.+?)\\s*" +
+            "(?:chalao|chala do|karo|kar do|run karo|restart karo|dekho|status|चलाओ|चला दो|करो|कर दो|রান করো|চালু করো)$",
         RegexOption.IGNORE_CASE,
     )
     private val COMMAND = Regex(
@@ -90,6 +99,12 @@ object RemoteBridge {
             val spoken = m.groupValues[1].trim()
             return RemoteCommand.OpenApp(targetOf(t), appKey(spoken) ?: spoken.lowercase())
         }
+        DIRECT_ACTION.matchEntire(t)?.let { m ->
+            val action = m.groupValues[1].trim()
+            if (!OPEN.matches(t) && !STATUS.matches(t) && action.length in 2..120) {
+                return RemoteCommand.Instruction(targetOf(t), action)
+            }
+        }
         return null
     }
 
@@ -112,8 +127,8 @@ object RemoteBridge {
     /** An app the companion would refuse: said without sending anything. */
     fun unknownApp(c: RemoteCommand.OpenApp, bengali: Boolean): String? =
         if (c.app in APPS) null
-        else if (bengali) "পিসিতে শুধু Cursor, Notepad, Calculator, Terminal আর Explorer খুলতে পারি।"
-        else "PC पर अभी सिर्फ़ Cursor, Notepad, Calculator, Terminal और Explorer खोल सकती हूँ।"
+        else if (bengali) "পিসিতে শুধু Cursor, VS Code, Chrome, Notepad, Calculator, Terminal, Spotify আর Explorer খুলতে পারি।"
+        else "PC पर अभी सिर्फ़ Cursor, VS Code, Chrome, Notepad, Calculator, Terminal, Spotify और Explorer खोल सकती हूँ।"
 
     /** What Seema says after the companion answered. */
     fun spoken(c: RemoteCommand, r: RemoteResult, bengali: Boolean): String {

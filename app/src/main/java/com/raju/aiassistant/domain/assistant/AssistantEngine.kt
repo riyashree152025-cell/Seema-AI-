@@ -4440,7 +4440,7 @@ class AssistantEngine(
             if (speak) say(msg)
             return
         }
-        val ask = com.raju.aiassistant.domain.business.BillScan.question(bill)
+        val ask = com.raju.aiassistant.domain.business.BillScan.question(bill, lang() == SeemaLanguage.BENGALI)
         val yes = askOutLoud(PendingRequest(PendingRequest.Kind.CONFIRM, "Khata", ask), spoken = ask.takeIf { speak }, listenForAnswer = speak && voiceTurn) { yesNo(it) } is Decision.Approve
         if (!yes) return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं लिखा।", "ঠিক আছে, লিখিনি।"))
         val saved = runCatching { business.addExpense(bill.amountPaise, bill.payee ?: "bill", bill.category) }.isSuccess
@@ -4591,7 +4591,16 @@ class AssistantEngine(
     fun onBatteryLow(percent: Int) {
         if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || pausedForCall) return
         job = scope.launch {
-            say(com.raju.aiassistant.domain.automation.CallAutomation.lowBatteryLine(percent))
+            say(com.raju.aiassistant.domain.automation.CallAutomation.lowBatteryLine(percent, lang() == SeemaLanguage.BENGALI))
+            finishTurn()
+        }
+    }
+
+    /** Battery fully charged (98-100% on charger): warns gently once to prevent overcharging. */
+    fun onBatteryFull(percent: Int) {
+        if (paused() || job?.isActive == true || _state.value == AssistantState.Speaking || pausedForCall) return
+        job = scope.launch {
+            say(com.raju.aiassistant.domain.automation.CallAutomation.fullBatteryLine(percent, lang() == SeemaLanguage.BENGALI))
             finishTurn()
         }
     }
@@ -5503,7 +5512,19 @@ class AssistantEngine(
     private suspend fun searchWeb(action: AssistantAction.SearchWeb, provider: AiProvider, model: String, system: String, speak: Boolean) {
         val key = secret(SecretId.TAVILY_API_KEY)
         if (key.isNullOrBlank()) {
-            report(action, ActionStatus.FAILED, "Web search needs a Tavily API key (Settings → Web search).")
+            val prompt = "Answer the user's question as accurately and helpfully as possible: ${action.query}"
+            val turns = historyTurns(model) + com.raju.aiassistant.domain.ai.Turn(com.raju.aiassistant.domain.ai.TurnRole.USER, prompt)
+            when (val r = provider.chat(model, system, turns)) {
+                is AiResult.Success -> {
+                    val summary = parseReply(r.value).text
+                    record(ChatRole.ASSISTANT, summary)
+                    if (speak) say(summary)
+                    actionLog.safeLog(action, ActionStatus.SUCCESS, "Answered via AI fallback")
+                }
+                is AiResult.Failure -> {
+                    report(action, ActionStatus.FAILED, "Web search needs a Tavily API key (Settings → Web search).")
+                }
+            }
             return
         }
         // Searching takes a few seconds: like a person, say so instead of going silent.

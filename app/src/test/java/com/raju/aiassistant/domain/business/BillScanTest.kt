@@ -13,12 +13,18 @@ class BillScanTest {
     fun asksAndReadsTheBill() {
         assertTrue(BillScan.asks("bill ki photo lo aur kharcha likho"))
         assertTrue(BillScan.asks("इस बिल का खर्चा खाते में डालो"))
+        assertTrue(BillScan.asks("bill likh lo"))
+        assertTrue(BillScan.asks("parchi note kar lo"))
+        assertTrue(BillScan.asks("ye bill note karo"))
+        assertTrue(BillScan.asks("দোকানের বিলটা লিখে নাও"))
         assertEquals(AssistantAction.BillScanAsk, LocalCommands.parse("bill ki photo lo aur kharcha likho"))
+        assertEquals(AssistantAction.BillScanAsk, LocalCommands.parse("bill likh lo"))
         assertEquals(ScannedBill(124_050, "Sharma Store", "food"), BillScan.parse("```json\n{\"total\": 1240.5, \"payee\": \"Sharma Store\", \"category\": \"food\"}\n```"))
         assertEquals(ScannedBill(99_900, null, "other"), BillScan.parse("{\"total\": \"₹999\", \"payee\": null, \"category\": \"misc\"}"))
         assertNull(BillScan.parse("{\"total\": null, \"payee\": \"X\"}"))
         assertNull(BillScan.parse("I cannot read it"))
         assertEquals("₹1,240 का खर्च (Sharma Store) खाते में लिख दूँ?", BillScan.question(ScannedBill(124_000, "Sharma Store", "food")))
+        assertTrue(BillScan.question(ScannedBill(124_000, "Sharma Store", "food"), bengali = true).contains("বিলের"))
     }
 
     @Test
