@@ -56,12 +56,16 @@ sealed interface AssistantAction {
     }
 
     /** "Mera QR bhej do Rizwan ko": the saved payment QR photo to that contact on WhatsApp. */
-    data class SendPaymentQr(val contact: String, val amountRupees: Long? = null) : AssistantAction {
-        override val label get() = "Payment QR"
+    data class SendPaymentQr(val contact: String, val amountRupees: Long? = null, val includeHisab: Boolean = false) : AssistantAction {
+        override val label get() = if (includeHisab) "Hisab & QR" else "Payment QR"
     }
     /** "Jalal bhai ko UPI ID bhej do (Paytm wala)": a saved UPI ID to that contact on WhatsApp. */
-    data class SendUpiId(val contact: String, val upiLabel: String? = null, val amountRupees: Long? = null) : AssistantAction {
-        override val label get() = "UPI ID"
+    data class SendUpiId(val contact: String, val upiLabel: String? = null, val amountRupees: Long? = null, val includeHisab: Boolean = false) : AssistantAction {
+        override val label get() = if (includeHisab) "Hisab & UPI ID" else "UPI ID"
+    }
+    /** "Anand ko aaj jo PDF bheja hai uska hisaab jodo": ticket base fare + (passengers * extra charge) saved to Udhaar book. */
+    data class TicketPdfHisab(val contact: String, val extraPerPassenger: Long? = null) : AssistantAction {
+        override val label get() = "Ticket PDF Hisab"
     }
 
     /** "कल कितना कितना पैसा आया?", "1 घंटे में किसको भेजा?", "3630 किसका आया?" — from the phone's bank SMS. */
@@ -624,8 +628,9 @@ private fun parseAction(json: String): AssistantAction? {
             else -> null
         }?.let { AssistantAction.Media(it) }
         // The user's saved payment QR / UPI ID shared on WhatsApp (no payment app is opened).
-        "send_qr" -> AssistantAction.SendPaymentQr(str("contact").orEmpty(), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
-        "send_upi" -> AssistantAction.SendUpiId(str("contact").orEmpty(), str("label"), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
+        "send_qr" -> AssistantAction.SendPaymentQr(str("contact").orEmpty(), str("amount")?.filter { it.isDigit() }?.toLongOrNull(), str("include_hisab")?.toBooleanStrictOrNull() ?: false)
+        "send_upi" -> AssistantAction.SendUpiId(str("contact").orEmpty(), str("label"), str("amount")?.filter { it.isDigit() }?.toLongOrNull(), str("include_hisab")?.toBooleanStrictOrNull() ?: false)
+        "ticket_pdf_hisab" -> (str("contact") ?: str("name"))?.let { AssistantAction.TicketPdfHisab(it, str("extra")?.filter { c -> c.isDigit() }?.toLongOrNull()) }
         "sms" -> if (str("text") == null || (str("contact") == null && str("number") == null)) null
                  else AssistantAction.Sms(str("contact"), str("number"), str("text")!!)
         "add_event", "reminder" -> {

@@ -49,4 +49,56 @@ class PaymentShareTest {
         assertTrue(PaymentShare.isValidUpi("raju.barai@okaxis"))
         assertFalse(PaymentShare.isValidUpi("raju barai"))
     }
+
+    @Test
+    fun fourModePaymentDispatchWithHisab() {
+        // Mode 1: QR only
+        assertEquals(
+            AssistantAction.SendPaymentQr("Anand Patel", null, includeHisab = false),
+            LocalCommands.parse("Anand Patel ko QR bhejo")
+        )
+        // Mode 2: UPI ID only
+        assertEquals(
+            AssistantAction.SendUpiId("Anand Patel", null, null, includeHisab = false),
+            LocalCommands.parse("Anand Patel ko UPI ID bhejo")
+        )
+        // Mode 3: Hisab ke saath QR
+        val qrWithHisab = LocalCommands.parse("Anand Patel ko hisaab ke saath QR bhejo")
+        assertEquals(
+            AssistantAction.SendPaymentQr("Anand Patel", null, includeHisab = true),
+            qrWithHisab
+        )
+        // Mode 4: Hisab ke saath UPI ID
+        val upiWithHisab = LocalCommands.parse("Anand Patel ko hisaab ke saath UPI ID bhejo")
+        assertEquals(
+            AssistantAction.SendUpiId("Anand Patel", null, null, includeHisab = true),
+            upiWithHisab
+        )
+
+        // Captions with customer name and pending balance
+        val qrCaptionWithHisab = PaymentShare.qrCaption(null, "Anand Patel", 150000L)
+        assertTrue(qrCaptionWithHisab.contains("*Customer:* Anand Patel"))
+        assertTrue(qrCaptionWithHisab.contains("*Pending Hisab / Bakaya:* ₹1500"))
+
+        val upiMsgWithHisab = PaymentShare.upiMessage(saved[0], "Raju Barai", null, "Anand Patel", 150000L)
+        assertTrue(upiMsgWithHisab.contains("*Customer:* Anand Patel"))
+        assertTrue(upiMsgWithHisab.contains("*Pending Hisab / Bakaya:* ₹1500"))
+        assertTrue(upiMsgWithHisab.contains("*UPI ID:* raju@paytm"))
+    }
+
+    @Test
+    fun interactiveTicketPdfHisabParsing() {
+        assertEquals(
+            AssistantAction.TicketPdfHisab("Anand", null),
+            LocalCommands.parse("Anand ko aaj jo PDF bheja hai uska hisaab jodo")
+        )
+        assertEquals(
+            AssistantAction.TicketPdfHisab("Anand Patel", 100L),
+            LocalCommands.parse("Anand Patel ko jo PDF bheja hai uska hisaab jodo 100 rupaye")
+        )
+        assertEquals(
+            AssistantAction.TicketPdfHisab("Jalal Bhai", null),
+            LocalCommands.parse("Jalal Bhai ko jo ticket PDF bheja uska hisab jodo")
+        )
+    }
 }

@@ -499,6 +499,34 @@ class AssistantEngine(
             job = scope.launch { bookingTurn(trimmed, speak = fromVoice || settings.value.autoSpeakReplies) }
             return
         }
+        // An open ticket PDF hisab session waiting for extra per-passenger charge
+        val pendingHisab = pendingTicketHisab
+        if (pendingHisab != null && clock() < pendingHisab.until) {
+            followUpUntil = clock() + FOLLOW_UP_MS
+            leaveSleep()
+            lastActivityAt = clock()
+            cancelWork()
+            lastUserText = trimmed
+            if (isCancelCommand(trimmed)) {
+                pendingTicketHisab = null
+                job = scope.launch {
+                    say(phrase(lang(), "ठीक है, हिसाब नहीं जोड़ा।", "ঠিক আছে, হিসাব যোগ করিনি।"))
+                }
+                return
+            }
+            val rate = com.raju.aiassistant.domain.payments.PaymentShare.amount(trimmed)
+                ?: trimmed.filter { it.isDigit() }.toLongOrNull()
+            if (rate != null && rate > 0) {
+                pendingTicketHisab = null
+                job = scope.launch {
+                    saveTicketHisab(pendingHisab, rate, speak = fromVoice || settings.value.autoSpeakReplies)
+                }
+                return
+            }
+        } else if (pendingHisab != null && clock() >= pendingHisab.until) {
+            pendingTicketHisab = null
+        }
+
         // An open MONA PC autonomous task session waiting for follow-up input
         val pcSessId = activePcTaskId
         val pcSessGoal = activePcTaskGoal
@@ -2223,6 +2251,11 @@ class AssistantEngine(
                 _state.value = AssistantState.Executing
                 sendUpiId(action, speak)
             }
+            is AssistantAction.TicketPdfHisab -> {
+                trace("offline command: ticket pdf hisab")
+                _state.value = AssistantState.Executing
+                processTicketPdfHisab(action, speak)
+            }
             is AssistantAction.WhatsApp -> {
                 // Same path as when the AI asks for it: contacts first, WhatsApp's own search second.
                 trace("offline command: whatsapp")
@@ -2383,6 +2416,10 @@ class AssistantEngine(
     private var pendingPayTo: AssistantAction? = null
     private var pendingPayToUntil = 0L
 
+    /** "Anand ko aaj jo PDF bheja hai uska hisaab jodo": ticket base fare + (passengers * extra charge) */
+    private data class PendingTicketHisab(val contact: String, val baseFare: Long, val passengers: Int, val until: Long)
+    private var pendingTicketHisab: PendingTicketHisab? = null
+
     /** No name said ("mera QR bhejo"): asks whom, and listens for the name without "Hey Seema". */
     private suspend fun askWhomToPay(action: AssistantAction, speak: Boolean) {
         val q = phrase(lang(), if (action is AssistantAction.SendPaymentQr) "QR किसको भेजना है?" else "UPI ID किसको भेजनी है?", if (action is AssistantAction.SendPaymentQr) "QR কাকে পাঠাব?" else "UPI ID কাকে পাঠাব?")
@@ -2393,19 +2430,20 @@ class AssistantEngine(
         followUpUntil = maxOf(followUpUntil, pendingPayToUntil)
         if (speak) { say(q); _voiceSession.value = true }
     }
-    private fun upiQuestionOpen(): Boolean = pendingUpi?.let { clock() < it.until } == true || (pendingPayTo != null && clock() < pendingPayToUntil)
+    private fun upiQuestionOpen(): Boolean = pendingUpi?.let { clock() < it.until } == true || (pendingPayTo != null && clock() < pendingPayToUntil) || (pendingTicketHisab != null && clock() < (pendingTicketHisab?.until ?: 0L))
 
     /** "Mera QR bhej do Rizwan ko": the saved QR photo to that contact on WhatsApp (asked first, then a 2.5 s stop window). */
     private suspend fun sendPaymentQr(action: AssistantAction.SendPaymentQr, speak: Boolean) {
         if (action.contact.isBlank() && tools.hasPaymentQr()) return askWhomToPay(action, speak)
         if (!tools.hasPaymentQr()) {
-            val msg = phrase(lang(), "Payment QR अभी सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में QR की फ़ोटो चुनिए।", "Payment QR এখনও সেভ নেই। Apps & Tools → Payment QR & UPI IDs-এ QR-এর ছবি বেছে নিন।")
+            val msg = phrase(lang(), "Payment QR अभी सेव नहीं है। Settings → System Integration में QR की फ़ोटो चुनिए।", "Payment QR এখনও সেভ নেই। Settings-এ QR-এর ছবি বেছে নিন।")
             report(action, ActionStatus.FAILED, msg)
             if (speak) say(msg)
             return
         }
         val target = pickWhatsAppContact(action, action.contact, speak, "Send payment QR?", "Payment QR WhatsApp par jayega", "इन्हें Payment QR भेजूँ", "একে Payment QR পাঠাব") ?: return
-        when (val c = actionSafetyWindow(target.name, speak, "WhatsApp पर QR भेज रही हूँ")) {
+        val safetyText = if (action.includeHisab) "${target.name} को हिसाब के साथ QR भेज रही हूँ" else "WhatsApp पर QR भेज रही हूँ"
+        when (val c = actionSafetyWindow(target.name, speak, safetyText)) {
             Correction.Cancel -> return cancelledLine(action, speak, phrase(lang(), "ठीक है, QR नहीं भेजा।", "ঠিক আছে, QR পাঠাইনি।"))
             is Correction.Rename -> {
                 if (speak) say(phrase(lang(), "अच्छा सॉरी, ${c.name} को ढूँढ रही हूँ…", "আচ্ছা সরি, ${c.name}-কে খুঁজছি…"))
@@ -2413,7 +2451,11 @@ class AssistantEngine(
             }
             null -> Unit
         }
-        val caption = com.raju.aiassistant.domain.payments.PaymentShare.qrCaption(action.amountRupees)
+        val balancePaise = if (action.includeHisab) {
+            runCatching { business.ledgerBalance(target.name) }.getOrNull()
+                ?: runCatching { business.allBalances().firstOrNull { it.name.equals(target.name, true) || it.name.contains(target.name, true) || target.name.contains(it.name, true) }?.balancePaise }.getOrNull()
+        } else null
+        val caption = com.raju.aiassistant.domain.payments.PaymentShare.qrCaption(action.amountRupees, if (action.includeHisab) target.name else "", balancePaise)
         val outcome = tools.sharePaymentQr(target.number, caption)
         report(action, outcome)
         val sent = if (outcome is ToolOutcome.Done && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()) tools.awaitAutoAction(AUTO_ACTION_WAIT_MS) else null
@@ -2423,7 +2465,11 @@ class AssistantEngine(
         if (speak) say(
             when {
                 outcome !is ToolOutcome.Done -> phrase(lang(), "माफ़ कीजिए, QR नहीं भेज पाई — ${outcome.spokenReason()}", "দুঃখিত, QR পাঠাতে পারিনি।")
-                sent == true -> phrase(lang(), "हो गया, ${target.name} को Payment QR भेज दिया।", "হয়ে গেছে, ${target.name}-কে Payment QR পাঠিয়ে দিয়েছি।")
+                sent == true -> if (action.includeHisab) {
+                    phrase(lang(), "हो गया, ${target.name} को हिसाब के साथ QR भेज दिया है।", "হয়ে গেছে, ${target.name}-কে হিসাবের সাথে QR পাঠিয়ে দিয়েছি।")
+                } else {
+                    phrase(lang(), "हो गया, ${target.name} को Payment QR भेज दिया।", "হয়ে গেছে, ${target.name}-কে Payment QR পাঠিয়ে দিয়েছি।")
+                }
                 sent == false -> phrase(lang(), "QR WhatsApp में तैयार है, पर Send नहीं दब पाया। \"Send दबाओ\" बोलिए, मैं फिर से कोशिश करूँगी।", "QR হোয়াটসঅ্যাপে তৈরি, কিন্তু Send চাপতে পারিনি। \"Send চাপো\" বলুন, আবার চেষ্টা করব।")
                 else -> phrase(lang(), "QR WhatsApp में ${target.name} के लिए तैयार है — Send दबा दीजिए।", "QR হোয়াটসঅ্যাপে তৈরি — Send চাপুন।")
             },
@@ -2432,14 +2478,18 @@ class AssistantEngine(
 
     /**
      * "Jalal bhai ko UPI ID bhej do": the named saved ID, the only one, or — with several and none named — "kaun si?"
-     * (the answer is heard within [UPI_ASK_MS], no "Hey Seema" needed). The message goes through the usual WhatsApp
-     * path (asked first, then sent).
+     * (the answer is heard within [UPI_ASK_MS], no "Hey Seema" needed).
+     * Strict TTS Brevity Rule: NEVER reads out the raw UPI string! Always speaks short confirmation like
+     * "आनंद पटेल को हिसाब के साथ UPI भेज दिया है".
      */
     private suspend fun sendUpiId(action: AssistantAction.SendUpiId, speak: Boolean) {
-        val saved = settings.value.upiIds
+        val businessUpi = secret(SecretId.BUSINESS_UPI_ID)?.trim()
+        val saved = settings.value.upiIds.ifEmpty {
+            if (!businessUpi.isNullOrBlank()) listOf(com.raju.aiassistant.domain.payments.UpiEntry("Business", businessUpi)) else emptyList()
+        }
         if (action.contact.isBlank() && saved.isNotEmpty()) return askWhomToPay(action, speak)
         if (saved.isEmpty()) {
-            val msg = phrase(lang(), "कोई UPI ID सेव नहीं है। Apps & Tools → Payment QR & UPI IDs में UPI ID जोड़िए।", "কোনো UPI ID সেভ নেই। Apps & Tools-এ UPI ID যোগ করুন।")
+            val msg = phrase(lang(), "कोई UPI ID सेव नहीं है। Settings → System Integration में Business UPI ID जोड़िए।", "কোনো UPI ID সেভ নেই। Settings-এ Business UPI ID যোগ করুন।")
             report(action, ActionStatus.FAILED, msg)
             if (speak) say(msg)
             return
@@ -2460,8 +2510,75 @@ class AssistantEngine(
             trace("upi: asked which of ${saved.size}")
             return
         }
-        val message = com.raju.aiassistant.domain.payments.PaymentShare.upiMessage(entry, settings.value.upiPayeeName, action.amountRupees)
+        val balancePaise = if (action.includeHisab) {
+            runCatching { business.ledgerBalance(action.contact) }.getOrNull()
+                ?: runCatching { business.allBalances().firstOrNull { it.name.equals(action.contact, true) || it.name.contains(action.contact, true) || action.contact.contains(it.name, true) }?.balancePaise }.getOrNull()
+        } else null
+        val message = com.raju.aiassistant.domain.payments.PaymentShare.upiMessage(entry, settings.value.upiPayeeName, action.amountRupees, if (action.includeHisab) action.contact else "", balancePaise)
         whatsApp(AssistantAction.WhatsApp(action.contact, message), speak)
+    }
+
+    private suspend fun processTicketPdfHisab(action: AssistantAction.TicketPdfHisab, speak: Boolean) {
+        var baseFare = 0L
+        var passengers = 1
+
+        // 1. Try MONA PC autonomous task first if bridge is configured
+        val pcGoal = "Find today's ticket PDF sent to ${action.contact}, extract base fare and passenger count"
+        val pcRes = withTimeoutOrNull(2_500) {
+            runCatching { remoteAutonomousTask(pcGoal, "", null) }.getOrNull()
+        }
+        if (pcRes is com.raju.aiassistant.domain.remote.RemoteResult.Done) {
+            val amountFound = pcRes.fields["message"]?.let { com.raju.aiassistant.domain.payments.PaymentShare.amount(it) }
+            if (amountFound != null && amountFound > 0) baseFare = amountFound
+        }
+
+        // 2. If base fare still 0, check local ticket PDF
+        if (baseFare == 0L) {
+            when (val f = tools.latestTicketPdf()) {
+                is com.raju.aiassistant.domain.tools.TicketPdf.Found -> {
+                    val ticket = com.raju.aiassistant.domain.rail.IrctcTicketParser.parse(f.text)
+                    if (ticket != null) {
+                        passengers = maxOf(1, ticket.passengers.size)
+                        baseFare = ticket.totalFare ?: com.raju.aiassistant.domain.rail.IrctcTicketParser.extractFare(f.text) ?: 0L
+                    }
+                }
+                else -> Unit
+            }
+        }
+
+        // 3. If extra charge per passenger is already provided in the voice command
+        val extra = action.extraPerPassenger
+        if (extra != null && extra > 0) {
+            saveTicketHisab(PendingTicketHisab(action.contact, baseFare, passengers, clock() + 60_000), extra, speak)
+            return
+        }
+
+        // 4. Otherwise ask Raju interactively
+        pendingTicketHisab = PendingTicketHisab(action.contact, baseFare, passengers, clock() + 60_000)
+        followUpUntil = maxOf(followUpUntil, clock() + 10_000)
+        val q = phrase(lang(), "प्रति पैसेंजर कितना एक्स्ट्रा चार्ज जोड़ना है?", "যাত্রী প্রতি কত টাকা এক্সট্রা চার্জ যোগ করতে হবে?")
+        report(action, ActionStatus.CANCELLED, q)
+        record(ChatRole.ASSISTANT, q)
+        if (speak) {
+            say(q)
+            _voiceSession.value = true
+        }
+    }
+
+    private suspend fun saveTicketHisab(pending: PendingTicketHisab, ratePerPassenger: Long, speak: Boolean) {
+        val totalRupees = pending.baseFare + (pending.passengers * ratePerPassenger)
+        val amountPaise = totalRupees * 100L
+        runCatching {
+            business.recordLedger(pending.contact, amountPaise, com.raju.aiassistant.domain.ledger.LedgerKind.GAVE)
+        }
+        val msg = phrase(
+            lang(),
+            "हो गया, ${pending.contact} के खाते में ₹$totalRupees का हिसाब जोड़ दिया है। लेना बाकी है।",
+            "হয়ে গেছে, ${pending.contact}-এর খাতায় ₹$totalRupees যোগ করে দিয়েছি। বাকি আছে।"
+        )
+        report(AssistantAction.TicketPdfHisab(pending.contact, ratePerPassenger), ActionStatus.SUCCESS, msg)
+        record(ChatRole.ASSISTANT, msg)
+        if (speak) say(msg)
     }
 
     /** Finds [name] in Contacts for a WhatsApp send, saying what she does, and asks before anything is sent. */
@@ -3120,6 +3237,7 @@ class AssistantEngine(
             is AssistantAction.Greeting -> informational(action, action.reply, speak)
             is AssistantAction.SendPaymentQr -> sendPaymentQr(action, speak)
             is AssistantAction.SendUpiId -> sendUpiId(action, speak)
+            is AssistantAction.TicketPdfHisab -> processTicketPdfHisab(action, speak)
             is AssistantAction.Battery -> {
                 val outcome = tools.batteryStatus()
                 report(action, outcome)
@@ -5250,13 +5368,21 @@ class AssistantEngine(
                     autoSend -> "Seema ye message WhatsApp par bhej degi:"
                     else -> "Seedha bhejne ke liye Seema ki Accessibility chalu nahi hai (phone Settings → Accessibility → Seema AI → On; agar band ho to App info → ⋮ → \"Allow restricted settings\" pehle).\n\nYe message WhatsApp mein khulega, Send aap dabayenge:"
                 }
-                val said = action.text.trim().let { if (it.length > 120) it.take(120) + "…" else it }
+                val isUpiMessage = action.text.contains("UPI ID:")
+                val isHisabMessage = isUpiMessage && (action.text.contains("Pending Hisab") || action.text.contains("Bakaya"))
+                val said = when {
+                    isHisabMessage -> "हिसाब के साथ UPI ID"
+                    isUpiMessage -> "UPI ID"
+                    action.text.length > 120 -> action.text.take(120) + "…"
+                    else -> action.text.trim()
+                }
                 target = chooseContact(
                     "Send on WhatsApp?",
                     "$why\n\n\"${action.text}\"",
                     usable, action.contact, speak,
                     // The message is said back, so a misheard text is caught before it goes.
-                    verbHi = "\"$said\" — इन्हें WhatsApp पर भेजूँ", verbBn = "\"$said\" — একে হোয়াটসঅ্যাপে পাঠাব",
+                    verbHi = if (isUpiMessage) "इन्हें $said भेज दूँ" else "\"$said\" — इन्हें WhatsApp पर भेजूँ",
+                    verbBn = if (isUpiMessage) "একে $said পাঠাব" else "\"$said\" — একে হোয়াটসঅ্যাপে পাঠাব",
                 ) ?: run { report(action, ActionStatus.CANCELLED, "WhatsApp draft cancelled."); return }
             }
         }
@@ -5295,7 +5421,14 @@ class AssistantEngine(
             val autoSends = name != null && com.raju.aiassistant.accessibility.SeemaAccessibilityService.isRunning()
             say(
                 when {
-                    sent == true -> phrase(lang(), "हो गया राजू, $name को व्हाट्सएप पर मैसेज भेज दिया।", "হয়ে গেছে রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি।")
+                    sent == true -> when {
+                        action.text.contains("UPI ID:") && (action.text.contains("Pending Hisab") || action.text.contains("Bakaya")) ->
+                            phrase(lang(), "हो गया, $name को हिसाब के साथ UPI भेज दिया है।", "হয়ে গেছে, $name-কে হিসাবের সাথে UPI পাঠিয়ে দিয়েছি।")
+                        action.text.contains("UPI ID:") ->
+                            phrase(lang(), "हो गया, $name को UPI भेज दिया है।", "হয়ে গেছে, $name-কে UPI পাঠিয়ে দিয়েছি।")
+                        else ->
+                            phrase(lang(), "हो गया राजू, $name को व्हाट्सएप पर मैसेज भेज दिया।", "হয়ে গেছে রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠিয়ে দিয়েছি।")
+                    }
                     sent == false -> phrase(lang(), "$name का व्हाट्सएप खुला है, पर Send नहीं दबा पाई — Send आप दबा दीजिए।", "$name এর হোয়াটসঅ্যাপ খোলা, কিন্তু Send চাপতে পারিনি — আপনি চাপুন।")
                     autoSends -> phrase(lang(), "हाँ राजू, $name को व्हाट्सएप पर मैसेज भेज रही हूँ!", "হ্যাঁ রাজু, $name কে হোয়াটসঅ্যাপে মেসেজ পাঠাচ্ছি!")
                     name != null -> phrase(lang(), "$name के लिए व्हाट्सएप में मैसेज तैयार है, बस Send दबा दीजिए।", "$name এর জন্য হোয়াটসঅ্যাপে মেসেজ তৈরি, শুধু Send চাপুন।")

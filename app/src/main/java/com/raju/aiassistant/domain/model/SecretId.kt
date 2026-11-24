@@ -28,4 +28,7 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     PNR_STATUS_TOKEN("pnr_status_token", "PNR status service token", ""),
     /** RailKit (api.railkit.in): PNR, trains between stations, live status, seats and fare. */
     RAILKIT_API_KEY("railkit_api_key", "RailKit API key", "https://railkit.in/dashboard"),
+    /** Business payment details for instant WhatsApp sharing and billing. */
+    BUSINESS_UPI_ID("business_upi_id", "Business UPI ID", ""),
+    BUSINESS_QR_URI("business_qr_uri", "Business UPI QR Code Image", ""),
 }

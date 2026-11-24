@@ -15,6 +15,7 @@ class IrctcTicketTest {
         # Name Age Gender Booking Status Current Status
         1 RAJU KUMAR 34 M CNF/B2/45/LOWER CNF/B2/45/LOWER
         2 SITA DEVI 30 F WL/12 WL/5
+        Ticket Fare: ₹ 1540.00
     """.trimIndent()
 
     @Test
@@ -56,5 +57,12 @@ class IrctcTicketTest {
     @Test
     fun anOrdinaryPdfIsNotATicket() {
         assertNull(IrctcTicketParser.parse("Electricity bill for October. Amount due 1450."))
+    }
+
+    @Test
+    fun extractsTicketFare() {
+        val t = IrctcTicketParser.parse(ticket)!!
+        assertEquals(1540L, t.totalFare)
+        assertEquals(1540L, IrctcTicketParser.extractFare(ticket))
     }
 }

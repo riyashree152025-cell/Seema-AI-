@@ -62,9 +62,13 @@ object LocalCommands {
         IndianLiveInfo.parse(withoutLeadingFillers(text))?.let { return it }
         if (com.raju.aiassistant.domain.sms.asksMoneyAlert(text)) return AssistantAction.MoneyAlertOn
         com.raju.aiassistant.domain.sms.parseMoneyQuestion(withoutLeadingFillers(text), java.time.LocalDate.now())?.let { return AssistantAction.MoneyQuestion(it) }
+        // Interactive Ticket PDF Hisab & per-passenger commission ("Anand ko aaj jo PDF bheja hai uska hisaab jodo")
+        com.raju.aiassistant.domain.payments.PaymentShare.ticketPdfHisabRequest(withoutLeadingFillers(text))?.let {
+            return AssistantAction.TicketPdfHisab(it.contact, it.extraPerPassenger)
+        }
         // Payment QR / UPI ID before the general WhatsApp and SMS commands ("X ko UPI ID bhej do").
-        com.raju.aiassistant.domain.payments.PaymentShare.qrRequest(text)?.let { return AssistantAction.SendPaymentQr(it.contact, it.amountRupees) }
-        com.raju.aiassistant.domain.payments.PaymentShare.upiRequest(text, emptyList())?.let { return AssistantAction.SendUpiId(it.contact, null, it.amountRupees) }
+        com.raju.aiassistant.domain.payments.PaymentShare.qrRequest(text)?.let { return AssistantAction.SendPaymentQr(it.contact, it.amountRupees, it.includeHisab) }
+        com.raju.aiassistant.domain.payments.PaymentShare.upiRequest(text, emptyList())?.let { return AssistantAction.SendUpiId(it.contact, null, it.amountRupees, it.includeHisab) }
         pnrTrack(text)?.let { return it }
         sendTicket(text)?.let { return it }
         whatsApp(text)?.let { return it }

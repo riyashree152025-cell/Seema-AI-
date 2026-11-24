@@ -407,6 +407,48 @@ class AssistantEngineTest {
         assertEquals("टिकट अमित को व्हाट्सएप पर भेज दिया गया है।", speaker.spoken.last())
     }
 
+    @Test
+    fun ticketPdfHisabInteractiveSessionCalculatesTotalAndSavesToLedger() = runTest {
+        val khata = FakeBusiness()
+        val e = businessEngine(khata)
+
+        // Turn 1: User asks to add ticket hisab for Anand
+        e.submit("Anand ko aaj jo PDF bheja hai uska hisaab jodo", fromVoice = true)
+        settle()
+        assertEquals("प्रति पैसेंजर कितना एक्स्ट्रा चार्ज जोड़ना है?", speaker.spoken.last())
+
+        // Turn 2: User responds with 100 per passenger
+        e.submit("100 rupaye", fromVoice = true)
+        settle()
+
+        // Verify saved to ledger
+        assertEquals(1, khata.ledger.size)
+        assertEquals("Anand", khata.ledger[0].first)
+        assertEquals(100_00L, khata.ledger[0].second) // 1 passenger * 100 rs = 10,000 paise
+        assertEquals(com.raju.aiassistant.domain.ledger.LedgerKind.GAVE, khata.ledger[0].third)
+        assertTrue(speaker.spoken.last().contains("Anand"))
+        assertTrue(speaker.spoken.last().contains("100"))
+    }
+
+    @Test
+    fun sendUpiIdStrictBrevityNeverSpeaksRawUpiId() = runTest {
+        tools.contacts = ContactLookup.Found(listOf(Contact("Anand Patel", "9876543210")))
+        settings.value = settings.value.copy(
+            upiIds = listOf(com.raju.aiassistant.domain.payments.UpiEntry("Paytm", "raju.business@okaxis"))
+        )
+        val e = engine()
+        e.submit("Anand Patel ko hisaab ke saath UPI ID bhejo", fromVoice = true)
+        runCurrent()
+        voice.onResult!!("haan")
+        settle()
+
+        // Check spoken output does not contain raw upi_id
+        for (spoken in speaker.spoken) {
+            assertFalse("Raw upi_id should never be spoken in TTS! Found in: $spoken", spoken.contains("raju.business@okaxis"))
+            assertFalse("Raw upi_id should never be spoken in TTS! Found in: $spoken", spoken.contains("okaxis"))
+        }
+    }
+
     /** A SIM call is up (answered). */
     private var inCall = false
 

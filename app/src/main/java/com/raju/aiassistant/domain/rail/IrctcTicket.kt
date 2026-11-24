@@ -14,6 +14,7 @@ data class IrctcTicket(
     val to: String?,
     val travelClass: String?,
     val passengers: List<TicketPassenger>,
+    val totalFare: Long? = null,
 )
 
 data class TicketPassenger(
@@ -51,6 +52,16 @@ object IrctcTicketParser {
         "^\\s*(\\d{1,2})[.)]?\\s+([A-Za-z][A-Za-z .]{1,40}?)\\s+(\\d{1,3})\\s+(MALE|FEMALE|TRANSGENDER|M|F|T)\\b(.*)$",
         setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE),
     )
+    private val FARE = Regex(
+        "(?:Total\\s+Fare|Ticket\\s+Fare|Total\\s+Amount|Total\\s+Ticket\\s+Fare|Net\\s+Amount|Fare)\\s*[:\\-]?\\s*(?:₹|Rs\\.?|INR)?\\s*([\\d,]+(?:\\.\\d{1,2})?)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun extractFare(text: String): Long? {
+        val m = FARE.find(text) ?: return null
+        val clean = m.groupValues[1].replace(",", "")
+        return clean.toDoubleOrNull()?.toLong()
+    }
 
     /** Reads what it can; null only when the text does not look like a railway ticket at all. */
     fun parse(text: String): IrctcTicket? {
@@ -77,6 +88,7 @@ object IrctcTicketParser {
             to = TO.find(text)?.let { "${it.groupValues[1].trim()} (${it.groupValues[2]})" },
             travelClass = CLASS.find(text)?.groupValues?.get(1)?.uppercase(),
             passengers = passengers,
+            totalFare = extractFare(text),
         )
     }
 }

@@ -52,7 +52,14 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Person
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import com.raju.aiassistant.data.tools.PaymentQr
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
@@ -70,6 +77,7 @@ import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -79,6 +87,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -2591,12 +2600,187 @@ fun SystemScreen(
             Text("System Integration", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
         }
 
+        // Saved Payment Profile (UPI ID & QR Code Image)
+        BusinessPaymentProfileCard(secrets = secrets, viewModel = viewModel)
+
         // PC & VPS Remote Bridge (MONA) configuration
         MonaPcBridgeCard(secrets = secrets, viewModel = viewModel)
 
         // The real check-up (was a fixed "100% Online" card that checked nothing): every permission,
         // role, service and key Seema needs, with a button to fix each, plus mic and voice tests.
         DiagnosePanel(secrets, wakeWord = s.wakeWord)
+    }
+}
+
+@Composable
+fun BusinessPaymentProfileCard(
+    secrets: Map<SecretId, SecretStatus>,
+    viewModel: SettingsViewModel,
+) {
+    val context = LocalContext.current
+    val upiStatus = secrets[SecretId.BUSINESS_UPI_ID] ?: SecretStatus()
+    val qrStatus = secrets[SecretId.BUSINESS_QR_URI] ?: SecretStatus()
+
+    var upiInput by remember { mutableStateOf("") }
+    var qrThumb by remember { mutableStateOf(PaymentQr.thumbnail(context)) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
+    val pickQr = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            val ok = PaymentQr.save(context, uri)
+            qrThumb = PaymentQr.thumbnail(context)
+            if (ok) {
+                viewModel.saveSecret(SecretId.BUSINESS_QR_URI, uri.toString())
+                statusMessage = "QR Code Image Saved ✅"
+            } else {
+                statusMessage = "QR Image could not be loaded ❌"
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF081730))
+            .border(1.2.dp, Color(0xFF16345C), RoundedCornerShape(18.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF0D2847)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Payment,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Saved Payment Profile (UPI & QR)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.5.sp
+                    )
+                    Text(
+                        "4-Mode Payment & Hisab Dispatch",
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 12.5.sp
+                    )
+                }
+            }
+
+            // QR Image Picker Section
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0A1E3B))
+                    .padding(12.dp)
+            ) {
+                qrThumb?.let {
+                    Image(
+                        it.asImageBitmap(),
+                        contentDescription = "Payment QR",
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                } ?: Box(
+                    modifier = Modifier
+                        .size(70.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF051020))
+                        .border(1.dp, Color(0xFF1A3860), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No QR", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
+                }
+
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        if (qrThumb != null || qrStatus.configured) "UPI QR Image Active ✅" else "UPI QR Not Set",
+                        color = if (qrThumb != null || qrStatus.configured) Color(0xFF00E676) else Color(0xFFFFB300),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Button(
+                        onClick = { pickQr.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF).copy(alpha = 0.2f), contentColor = Color(0xFF00E5FF)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(if (qrThumb == null) "Select UPI QR Image" else "Change QR Image", fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // Business UPI ID Input
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Business UPI ID",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                OutlinedTextField(
+                    value = upiInput,
+                    onValueChange = { upiInput = it.trim() },
+                    placeholder = {
+                        Text(
+                            if (upiStatus.configured) "Configured (Enter to update)" else "e.g. raju.barai@okaxis",
+                            color = Color.White.copy(alpha = 0.35f),
+                            fontSize = 13.sp
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF00E5FF),
+                        unfocusedBorderColor = Color(0xFF1A3860),
+                        focusedContainerColor = Color(0xFF051020),
+                        unfocusedContainerColor = Color(0xFF051020)
+                    ),
+                    singleLine = true,
+                    trailingIcon = {
+                        if (upiInput.isNotBlank()) {
+                            IconButton(onClick = {
+                                viewModel.saveSecret(SecretId.BUSINESS_UPI_ID, upiInput.trim())
+                                statusMessage = "Business UPI ID Saved ✅"
+                                upiInput = ""
+                            }) {
+                                Icon(Icons.Filled.Save, contentDescription = "Save", tint = Color(0xFF00E5FF))
+                            }
+                        }
+                    }
+                )
+            }
+
+            if (statusMessage != null) {
+                Text(
+                    statusMessage!!,
+                    color = Color(0xFF00E676),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 }
 

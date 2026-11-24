@@ -6,10 +6,13 @@ import com.raju.aiassistant.domain.tools.Romanize
 data class UpiEntry(val label: String, val upiId: String)
 
 /** "Mera QR bhej do Rizwan ko (500 rupaye)": who gets the payment QR, and the amount if one was said. */
-data class QrRequest(val contact: String, val amountRupees: Long?)
+data class QrRequest(val contact: String, val amountRupees: Long?, val includeHisab: Boolean = false)
 
 /** "Jalal bhai ko UPI ID bhej do (Paytm wala)": who, and which saved ID if it was named. */
-data class UpiRequest(val contact: String, val label: String?, val amountRupees: Long?)
+data class UpiRequest(val contact: String, val label: String?, val amountRupees: Long?, val includeHisab: Boolean = false)
+
+/** "Anand ko aaj jo PDF bheja hai uska hisaab jodo": contact and optional extra charge per passenger. */
+data class TicketHisabRequest(val contact: String, val extraPerPassenger: Long? = null)
 
 /**
  * Sharing R Travels' payment details on WhatsApp by voice: the saved payment QR photo, or one of several saved
@@ -29,11 +32,15 @@ object PaymentShare {
     private val FILLER = setOf(
         "mera", "meri", "mere", "apna", "apni", "payment", "code", "id", "aaidi", "wala", "vala", "ka", "ki", "ke", "bhi", "zara", "jara",
         "seema", "please", "plz", "abhi", "jaldi", "do", "de", "dena", "karo", "whatsapp", "par", "pe", "on",
+        "hisab", "hisaab", "saath", "sath", "aur", "and", "er",
         "मेरा", "मेरी", "मेरे", "अपना", "पेमेंट", "कोड", "आईडी", "वाला", "का", "की", "के", "भी", "ज़रा", "सीमा", "अभी", "दो", "दे", "देना", "करो",
-        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা", "আমার", "তোমার", "পাতা", "ওয়ালা", "তো", "paytm", "phonepe", "gpay", "pe", "पेटीएम", "फोनपे", "फ़ोनपे", "वाला", "वाली",
+        "हिसाब", "साथ", "और",
+        "व्हाट्सएप", "पर", "पे", "আমার", "সীমা", "আমার", "তোমার", "পাতা", "ওয়ালা", "তো", "হিসাব", "সাথে", "paytm", "phonepe", "gpay", "pe", "पेटीएम", "फोनपे", "फ़ोनपे", "वाला", "वाली",
     )
 
     private fun hasWord(text: String, pattern: String) = Regex("(?<![\\p{L}\\p{M}])$pattern", RegexOption.IGNORE_CASE).containsMatchIn(text)
+
+    fun hasHisab(text: String): Boolean = Regex("(?<![\\p{L}\\p{M}])(?:hisaab|hisab|हिसाब|হিসাব)(?![\\p{L}\\p{M}])", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
     /** The amount said in rupees ("500 rupaye", "₹1,200", "हज़ार रुपए", "do hazaar", "डेढ़ हज़ार"), or null. */
     fun amount(text: String): Long? {
@@ -82,7 +89,7 @@ object PaymentShare {
      */
     fun qrRequest(text: String): QrRequest? {
         if (!hasWord(text, QR) || !hasWord(text, SEND) || text.length > 200) return null
-        return QrRequest(contactOf(text).orEmpty(), amount(text))
+        return QrRequest(contactOf(text).orEmpty(), amount(text), hasHisab(text))
     }
 
     /**
@@ -126,7 +133,22 @@ object PaymentShare {
         if (!hasWord(text, UPI) || !hasWord(text, SEND) || text.length > 200) return null
         val label = pick(saved, text)?.label
         val withoutLabel = label?.let { l -> text.replace(Regex(Regex.escape(l), RegexOption.IGNORE_CASE), " ") } ?: text
-        return UpiRequest(contactOf(withoutLabel).orEmpty(), label, amount(text))
+        return UpiRequest(contactOf(withoutLabel).orEmpty(), label, amount(text), hasHisab(text))
+    }
+
+    /** "Anand ko aaj jo PDF bheja hai uska hisaab jodo" */
+    fun ticketPdfHisabRequest(text: String): TicketHisabRequest? {
+        val t = text.lowercase()
+        val hasPdfOrTicket = t.contains("pdf") || t.contains("पीडीएफ") || t.contains("পিডিএফ") ||
+            t.contains("ticket") || t.contains("टिकट") || t.contains("টিকিট")
+        val withHisab = hasHisab(text)
+        val hasJod = t.contains("jod") || t.contains("जोड़") || t.contains("जोड") ||
+            t.contains("add") || t.contains("प्लस") || t.contains("plus") || t.contains("योग")
+        if (!hasPdfOrTicket || !withHisab || !hasJod || text.length > 250) return null
+        val who = contactOf(text)?.trim() ?: return null
+        if (who.isBlank()) return null
+        val extra = amount(text)
+        return TicketHisabRequest(who, extra)
     }
 
     /** The saved ID a reply names ("Paytm wala", "फोनपे भेज दो", "pehla"), or null. */
@@ -162,15 +184,36 @@ object PaymentShare {
     }
 
     /** The QR's WhatsApp caption. */
-    fun qrCaption(amountRupees: Long?): String = buildString {
-        append("💳 *R Travels - Payment QR*\nPlease scan this QR code to make the payment.")
+    fun qrCaption(amountRupees: Long?, contactName: String = "", balancePaise: Long? = null): String = buildString {
+        if (contactName.isNotBlank() || (balancePaise != null && balancePaise > 0)) {
+            append("💳 *R Travels - Payment QR*\n")
+            if (contactName.isNotBlank()) append("*Customer:* $contactName\n")
+            if (balancePaise != null && balancePaise > 0) append("*Pending Hisab / Bakaya:* ₹${balancePaise / 100}\n")
+            append("Please scan this QR code to make the payment.")
+        } else {
+            append("💳 *R Travels - Payment QR*\nPlease scan this QR code to make the payment.")
+        }
         amountRupees?.let { append("\n*Amount:* ₹$it") }
     }
 
     /** The UPI message sent on WhatsApp. */
-    fun upiMessage(entry: UpiEntry, payeeName: String, amountRupees: Long?): String = buildString {
-        append("💳 *R Travels - Payment Details*\n*UPI ID:* ${entry.upiId}")
-        if (payeeName.isNotBlank()) append("\n*Name:* $payeeName")
+    fun upiMessage(
+        entry: UpiEntry,
+        payeeName: String,
+        amountRupees: Long?,
+        contactName: String = "",
+        balancePaise: Long? = null,
+    ): String = buildString {
+        if (contactName.isNotBlank() || (balancePaise != null && balancePaise > 0)) {
+            append("💳 *R Travels - Payment Details*\n")
+            if (contactName.isNotBlank()) append("*Customer:* $contactName\n")
+            if (balancePaise != null && balancePaise > 0) append("*Pending Hisab / Bakaya:* ₹${balancePaise / 100}\n")
+            append("*UPI ID:* ${entry.upiId}")
+            if (payeeName.isNotBlank()) append("\n*Name:* $payeeName")
+        } else {
+            append("💳 *R Travels - Payment Details*\n*UPI ID:* ${entry.upiId}")
+            if (payeeName.isNotBlank()) append("\n*Name:* $payeeName")
+        }
         amountRupees?.let { append("\n*Amount:* ₹$it") }
     }
 
