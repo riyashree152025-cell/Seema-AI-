@@ -14,6 +14,7 @@ enum class SecretId(val storageKey: String, val displayName: String, val helpUrl
     OLLAMA_ENDPOINT("ollama_endpoint", "Ollama Host (PC Local AI)", ""),
     PC_SYNC_ENDPOINT("pc_sync_endpoint", "PC / VPS Bridge URL", ""),
     PC_SYNC_TOKEN("pc_sync_token", "PC / VPS Bridge Secret Token", ""),
+    PC_REMOTE_ENDPOINT("pc_remote_endpoint", "MONA PC Remote / Tunnel URL", ""),
     /** "SEEMA FIND <this word>" by SMS from any phone makes this phone ring and send its location. */
     FIND_PHONE_WORD("find_phone_word", "Phone-find secret word (SMS: SEEMA FIND <word>)", ""),
     /** The password the nightly automatic backup (data + API keys) is locked with. */

@@ -194,7 +194,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
                     com.raju.aiassistant.domain.rail.RailResult.NotConfigured -> AiResult.Failure(com.raju.aiassistant.domain.ai.FailureKind.NOT_CONFIGURED, "No key saved.")
                 }
                 id == SecretId.CARTESIA_API_KEY -> testCartesia(key)
-                id == SecretId.PC_SYNC_ENDPOINT || id == SecretId.PC_SYNC_TOKEN -> testPcSync()
+                id == SecretId.PC_SYNC_ENDPOINT || id == SecretId.PC_REMOTE_ENDPOINT || id == SecretId.PC_SYNC_TOKEN -> testPcSync()
                 // Half a second of silence: a real request that costs next to nothing and checks the key.
                 id == SecretId.DEEPGRAM_API_KEY -> when (val r = DeepgramClient(c.http, key).transcribe(com.raju.aiassistant.core.audio.pcm16ToWav(ByteArray(16_000), 16_000), "nova-3", "hi")) {
                     is AiResult.Success -> AiResult.Success("Connected — Deepgram can now listen (Speech input).")
@@ -257,6 +257,30 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     /** The PC companion's status, through the same guarded client sync uses (no token over plain http). */
     private suspend fun testPcSync(): AiResult<String> = c.pcSyncClient.checkStatus()
+
+    /** Test connection to MONA PC companion across local and remote tunnel endpoints. */
+    fun testMonaBridge() {
+        viewModelScope.launch {
+            setStatus(SecretId.PC_SYNC_ENDPOINT, "Testing…", false, busy = true)
+            setStatus(SecretId.PC_REMOTE_ENDPOINT, "Testing…", false, busy = true)
+            setStatus(SecretId.PC_SYNC_TOKEN, "Testing…", false, busy = true)
+            val result = testPcSync()
+            val token = c.secureKeyStore.get(SecretId.PC_SYNC_TOKEN).orEmpty()
+            when (result) {
+                is AiResult.Success -> {
+                    setStatus(SecretId.PC_SYNC_ENDPOINT, result.value, false, busy = false)
+                    setStatus(SecretId.PC_REMOTE_ENDPOINT, result.value, false, busy = false)
+                    setStatus(SecretId.PC_SYNC_TOKEN, result.value, false, busy = false)
+                }
+                is AiResult.Failure -> {
+                    val sanitized = redactSecrets(result.message, token)
+                    setStatus(SecretId.PC_SYNC_ENDPOINT, sanitized, true, busy = false)
+                    setStatus(SecretId.PC_REMOTE_ENDPOINT, sanitized, true, busy = false)
+                    setStatus(SecretId.PC_SYNC_TOKEN, sanitized, true, busy = false)
+                }
+            }
+        }
+    }
 
     private suspend fun testCartesia(key: String): AiResult<String> {
         val client = CartesiaClient(c.http, key)

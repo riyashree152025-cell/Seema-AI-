@@ -345,7 +345,8 @@ fun SettingsScreen(
                 AutomationScreen(
                     s = s,
                     viewModel = viewModel,
-                    onBack = { currentScreen = "menu" }
+                    onBack = { currentScreen = "menu" },
+                    secrets = state.secrets,
                 )
             }
             "system" -> {
@@ -2511,6 +2512,7 @@ fun AutomationScreen(
     s: UserSettings,
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
+    secrets: Map<SecretId, SecretStatus> = emptyMap(),
 ) {
     Column(
         modifier = Modifier
@@ -2561,6 +2563,9 @@ fun AutomationScreen(
                 }
             }
         }
+
+        // PC & VPS Remote Bridge (MONA) configuration
+        MonaPcBridgeCard(secrets = secrets, viewModel = viewModel)
     }
 }
 
@@ -2586,8 +2591,243 @@ fun SystemScreen(
             Text("System Integration", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White, fontSize = 19.sp))
         }
 
+        // PC & VPS Remote Bridge (MONA) configuration
+        MonaPcBridgeCard(secrets = secrets, viewModel = viewModel)
+
         // The real check-up (was a fixed "100% Online" card that checked nothing): every permission,
         // role, service and key Seema needs, with a button to fix each, plus mic and voice tests.
         DiagnosePanel(secrets, wakeWord = s.wakeWord)
+    }
+}
+
+@Composable
+fun MonaPcBridgeCard(
+    secrets: Map<SecretId, SecretStatus>,
+    viewModel: SettingsViewModel,
+) {
+    val localStatus = secrets[SecretId.PC_SYNC_ENDPOINT] ?: SecretStatus()
+    val remoteStatus = secrets[SecretId.PC_REMOTE_ENDPOINT] ?: SecretStatus()
+    val tokenStatus = secrets[SecretId.PC_SYNC_TOKEN] ?: SecretStatus()
+
+    var localUrlInput by remember { mutableStateOf("") }
+    var remoteUrlInput by remember { mutableStateOf("") }
+    var tokenInput by remember { mutableStateOf("") }
+    var tokenVisible by remember { mutableStateOf(false) }
+
+    val isBusy = localStatus.busy || remoteStatus.busy || tokenStatus.busy
+    val statusMessage = localStatus.message ?: remoteStatus.message ?: tokenStatus.message
+    val isError = localStatus.isError || remoteStatus.isError || tokenStatus.isError
+    val isAnyConfigured = localStatus.configured || remoteStatus.configured || tokenStatus.configured
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF081730))
+            .border(1.2.dp, Color(0xFF16345C), RoundedCornerShape(18.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF0D2847)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Storage,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "PC & VPS Remote Bridge (MONA)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.5.sp
+                    )
+                    Text(
+                        "PC Apps, Cursor, System Stats & Automation",
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            // Connection Status Badge
+            if (isBusy) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFF00E5FF),
+                        trackColor = Color(0xFF0D2847)
+                    )
+                    Text("Testing MONA PC Connection…", color = Color(0xFF00E5FF), fontSize = 13.sp)
+                }
+            } else if (!statusMessage.isNullOrBlank()) {
+                val badgeBg = if (!isError) Color(0xFF003816) else Color(0xFF381010)
+                val badgeBorder = if (!isError) Color(0xFF00E676) else Color(0xFFFF5252)
+                val badgeText = if (!isError) Color(0xFF69F0AE) else Color(0xFFFF8A80)
+                val badgeIcon = if (!isError) Icons.Filled.CheckCircle else Icons.Filled.Info
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(badgeBg)
+                        .border(1.dp, badgeBorder, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(badgeIcon, contentDescription = null, tint = badgeBorder, modifier = Modifier.size(18.dp))
+                    Text(
+                        statusMessage,
+                        color = badgeText,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else if (isAnyConfigured) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0D2847))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                    Text(
+                        "Configured (Tap \"Test PC Connection\" to verify)",
+                        color = Color(0xFF00E5FF),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            // Input 1: PC Local Bridge URL
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("PC Local Bridge URL", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    if (localStatus.configured) {
+                        Text(localStatus.maskedValue, color = Color(0xFF00E5FF), fontSize = 12.5.sp)
+                    }
+                }
+                OutlinedTextField(
+                    value = localUrlInput,
+                    onValueChange = { localUrlInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Local Bridge URL (e.g., http://192.168.1.15:11435)") },
+                    singleLine = true,
+                )
+                Text("Home Wi-Fi / LAN address or USB ADB reverse (127.0.0.1:11435)", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            }
+
+            // Input 2: Remote / Tunnel URL
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Remote / Tunnel URL (Optional)", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    if (remoteStatus.configured) {
+                        Text(remoteStatus.maskedValue, color = Color(0xFF00E5FF), fontSize = 12.5.sp)
+                    }
+                }
+                OutlinedTextField(
+                    value = remoteUrlInput,
+                    onValueChange = { remoteUrlInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Remote / Tunnel URL (e.g., https://xxx.trycloudflare.com)") },
+                    singleLine = true,
+                )
+                Text("Cloudflare Tunnel, Tailscale (*.ts.net), or VPS for 4G/5G mobile data", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            }
+
+            // Input 3: Bridge Secret Token
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Bridge Secret Token", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    if (tokenStatus.configured) {
+                        Text("••••••••", color = Color(0xFF00E5FF), fontSize = 12.5.sp)
+                    }
+                }
+                OutlinedTextField(
+                    value = tokenInput,
+                    onValueChange = { tokenInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Bridge Secret Token") },
+                    singleLine = true,
+                    visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                            Icon(
+                                if (tokenVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = null,
+                                tint = Color(0xFF00E5FF)
+                            )
+                        }
+                    }
+                )
+                Text("From ~/.seema_ai/companion_config.json on your PC", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            }
+
+            // Buttons: Save & Test Connection
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.testMonaBridge() },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    enabled = isAnyConfigured && !isBusy,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(if (isBusy) "Testing…" else "Test PC Connection", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                val hasAnyInput = localUrlInput.isNotBlank() || remoteUrlInput.isNotBlank() || tokenInput.isNotBlank()
+                Button(
+                    onClick = {
+                        if (localUrlInput.isNotBlank()) {
+                            viewModel.saveSecret(SecretId.PC_SYNC_ENDPOINT, localUrlInput.trim())
+                            localUrlInput = ""
+                        }
+                        if (remoteUrlInput.isNotBlank()) {
+                            viewModel.saveSecret(SecretId.PC_REMOTE_ENDPOINT, remoteUrlInput.trim())
+                            remoteUrlInput = ""
+                        }
+                        if (tokenInput.isNotBlank()) {
+                            viewModel.saveSecret(SecretId.PC_SYNC_TOKEN, tokenInput.trim())
+                            tokenInput = ""
+                            tokenVisible = false
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    enabled = hasAnyInput && !isBusy,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text("Save", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
