@@ -309,6 +309,14 @@ class AssistantEngine(
     private val presence: PresenceStore = InMemoryPresenceStore(),
     /** The PC / VPS bridge: sends the companion's action and params, says what it answered. */
     private val remoteBridge: suspend (String, Map<String, String>) -> com.raju.aiassistant.domain.remote.RemoteResult = { _, _ -> com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured },
+    /** MONA PC autonomous task runner for open-ended, multi-step desktop tasks. */
+    private val remoteAutonomousTask: suspend (goal: String, sessionId: String, input: String?) -> com.raju.aiassistant.domain.remote.RemoteResult = { goal, session, input ->
+        remoteBridge("autonomous_task", buildMap {
+            put("goal", goal)
+            put("session_id", session)
+            input?.let { put("input", it) }
+        })
+    },
     /** Messages that can be answered from their notification (newest first), and the sender for one of them. */
     private val replyTargets: () -> List<com.raju.aiassistant.domain.notify.ReplyTarget> = { emptyList() },
     private val sendNotificationReply: (key: String, text: String) -> Boolean = { _, _ -> false },
@@ -457,6 +465,11 @@ class AssistantEngine(
     private var heldJob: Job? = null
     /** The model's reply text for this turn was spoken (so a search needs no "one second…"). */
     private var replySpoken = false
+    /** Active MONA PC autonomous task session waiting for user input. */
+    @Volatile private var activePcTaskId: String? = null
+    @Volatile private var activePcTaskGoal: String? = null
+    @Volatile private var activePcTaskUntil = 0L
+    private val PC_TASK_SESSION_TIMEOUT_MS = 60_000L
 
     /** Loads saved chat history into the transcript (call once at startup). */
     suspend fun load() {
@@ -485,6 +498,30 @@ class AssistantEngine(
             lastUserText = trimmed
             job = scope.launch { bookingTurn(trimmed, speak = fromVoice || settings.value.autoSpeakReplies) }
             return
+        }
+        // An open MONA PC autonomous task session waiting for follow-up input
+        val pcSessId = activePcTaskId
+        val pcSessGoal = activePcTaskGoal
+        if (pcSessId != null && clock() < activePcTaskUntil && !isCancelCommand(trimmed)) {
+            followUpUntil = clock() + FOLLOW_UP_MS
+            leaveSleep()
+            lastActivityAt = clock()
+            cancelWork()
+            lastUserText = trimmed
+            job = scope.launch {
+                continuePcTask(goal = pcSessGoal ?: trimmed, sessionId = pcSessId, input = trimmed, speak = fromVoice || settings.value.autoSpeakReplies)
+            }
+            return
+        } else if (pcSessId != null && (clock() >= activePcTaskUntil || isCancelCommand(trimmed))) {
+            activePcTaskId = null
+            activePcTaskGoal = null
+            if (isCancelCommand(trimmed)) {
+                cancelWork()
+                job = scope.launch {
+                    say(phrase(lang(), "ठीक है, PC टास्क रद्द कर दिया।", "ঠিক আছে, পিসি টাস্ক বাতিল করে দিয়েছি।"))
+                }
+                return
+            }
         }
         followUpUntil = clock() + FOLLOW_UP_MS
         leaveSleep()
@@ -4288,6 +4325,11 @@ class AssistantEngine(
         if (c is com.raju.aiassistant.domain.remote.RemoteCommand.OpenApp) {
             com.raju.aiassistant.domain.remote.RemoteBridge.unknownApp(c, bn)?.let { return cancelledLine(action, speak, it) }
         }
+        if (c is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask) {
+            val sessId = c.sessionId.ifEmpty { "pc_task_${clock()}" }
+            continuePcTask(goal = c.goal, sessionId = sessId, input = c.input, speak = speak)
+            return
+        }
         if (c is com.raju.aiassistant.domain.remote.RemoteCommand.Instruction) {
             val ok = confirmScreenAction("PC / VPS", com.raju.aiassistant.domain.remote.RemoteBridge.confirmQuestion(c, bn), speak)
             if (!ok) return cancelledLine(action, speak, phrase(lang(), "ठीक है, नहीं भेजी।", "ঠিক আছে, পাঠাইনি।"))
@@ -4302,6 +4344,72 @@ class AssistantEngine(
             report(action, ActionStatus.FAILED, line)
             if (speak) say(line)
         }
+    }
+
+    private suspend fun continuePcTask(goal: String, sessionId: String, input: String?, speak: Boolean) {
+        val bn = lang() == SeemaLanguage.BENGALI
+        _state.value = AssistantState.Thinking
+        val result = withTimeoutOrNull(35_000L) {
+            runCatching {
+                remoteAutonomousTask(goal, sessionId, input)
+            }.getOrNull()
+        } ?: com.raju.aiassistant.domain.remote.RemoteResult.Unreachable
+
+        handlePcTaskResult(goal = goal, sessionId = sessionId, result = result, speak = speak, bn = bn)
+    }
+
+    private suspend fun handlePcTaskResult(
+        goal: String,
+        sessionId: String,
+        result: com.raju.aiassistant.domain.remote.RemoteResult,
+        speak: Boolean,
+        bn: Boolean,
+    ) {
+        val action = AssistantAction.Remote(
+            com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask(
+                com.raju.aiassistant.domain.remote.RemoteTarget.PC, goal, sessionId
+            )
+        )
+        when (result) {
+            is com.raju.aiassistant.domain.remote.RemoteResult.NeedsInput -> {
+                activePcTaskId = result.sessionId.ifEmpty { sessionId }
+                activePcTaskGoal = goal
+                activePcTaskUntil = clock() + PC_TASK_SESSION_TIMEOUT_MS
+                followUpUntil = maxOf(followUpUntil, clock() + FOLLOW_UP_MS)
+                _voiceSession.value = true
+                session.openAfterReply()
+                informational(action, result.question, speak)
+                if (speak && voice.isAvailable() && !voice.listening.value) {
+                    listen()
+                }
+            }
+            is com.raju.aiassistant.domain.remote.RemoteResult.Done -> {
+                activePcTaskId = null
+                activePcTaskGoal = null
+                val message = result.fields["message"]
+                    ?: phrase(lang(), "PC पर टास्क पूरा हो गया।", "পিসিতে টাস্ক সম্পন্ন হয়েছে।")
+                informational(action, message, speak)
+            }
+            else -> {
+                activePcTaskId = null
+                activePcTaskGoal = null
+                val line = com.raju.aiassistant.domain.remote.RemoteBridge.spoken(
+                    com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask(
+                        com.raju.aiassistant.domain.remote.RemoteTarget.PC, goal, sessionId
+                    ),
+                    result,
+                    bn
+                )
+                if (speak) say(line)
+                else informational(action, line, speak = false)
+            }
+        }
+    }
+
+    private fun isCancelCommand(text: String): Boolean {
+        val t = text.trim().lowercase().trimEnd('.', '!', '?', '।')
+        return t in listOf("cancel", "cancel karo", "रद्द करो", "रहने दो", "rehne do", "chup raho", "বাতিল করো", "থাক", "mat karo", "band karo")
+            || t.startsWith("cancel") || t.startsWith("रद्द")
     }
 
     /** "Kal 8 baje Amit ko message bhejna ki …": one reminder; when it comes, the WhatsApp goes through the confirm. */

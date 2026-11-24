@@ -166,4 +166,55 @@ class PcSyncClientTest {
         val fields = (result as RemoteResult.Done).fields
         assertEquals("MONA-PC", fields["hostname"])
     }
+
+    @Test
+    fun sendAutonomousTaskReturnsNeedsInputWhenServerRequestsClarification() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"status":"needs_input","question":"WhatsApp खुला है, किस नाम या नंबर पर भेजना है?","session_id":"sess_101"}""")
+        )
+
+        val secrets = mapOf(
+            SecretId.PC_SYNC_ENDPOINT to serverUrl,
+            SecretId.PC_SYNC_TOKEN to "action_token_456"
+        )
+        val client = PcSyncClient(http, secretLookup = { id -> secrets[id] })
+        val result = client.sendAutonomousTask("find tickets and send on whatsapp", "sess_101")
+
+        assertTrue(result is RemoteResult.NeedsInput)
+        val needsInput = result as RemoteResult.NeedsInput
+        assertEquals("WhatsApp खुला है, किस नाम या नंबर पर भेजना है?", needsInput.question)
+        assertEquals("sess_101", needsInput.sessionId)
+
+        val req = server.takeRequest()
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"goal\":\"find tickets and send on whatsapp\""))
+        assertTrue(body.contains("\"session_id\":\"sess_101\""))
+    }
+
+    @Test
+    fun sendAutonomousTaskSendsUserReplyWithSameSessionIdAndReturnsDone() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"status":"completed","message":"टिकट अमित को व्हाट्सएप पर भेज दिया गया है।","session_id":"sess_101"}""")
+        )
+
+        val secrets = mapOf(
+            SecretId.PC_SYNC_ENDPOINT to serverUrl,
+            SecretId.PC_SYNC_TOKEN to "action_token_456"
+        )
+        val client = PcSyncClient(http, secretLookup = { id -> secrets[id] })
+        val result = client.sendAutonomousTask("find tickets and send on whatsapp", "sess_101", input = "Amit Sharma")
+
+        assertTrue(result is RemoteResult.Done)
+        val done = result as RemoteResult.Done
+        assertEquals("टिकट अमित को व्हाट्सएप पर भेज दिया गया है।", done.fields["message"])
+
+        val req = server.takeRequest()
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"session_id\":\"sess_101\""))
+        assertTrue(body.contains("\"input\":\"Amit Sharma\""))
+    }
 }

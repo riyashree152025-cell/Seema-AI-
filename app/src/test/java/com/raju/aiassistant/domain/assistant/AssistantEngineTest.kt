@@ -377,6 +377,36 @@ class AssistantEngineTest {
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("Settings"))
     }
 
+    @Test
+    fun pcAutonomousTaskHandlesNeedsInputAndSendsReplyWithSameSession() = runTest {
+        val e = engine()
+        // First turn: MONA needs input
+        remoteAnswer = com.raju.aiassistant.domain.remote.RemoteResult.NeedsInput(
+            question = "WhatsApp खुला है, किस नाम या नंबर पर भेजना है?",
+            sessionId = "sess_task_42"
+        )
+        e.submit("PC par aaj ke ticket dhoondh kar WhatsApp par bhej do", fromVoice = true)
+        settle()
+
+        assertEquals("autonomous_task", remoteSent.last().first)
+        val firstParams = remoteSent.last().second
+        assertTrue(firstParams["goal"]!!.contains("ticket"))
+        assertEquals("WhatsApp खुला है, किस नाम या नंबर पर भेजना है?", speaker.spoken.last())
+
+        // Second turn: User answers "Amit Sharma" -> sent to MONA with same session_id
+        remoteAnswer = com.raju.aiassistant.domain.remote.RemoteResult.Done(
+            mapOf("message" to "टिकट अमित को व्हाट्सएप पर भेज दिया गया है।")
+        )
+        e.submit("Amit Sharma", fromVoice = true)
+        settle()
+
+        assertEquals("autonomous_task", remoteSent.last().first)
+        val secondParams = remoteSent.last().second
+        assertEquals("sess_task_42", secondParams["session_id"])
+        assertEquals("Amit Sharma", secondParams["input"])
+        assertEquals("टिकट अमित को व्हाट्सएप पर भेज दिया गया है।", speaker.spoken.last())
+    }
+
     /** A SIM call is up (answered). */
     private var inCall = false
 

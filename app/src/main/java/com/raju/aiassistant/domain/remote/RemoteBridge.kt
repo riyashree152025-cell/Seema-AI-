@@ -15,12 +15,21 @@ sealed interface RemoteCommand {
     data class OpenApp(override val target: RemoteTarget, val app: String) : RemoteCommand
     data class Status(override val target: RemoteTarget) : RemoteCommand
     data class Instruction(override val target: RemoteTarget, val text: String) : RemoteCommand
+    /** Multi-step autonomous task or screen action executed by MONA on PC. */
+    data class AutonomousTask(
+        override val target: RemoteTarget,
+        val goal: String,
+        val sessionId: String = "",
+        val input: String? = null,
+    ) : RemoteCommand
 }
 
 /** What the companion said. */
 sealed interface RemoteResult {
     /** [fields]: the reply's simple values (hostname, os, load_1m, disk_free_gb …). */
     data class Done(val fields: Map<String, String> = emptyMap()) : RemoteResult
+    /** When MONA PC autonomous task needs follow-up user clarification/input. */
+    data class NeedsInput(val question: String, val sessionId: String) : RemoteResult
     /** No bridge address saved, or it is plain http on the Wi-Fi. */
     data object NotConfigured : RemoteResult
     /** Wrong token. */
@@ -73,6 +82,18 @@ object RemoteBridge {
         "^(?:seema[, ]+)?(?:$PC|$VPS)\\s*(?:ko|को|কে|তে|এ)?\\s+(?:command|कमांड|কমান্ড|instruction|निर्देश)\\s+(?:bhejo|bhej do|भेजो|भेज दो|পাঠাও|পাঠিয়ে দাও)\\s*[:,\\-–]?\\s*(.{1,500})$",
         RegexOption.IGNORE_CASE,
     )
+    private val TASK = Regex(
+        "^(?:seema[, ]+)?(?:mere\\s+|मेरे\\s+|আমার\\s+)?(?:$PC|$VPS)\\s*(?:par|pe|ko|mein|me|पर|पे|को|में|তে|এ)?\\s*(?:task|টাস্ক|কাজ|काम)\\s*(?:karo|kar do|bhejo|करो|कर दो|পাঠাও)?\\s*[:,\\-–]?\\s*(.{1,500})$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val SCREEN = Regex(
+        "^(?:seema[, ]+)?(?:mere\\s+|मेरे\\s+|আমার\\s+)?(?:$PC|$VPS)\\s*(?:ki|ka|par|pe|mein|me|पर|पे|में|এর)?\\s*(?:screen|स्क्रीन|স্ক্রিন)\\s*(?:par\\s+kya\\s+(?:hai|chal\\s+raha\\s+hai)|check\\s+karo|check\\s+kar\\s+do|dekho|batao|dekhiye|चेक करो|देखो|बताओ|দেখো|কী আছে)(?:\\s+(?:hai|kya|है|क्या))?$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val AUTONOMOUS_GOAL = Regex(
+        "^(?:seema[, ]+)?(?:mere\\s+|मेरे\\s+|আমার\\s+)?(?:$PC|$VPS)\\s*(?:par|pe|mein|me|se|पर|पे|में|से|তে|এ)?\\s+(.+?(?:dhoondh|find|search|khoj|ticket|whatsapp|telegram|dhundo|ढूंढ|खोज|टिकट|হোয়াটসঅ্যাপ|টেলিগ্রাম).+?)$",
+        RegexOption.IGNORE_CASE,
+    )
 
     /** The machine named first ("PC ko command bhejo: server restart karo" is for the PC). */
     private fun targetOf(text: String): RemoteTarget {
@@ -94,10 +115,21 @@ object RemoteBridge {
             val text = m.groupValues[1].trim().trim('"', '\'', '“', '”')
             return if (text.isBlank()) null else RemoteCommand.Instruction(targetOf(t), text)
         }
+        TASK.matchEntire(t)?.let { m ->
+            val goal = m.groupValues[1].trim().trim('"', '\'', '“', '”')
+            return if (goal.isBlank()) null else RemoteCommand.AutonomousTask(targetOf(t), goal = goal)
+        }
+        if (SCREEN.matches(t)) return RemoteCommand.AutonomousTask(targetOf(t), goal = t)
         if (STATUS.matches(t)) return RemoteCommand.Status(targetOf(t))
         OPEN.matchEntire(t)?.let { m ->
             val spoken = m.groupValues[1].trim()
             return RemoteCommand.OpenApp(targetOf(t), appKey(spoken) ?: spoken.lowercase())
+        }
+        AUTONOMOUS_GOAL.matchEntire(t)?.let { m ->
+            val goal = m.groupValues[1].trim()
+            if (!OPEN.matches(t) && !STATUS.matches(t)) {
+                return RemoteCommand.AutonomousTask(targetOf(t), goal = goal)
+            }
         }
         DIRECT_ACTION.matchEntire(t)?.let { m ->
             val action = m.groupValues[1].trim()
@@ -113,6 +145,12 @@ object RemoteBridge {
         is RemoteCommand.OpenApp -> "open_app" to mapOf("name" to command.app)
         is RemoteCommand.Status -> "system_info" to mapOf("target" to command.target.name.lowercase())
         is RemoteCommand.Instruction -> "instruction" to mapOf("text" to command.text, "target" to command.target.name.lowercase())
+        is RemoteCommand.AutonomousTask -> "autonomous_task" to buildMap {
+            put("goal", command.goal)
+            put("session_id", command.sessionId)
+            command.input?.let { put("input", it) }
+            put("target", command.target.name.lowercase())
+        }
     }
 
     private fun name(t: RemoteTarget, bengali: Boolean) = when (t) {
@@ -134,11 +172,15 @@ object RemoteBridge {
     fun spoken(c: RemoteCommand, r: RemoteResult, bengali: Boolean): String {
         val n = name(c.target, bengali)
         return when (r) {
+            is RemoteResult.NeedsInput -> r.question
             RemoteResult.NotConfigured -> if (bengali) "$n ব্রিজ এখনো সেট করা নেই — Settings-এ PC / VPS Bridge URL আর Token দাও।" else "$n ब्रिज अभी सेट नहीं है — Settings में PC / VPS Bridge URL और Token डालिए।"
             RemoteResult.Unauthorized -> if (bengali) "$n টোকেন মিলছে না, Settings-এ টোকেনটা দেখে নাও।" else "$n का टोकन मेल नहीं खा रहा, Settings में टोकन देख लीजिए।"
             RemoteResult.Refused -> if (bengali) "$n এটা করতে দিল না — কম্প্যানিয়নের অনুমতির তালিকায় নেই।" else "$n ने यह करने नहीं दिया — कम्पैनियन की इजाज़त वाली सूची में नहीं है।"
             RemoteResult.Unreachable -> if (bengali) "$n-এর সাথে যোগাযোগ হচ্ছে না, ওটা চালু আছে তো?" else "$n से संपर्क नहीं हो पा रहा, वो चालू है ना?"
             is RemoteResult.Done -> when (c) {
+                is RemoteCommand.AutonomousTask -> {
+                    r.fields["message"] ?: if (bengali) "$n-এ কাজ সম্পন্ন হয়েছে।" else "$n पर टास्क पूरा हो गया।"
+                }
                 is RemoteCommand.OpenApp -> if (bengali) "$n-এ ${c.app.replaceFirstChar { it.uppercase() }} খুলে দিয়েছি।" else "$n पर ${c.app.replaceFirstChar { it.uppercase() }} खोल दिया।"
                 is RemoteCommand.Instruction -> if (bengali) "কমান্ডটা $n-এ পাঠিয়ে দিয়েছি, ওখানকার টুল এটা তুলে নেবে।" else "कमांड $n पर भेज दी, वहाँ के टूल इसे उठा लेंगे।"
                 is RemoteCommand.Status -> {

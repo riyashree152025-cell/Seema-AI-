@@ -61,4 +61,44 @@ class RemoteBridgeTest {
         assertTrue(RemoteBridge.spoken(status, RemoteResult.Unreachable, bengali = true).contains("সার্ভার"))
         assertEquals("PC पर Cursor खोल दिया।", RemoteBridge.spoken(RemoteCommand.OpenApp(RemoteTarget.PC, "cursor"), RemoteResult.Done(), bengali = false))
     }
+
+    @Test
+    fun autonomousTasksParsingAndSpoken() {
+        // Screen check
+        assertEquals(
+            RemoteCommand.AutonomousTask(RemoteTarget.PC, "PC screen check karo"),
+            RemoteBridge.parse("PC screen check karo")
+        )
+        assertEquals(
+            RemoteCommand.AutonomousTask(RemoteTarget.PC, "PC screen dekho"),
+            RemoteBridge.parse("PC screen dekho")
+        )
+
+        // Open-ended task
+        val task = RemoteBridge.parse("PC par aaj ke ticket dhoondh kar WhatsApp par bhej do")
+        assertTrue(task is RemoteCommand.AutonomousTask)
+        val autoTask = task as RemoteCommand.AutonomousTask
+        assertEquals(RemoteTarget.PC, autoTask.target)
+        assertTrue(autoTask.goal.contains("ticket"))
+        assertTrue(autoTask.goal.contains("WhatsApp"))
+
+        // Explicit task
+        val explicitTask = RemoteBridge.parse("PC par task: tickets find karke WhatsApp par bhejo")
+        assertTrue(explicitTask is RemoteCommand.AutonomousTask)
+        assertEquals("tickets find karke WhatsApp par bhejo", (explicitTask as RemoteCommand.AutonomousTask).goal)
+
+        // NeedsInput spoken
+        val needsInput = RemoteResult.NeedsInput("WhatsApp खुला है, किस नाम या नंबर पर भेजना है?", "sess_123")
+        assertEquals(
+            "WhatsApp खुला है, किस नाम या नंबर पर भेजना है?",
+            RemoteBridge.spoken(autoTask, needsInput, bengali = false)
+        )
+
+        // Done spoken
+        val done = RemoteResult.Done(mapOf("message" to "टिकट भेज दिया गया है।"))
+        assertEquals(
+            "टिकट भेज दिया गया है।",
+            RemoteBridge.spoken(autoTask, done, bengali = false)
+        )
+    }
 }

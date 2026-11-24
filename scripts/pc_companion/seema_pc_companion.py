@@ -94,7 +94,7 @@ def ensure_data_dir():
     if "ollama_url" not in config:
         config["ollama_url"] = OLLAMA_DEFAULT_URL
     if "allowed_actions" not in config:
-        config["allowed_actions"] = ["open_url", "open_app", "system_info", "instruction"]
+        config["allowed_actions"] = ["open_url", "open_app", "system_info", "instruction", "autonomous_task"]
     if "bind_host" not in config:
         config["bind_host"] = DEFAULT_BIND_HOST
 
@@ -289,6 +289,18 @@ class SeemaCompanionHandler(BaseHTTPRequestHandler):
             with open(CONVERSATION_FILE, "w", encoding="utf-8") as f:
                 json.dump(new_messages, f, indent=2, ensure_ascii=False)
             return self._send_json(200, {"success": True, "saved": len(new_messages)})
+
+        elif self.path == "/api/v1/actions/autonomous-task" or self.path == "/actions/autonomous-task":
+            goal = payload.get("goal", "").strip()
+            session_id = payload.get("session_id", "").strip()
+            user_input = payload.get("input", "").strip()
+            entry_text = f"[AUTONOMOUS TASK] {goal} (input: {user_input})" if user_input else f"[AUTONOMOUS TASK] {goal}"
+            queue_instruction(entry_text)
+            return self._send_json(200, {
+                "status": "completed",
+                "message": f"Task '{goal}' processed on PC.",
+                "session_id": session_id
+            })
 
         elif self.path == "/api/v1/actions/pc" or self.path == "/actions/pc":
             action = payload.get("action", "")

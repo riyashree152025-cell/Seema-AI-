@@ -135,10 +135,122 @@ class PcSyncClient(
     }
 
     /**
+     * Executes an autonomous PC task via MONA's /actions/autonomous-task endpoint.
+     * Supports multi-turn interaction when MONA returns status="needs_input".
+     */
+    suspend fun sendAutonomousTask(
+        goal: String,
+        sessionId: String = "pc_task_${System.currentTimeMillis()}",
+        input: String? = null,
+    ): com.raju.aiassistant.domain.remote.RemoteResult = withContext(Dispatchers.IO) {
+        val candidates = getCandidateEndpoints()
+        if (candidates.isEmpty()) return@withContext com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured
+        val token = getToken()
+        val payload = buildJsonObject {
+            put("goal", goal)
+            put("session_id", sessionId)
+            if (!input.isNullOrBlank()) {
+                put("input", input)
+            }
+        }
+        val taskClient = http.newBuilder()
+            .connectTimeout(Duration.ofMillis(5000))
+            .readTimeout(Duration.ofMillis(30000))
+            .build()
+
+        var lastUnauthorized = false
+        var lastRefused = false
+
+        for (base in candidates) {
+            val urls = listOf(
+                "$base/actions/autonomous-task",
+                "$base/api/v1/actions/autonomous-task",
+                "$base/actions/pc",
+                "$base/api/v1/actions/pc"
+            )
+            for (url in urls) {
+                val reqPayload = if (url.endsWith("/actions/pc")) {
+                    buildJsonObject {
+                        put("action", "autonomous_task")
+                        put("params", payload)
+                    }
+                } else {
+                    payload
+                }
+
+                val req = Request.Builder()
+                    .url(url)
+                    .auth(token)
+                    .post(reqPayload.toRequestBody())
+                    .build()
+                try {
+                    taskClient.newCall(req).execute().use { resp ->
+                        when {
+                            resp.isSuccessful -> {
+                                val body = resp.body?.string().orEmpty()
+                                val obj = runCatching { JsonFormat.parseToJsonElement(body) as JsonObject }.getOrNull()
+                                val status = (obj?.get("status") as? JsonPrimitive)?.contentOrNull?.lowercase()
+                                val sessId = (obj?.get("session_id") as? JsonPrimitive)?.contentOrNull ?: sessionId
+
+                                if (status == "needs_input") {
+                                    val question = (obj?.get("question") as? JsonPrimitive)?.contentOrNull
+                                        ?: (obj?.get("message") as? JsonPrimitive)?.contentOrNull
+                                        ?: (obj?.get("prompt") as? JsonPrimitive)?.contentOrNull
+                                        ?: "Please provide more details."
+                                    return@withContext com.raju.aiassistant.domain.remote.RemoteResult.NeedsInput(question = question, sessionId = sessId)
+                                } else {
+                                    val message = (obj?.get("message") as? JsonPrimitive)?.contentOrNull
+                                        ?: (obj?.get("output") as? JsonPrimitive)?.contentOrNull
+                                        ?: (obj?.get("result") as? JsonPrimitive)?.contentOrNull
+                                        ?: (obj?.get("summary") as? JsonPrimitive)?.contentOrNull
+                                        ?: "Task completed on PC."
+                                    val fields = mutableMapOf<String, String>()
+                                    fields["message"] = message
+                                    fields["status"] = status ?: "completed"
+                                    fields["session_id"] = sessId
+                                    obj?.forEach { (k, v) ->
+                                        (v as? JsonPrimitive)?.contentOrNull?.let { fields.putIfAbsent(k, it) }
+                                    }
+                                    return@withContext com.raju.aiassistant.domain.remote.RemoteResult.Done(fields)
+                                }
+                            }
+                            resp.code == 401 -> {
+                                lastUnauthorized = true
+                                return@withContext com.raju.aiassistant.domain.remote.RemoteResult.Unauthorized
+                            }
+                            resp.code == 400 || resp.code == 403 -> {
+                                lastRefused = true
+                            }
+                            resp.code == 404 -> {
+                                // Try next candidate URL
+                            }
+                            else -> {}
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Try next candidate
+                }
+            }
+        }
+
+        when {
+            lastUnauthorized -> com.raju.aiassistant.domain.remote.RemoteResult.Unauthorized
+            lastRefused -> com.raju.aiassistant.domain.remote.RemoteResult.Refused
+            else -> com.raju.aiassistant.domain.remote.RemoteResult.Unreachable
+        }
+    }
+
+    /**
      * The PC / VPS bridge: one action on the companion ("open_app", "system_info", "instruction").
      * Tries local URL first (Wi-Fi), then falls back to remote tunnel URL (mobile data) with token auth.
      */
     suspend fun sendAction(action: String, params: Map<String, String>): com.raju.aiassistant.domain.remote.RemoteResult = withContext(Dispatchers.IO) {
+        if (action == "autonomous_task") {
+            val goal = params["goal"].orEmpty()
+            val sess = params["session_id"].orEmpty().ifEmpty { "pc_task_${System.currentTimeMillis()}" }
+            val input = params["input"]
+            return@withContext sendAutonomousTask(goal, sess, input)
+        }
         val candidates = getCandidateEndpoints()
         if (candidates.isEmpty()) return@withContext com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured
         val token = getToken()

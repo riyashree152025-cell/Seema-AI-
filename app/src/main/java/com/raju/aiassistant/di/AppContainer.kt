@@ -550,6 +550,7 @@ class AppContainer(context: Context) {
             routines = { com.raju.aiassistant.notifications.RoutineStore.all(appContext) },
             recentMessages = { recentNotifications.since(System.currentTimeMillis()) },
             remoteBridge = { action, params -> pcSyncClient.sendAction(action, params) },
+            remoteAutonomousTask = { goal, session, input -> pcSyncClient.sendAutonomousTask(goal, session, input) },
             presence = com.raju.aiassistant.data.prefs.PresencePrefs(appContext),
             saveRoutine = { r -> com.raju.aiassistant.notifications.RoutineStore.save(appContext, r) },
             weatherToday = { weather.briefingLine() },
