@@ -4443,6 +4443,18 @@ class AssistantEngine(
         if (c is com.raju.aiassistant.domain.remote.RemoteCommand.OpenApp) {
             com.raju.aiassistant.domain.remote.RemoteBridge.unknownApp(c, bn)?.let { return cancelledLine(action, speak, it) }
         }
+        if (c is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousAbort) {
+            val sessId = activePcTaskId ?: c.sessionId
+            activePcTaskId = null
+            activePcTaskGoal = null
+            activePcTaskUntil = 0L
+            val (name, params) = com.raju.aiassistant.domain.remote.RemoteBridge.request(c.copy(sessionId = sessId))
+            val result = withTimeoutOrNull(REMOTE_TIMEOUT_MS) { runCatching { remoteBridge(name, params) }.getOrNull() }
+                ?: com.raju.aiassistant.domain.remote.RemoteResult.Done(emptyMap())
+            val line = com.raju.aiassistant.domain.remote.RemoteBridge.spoken(c, result, bn)
+            informational(action, line, speak)
+            return
+        }
         if (c is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask) {
             val sessId = c.sessionId.ifEmpty { "pc_task_${clock()}" }
             continuePcTask(goal = c.goal, sessionId = sessId, input = c.input, speak = speak)

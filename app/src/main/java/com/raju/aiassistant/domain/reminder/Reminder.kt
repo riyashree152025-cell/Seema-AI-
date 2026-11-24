@@ -34,7 +34,8 @@ private val CANCEL_LAST = Regex("^(?:aakhri|akhri|last|pichla|आख़िरी
  * to tomorrow unless a day was said.
  */
 fun parseReminder(text: String, now: LocalDateTime): ReminderCommand? {
-    val t = text.trim().trimEnd('.', '!', '?', '।').replace(Regex("\\s+"), " ")
+    val numConverted = com.raju.aiassistant.domain.language.HindiNumberParser.replaceHindiNumbers(text)
+    val t = numConverted.trim().trimEnd('.', '!', '?', '।').replace(Regex("\\s+"), " ")
     if (t.length > 160) return null
     if (LIST.matches(t)) return ReminderCommand.List
     if (CANCEL_ALL.matches(t)) return ReminderCommand.CancelAll

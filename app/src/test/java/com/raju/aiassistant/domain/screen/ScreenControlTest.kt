@@ -56,6 +56,29 @@ class ScreenControlTest {
     }
 
     @Test
+    fun whatsAppChatWithRupeeOrNumbersIsNotSensitive() {
+        val chatWithRupee = ScreenSnapshot(
+            "com.whatsapp", "WhatsApp",
+            listOf(
+                ScreenElement("Anand Patel", ElementKind.TEXT),
+                ScreenElement("₹", ElementKind.BUTTON, clickable = true, hint = "Attach payment"),
+                ScreenElement("Ticket fair is ₹1250", ElementKind.TEXT),
+                ScreenElement("", ElementKind.INPUT, clickable = true, editable = true, hint = "Message", id = "com.whatsapp:id/entry"),
+            ),
+        )
+        assertNull(SensitiveScreens.reason(chatWithRupee))
+
+        val trueUpiPinScreen = ScreenSnapshot(
+            "com.whatsapp", "WhatsApp",
+            listOf(
+                ScreenElement("ENTER UPI PIN", ElementKind.TEXT),
+                ScreenElement("", ElementKind.INPUT, editable = true, password = true),
+            ),
+        )
+        assertEquals("पासवर्ड वाली स्क्रीन", SensitiveScreens.reason(trueUpiPinScreen))
+    }
+
+    @Test
     fun theAiNeverSeesAPassword() {
         val s = ScreenSnapshot("com.x", "X", listOf(ScreenElement("", ElementKind.INPUT, editable = true, password = true), ScreenElement("Login", ElementKind.BUTTON, clickable = true)))
         val text = s.describeForAi()

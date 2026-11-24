@@ -32,7 +32,50 @@ class IntentRouterTest {
             AssistantAction.LedgerRecord("Rahul", 50000, com.raju.aiassistant.domain.ledger.LedgerKind.GOT),
             IntentRouter.toAction("""{"type":"ledger_add","name":"Rahul","amount":"500","kind":"got"}"""),
         )
+        assertEquals(
+            AssistantAction.LedgerRecord("Anand", 150000, com.raju.aiassistant.domain.ledger.LedgerKind.GAVE),
+            IntentRouter.toAction("""{"type":"ledger_add","name":"Anand","amount":"1500","kind":"lena"}"""),
+        )
         assertNull(IntentRouter.toAction("""{"type":"ledger_add","name":"Rahul"}""")) // incomplete: not done
+
+        // Payment QR & UPI with hisab
+        assertEquals(
+            AssistantAction.SendPaymentQr("Anand Patel", 1250, includeHisab = true),
+            IntentRouter.toAction("""{"type":"send_qr","contact":"Anand Patel","amount":"1250","include_hisab":"true"}"""),
+        )
+        assertEquals(
+            AssistantAction.SendUpiId("Jalal Bhai", "Paytm", 2000, includeHisab = true),
+            IntentRouter.toAction("""{"type":"send_upi","contact":"Jalal Bhai","label":"Paytm","amount":"2000","include_hisab":"true"}"""),
+        )
+
+        // Ticket PDF hisab
+        assertEquals(
+            AssistantAction.TicketPdfHisab("Anand Patel", 100),
+            IntentRouter.toAction("""{"type":"ticket_pdf_hisab","contact":"Anand Patel","extra":"100"}"""),
+        )
+
+        // Remote PC tasks and abort
+        val remoteTaskAction = IntentRouter.toAction("""{"type":"remote_task","goal":"find today's tickets on WhatsApp and send them"}""")
+        assertTrue(remoteTaskAction is AssistantAction.Remote)
+        val remoteTaskCmd = (remoteTaskAction as AssistantAction.Remote).command
+        assertTrue(remoteTaskCmd is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask)
+        assertEquals("find today's tickets on WhatsApp and send them", (remoteTaskCmd as com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask).goal)
+
+        val remoteAbortAction = IntentRouter.toAction("""{"type":"remote_abort"}""")
+        assertTrue(remoteAbortAction is AssistantAction.Remote)
+        assertTrue((remoteAbortAction as AssistantAction.Remote).command is com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousAbort)
+
+        // Read Screen
+        assertEquals(
+            AssistantAction.ReadScreen("What is on screen?"),
+            IntentRouter.toAction("""{"type":"read_screen","question":"What is on screen?"}"""),
+        )
+
+        // Last Call / Call Log
+        assertEquals(
+            AssistantAction.LastCall,
+            IntentRouter.toAction("""{"type":"last_call"}"""),
+        )
     }
 
     @Test

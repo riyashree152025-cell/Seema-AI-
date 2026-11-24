@@ -143,11 +143,9 @@ class VoiceInputManager(private val context: Context, private val log: (String) 
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", com.raju.aiassistant.domain.language.additionalSpeechLanguages(languageTag))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            // Allow 3.5s of comfortable silence so user does not get cut off immediately
-            // End of speech after about a second and a half of quiet (3.5 s added that much to every answer);
-            // no minimum length, so "haan" or "torch jalao" ends as soon as it is said.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            // Allow 2.5s of comfortable silence so user does not get cut off immediately
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
         log("stt start $languageTag")
         muteBeep()

@@ -101,4 +101,21 @@ class RemoteBridgeTest {
             RemoteBridge.spoken(autoTask, done, bengali = false)
         )
     }
+
+    @Test
+    fun autonomousAbortParsingAndRequest() {
+        assertEquals(RemoteCommand.AutonomousAbort(RemoteTarget.PC), RemoteBridge.parse("PC task roko"))
+        assertEquals(RemoteCommand.AutonomousAbort(RemoteTarget.PC), RemoteBridge.parse("PC task stop karo"))
+        assertEquals(RemoteCommand.AutonomousAbort(RemoteTarget.PC), RemoteBridge.parse("टास्क रोको"))
+        assertEquals(RemoteCommand.AutonomousAbort(RemoteTarget.PC), RemoteBridge.parse("task roko"))
+
+        val abortCmd = RemoteCommand.AutonomousAbort(RemoteTarget.PC, sessionId = "sess_456")
+        val (action, params) = RemoteBridge.request(abortCmd)
+        assertEquals("abort_autonomous_task", action)
+        assertEquals("sess_456", params["session_id"])
+        assertEquals("pc", params["target"])
+
+        val doneSpoken = RemoteBridge.spoken(abortCmd, RemoteResult.Done(), bengali = false)
+        assertEquals("PC पर टास्क रोक दिया गया है।", doneSpoken)
+    }
 }

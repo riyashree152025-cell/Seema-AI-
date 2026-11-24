@@ -372,8 +372,11 @@ object WhatsAppScreen {
     /**
      * A prompt that is not part of sending: another app's dialog over WhatsApp, or a WhatsApp dialog
      * (update / permission) with its own buttons and none of the chat or search boxes.
+     * Unrelated incoming heads-up notification banners from systemui are ignored, not treated as interruptions.
      */
     fun isInterruption(s: ScreenSnapshot): Boolean {
+        // Notification banners or status bars from systemui should be ignored, never aborting the flow
+        if (s.packageName == "com.android.systemui") return false
         if (s.packageName in INTERRUPTERS) return true
         if (s.packageName !in PACKAGES) return false
         val dialogButtons = s.elements.any { it.id == "android:id/button1" || it.id == "android:id/button2" }
@@ -413,7 +416,24 @@ object WhatsAppScreen {
     fun sameChat(title: String, chosen: String): Boolean {
         val t = ScreenMatch.normalize(title)
         val c = ScreenMatch.normalize(chosen)
-        return t.isNotEmpty() && (t == c || t.startsWith("$c ") || c.startsWith("$t "))
+        if (t.isEmpty() || c.isEmpty()) return false
+        if (t == c || t.startsWith("$c ") || c.startsWith("$t ")) return true
+
+        // Check with honorifics stripped (Bhai, Ji, etc.)
+        val tNoHon = ScreenMatch.normalize(com.raju.aiassistant.domain.tools.ContactMatch.stripHonorifics(title))
+        val cNoHon = ScreenMatch.normalize(com.raju.aiassistant.domain.tools.ContactMatch.stripHonorifics(chosen))
+        if (tNoHon.isNotEmpty() && cNoHon.isNotEmpty()) {
+            if (tNoHon == cNoHon || tNoHon.startsWith("$cNoHon ") || cNoHon.startsWith("$tNoHon ")) return true
+        }
+
+        // Check phonetic skeleton match (Hindi vs English spelling)
+        val tSkel = com.raju.aiassistant.domain.tools.ContactMatch.skeleton(title)
+        val cSkel = com.raju.aiassistant.domain.tools.ContactMatch.skeleton(chosen)
+        if (tSkel.isNotEmpty() && cSkel.isNotEmpty()) {
+            if (tSkel == cSkel || tSkel.startsWith(cSkel) || cSkel.startsWith(tSkel)) return true
+        }
+
+        return false
     }
 
     /** The system file picker WhatsApp may open for "Document". */

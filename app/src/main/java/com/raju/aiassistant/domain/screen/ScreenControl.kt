@@ -75,11 +75,30 @@ object SensitiveScreens {
     private val WHOLE_WORD_ONLY = setOf("upi", "navi", "sbi", "cred")
 
     /** Why this screen is off limits (spoken to the user), or null when Seema may work on it. */
-    fun reason(s: ScreenSnapshot): String? = when {
-        isFinancialApp(s.packageName, s.appLabel) -> "बैंक / UPI / पेमेंट ऐप"
-        s.elements.any { it.password } -> "पासवर्ड वाली स्क्रीन"
-        s.elements.any { SECRET_TEXT.containsMatchIn(it.text) || SECRET_TEXT.containsMatchIn(it.hint) } -> "PIN / OTP / पासवर्ड वाली स्क्रीन"
-        else -> null
+    fun reason(s: ScreenSnapshot): String? {
+        val isWa = s.packageName == "com.whatsapp" || s.packageName == "com.whatsapp.w4b"
+        if (isWa) {
+            // In WhatsApp, a normal chat contains previous messages with numbers/pincodes and a '₹' icon in compose bar.
+            // Only block if there is a real password/PIN input field or an active checkout dialog.
+            if (s.elements.any { it.password }) return "पासवर्ड वाली स्क्रीन"
+            val hasChatBox = s.elements.any { it.editable && it.id.endsWith(":id/entry") }
+            val hasSearchBox = s.elements.any { it.editable && it.id.contains("search") }
+            if (hasChatBox || hasSearchBox) return null // Normal chat / search: completely safe
+
+            val hasUpiPinText = s.elements.any {
+                val t = it.text.lowercase()
+                t.contains("enter upi pin") || t.contains("upi pin दर्ज करें") || t.contains("यूपीआई पिन डालें")
+            }
+            if (hasUpiPinText) return "PIN / OTP / पासवर्ड वाली स्क्रीन"
+            return null
+        }
+
+        return when {
+            isFinancialApp(s.packageName, s.appLabel) -> "बैंक / UPI / पेमेंट ऐप"
+            s.elements.any { it.password } -> "पासवर्ड वाली स्क्रीन"
+            s.elements.any { SECRET_TEXT.containsMatchIn(it.text) || SECRET_TEXT.containsMatchIn(it.hint) } -> "PIN / OTP / पासवर्ड वाली स्क्रीन"
+            else -> null
+        }
     }
 }
 

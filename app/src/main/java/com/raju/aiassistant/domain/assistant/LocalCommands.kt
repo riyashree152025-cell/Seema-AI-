@@ -331,9 +331,11 @@ object LocalCommands {
 
     private fun answerCall(t: String): AssistantAction? = if (ANSWER_CALL.matches(t)) AssistantAction.AnswerCall else null
 
+    private val NOT_CALL_NAMES = setOf("log", "logs", "history", "recent", "recents", "missed", "recording", "recordings", "details", "list", "कॉल लॉग", "लॉग", "हिस्ट्री", "रिकॉर्डिंग")
+
     private fun call(t: String): AssistantAction? {
         val who = (CALL_TO.matchEntire(t) ?: CALL_EN.matchEntire(t) ?: CALL_BN.matchEntire(t))?.groupValues?.get(1)?.trim() ?: return null
-        if (who.isEmpty() || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(who)) return null
+        if (who.isEmpty() || who.split(' ').size > 4 || NOT_A_NAME.containsMatchIn(who) || who.lowercase() in NOT_CALL_NAMES) return null
         val digits = who.filter { it.isDigit() }
         return if (digits.length >= 7 && digits.length * 2 >= who.count { !it.isWhitespace() }) {
             AssistantAction.Call(contact = null, number = who)
@@ -581,7 +583,10 @@ object LocalCommands {
             "(?:abhi |अभी )?(?:kiska|kiski|kis ka|kis ki|किसका|किसकी|किस का|किस की) $PHONE (?:aaya tha|aya tha|aayi thi|aai thi|ayi thi|tha|thi|आया था|आई थी|था|थी)|" +
             // "kisne" needs the word call/phone too: "kisne kiya tha" alone could be about anything.
             "(?:last|aakhri|आखिरी|आख़िरी) $PHONE (?:kisne|किसने) (?:kiya tha|ki thi|kiya|किया था|की थी|किया)|" +
-            "(?:kisne|किसने) $PHONE (?:kiya tha|ki thi|kiya|किया था|की थी|किया))$",
+            "(?:kisne|किसने) $PHONE (?:kiya tha|ki thi|kiya|किया था|की थी|किया)|" +
+            "(?:call|कॉल|phone|फ़ोन|फोन)?\\s*(?:log|history|details|list|लॉग|हिस्ट्री|डिटेल्स|रिकॉर्ड्स|records)(?:\\s+(?:dikhao|batao|kya hai|check karo|दिखाओ|बताओ|क्या है|चेक करो))?|" +
+            "(?:recent|missed|pichle|pichli|आख़िरी|आखिरी|पिछली|मिस)\\s*(?:calls|call|कॉल|फ़ोन|फोन)(?:\\s+(?:dikhao|batao|kya hai|check karo|दिखाओ|बताओ|क्या है|चेक करो))?)$",
+        RegexOption.IGNORE_CASE,
     )
 
     private fun screenshot(t: String): AssistantAction? = if (SCREENSHOT.matches(t)) AssistantAction.Screenshot else null
@@ -636,6 +641,7 @@ object LocalCommands {
     )
 
     private fun readScreen(t: String): AssistantAction? = when {
+        t in setOf("suno", "dekho", "सुनो", "देखो", "he seema", "hey seema", "हे सीमा", "नमस्ते", "namaste") -> null
         READ_SCREEN.matches(t) -> AssistantAction.ReadScreen(null)
         LOOK_SCREEN.matches(t) -> AssistantAction.LookAtScreen(null)
         else -> null

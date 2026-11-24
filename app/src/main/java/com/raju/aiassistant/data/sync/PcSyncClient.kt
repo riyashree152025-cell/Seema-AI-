@@ -240,11 +240,47 @@ class PcSyncClient(
         }
     }
 
+    suspend fun abortAutonomousTask(sessionId: String): com.raju.aiassistant.domain.remote.RemoteResult = withContext(Dispatchers.IO) {
+        val candidates = getCandidateEndpoints()
+        if (candidates.isEmpty()) return@withContext com.raju.aiassistant.domain.remote.RemoteResult.NotConfigured
+        val token = getToken()
+        val payload = buildJsonObject {
+            put("session_id", sessionId)
+            put("action", "abort")
+        }
+        val abortClient = http.newBuilder()
+            .connectTimeout(Duration.ofMillis(3000))
+            .readTimeout(Duration.ofMillis(5000))
+            .build()
+        for (base in candidates) {
+            val urls = listOf("$base/actions/autonomous-task/abort", "$base/api/v1/actions/autonomous-task/abort")
+            for (url in urls) {
+                val req = Request.Builder()
+                    .url(url)
+                    .auth(token)
+                    .post(payload.toRequestBody())
+                    .build()
+                try {
+                    abortClient.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            return@withContext com.raju.aiassistant.domain.remote.RemoteResult.Done(mapOf("status" to "aborted"))
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+        com.raju.aiassistant.domain.remote.RemoteResult.Done(mapOf("status" to "aborted"))
+    }
+
     /**
      * The PC / VPS bridge: one action on the companion ("open_app", "system_info", "instruction").
      * Tries local URL first (Wi-Fi), then falls back to remote tunnel URL (mobile data) with token auth.
      */
     suspend fun sendAction(action: String, params: Map<String, String>): com.raju.aiassistant.domain.remote.RemoteResult = withContext(Dispatchers.IO) {
+        if (action == "abort_autonomous_task") {
+            val sess = params["session_id"].orEmpty()
+            return@withContext abortAutonomousTask(sess)
+        }
         if (action == "autonomous_task") {
             val goal = params["goal"].orEmpty()
             val sess = params["session_id"].orEmpty().ifEmpty { "pc_task_${System.currentTimeMillis()}" }

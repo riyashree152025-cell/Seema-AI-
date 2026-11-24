@@ -14,16 +14,16 @@ object IntentRouter {
     fun system(today: LocalDate): String = """
 Turn ONE spoken Hindi/Hinglish/Bengali phone command into ONE JSON object, nothing else. Speech recognition makes mistakes: fix obvious mishearings ("3 a"=3A, "उन्नीस सौ छियासी"=1986, numbers in words = digits). Keep names as said. Leave out fields that were not said. If it is a question, chat or anything not in the list: {"type":"chat"}.
 Types:
-call{contact} · sms{contact,text} · send_qr{contact,amount} · send_upi{contact,label} (my saved payment QR / UPI ID) · whatsapp{contact,text?} ("What's up" = WhatsApp; text only if said) · whatsapp_peek{contact} (what came in their chat) · whatsapp_play_voice{contact} · read_ticket (read the newest train ticket) · open_setup (missing permissions / settings to turn on) · set_language{language:bengali|hindi|auto} (talk in that language from now on) · sleep (stop listening until "Hey Seema") · open_app{name} · flashlight{state:on|off} · volume{percent} · set_alarm{hour,minute} · set_timer{minutes} · reminder_add{text,in_minutes | at:"YYYY-MM-DDTHH:MM"} · tatkal_reminder{name,class:ac|sleeper} (remind to book someone's Tatkal ticket) · booking_note{from,to,class:1A|2A|3A|SL|CC|2S,date:"YYYY-MM-DD",passenger,birth_year} (note a booking someone asked for) · look_camera{camera:back|front,question} · live_camera{on:true|false} · take_photo{camera} · inbox_check{period:today|yesterday|week|month|day,kind:all|credit|debit,date:"YYYY-MM-DD"} ("15 तारीख" is a date, not an amount) · payment_check{amount} · ledger_add{name,amount,kind:gave|got} · ledger_balance{name} · expense_add{amount,note} · expense_summary{period:today|week|month} · pnr_status{pnr} · pnr_add{pnr,date:"YYYY-MM-DD",passenger} · pnr_track{pnr} (note / track a PNR, even with only some digits; a PNR is always 10 digits) · remember{text} (save a note / something to remember, no time) · reminder_list · app_search{app,query} (search inside Chrome/YouTube/Maps/Amazon…) · play_music{query} · navigate{destination} · battery · find_phone · lock_screen
+call{contact} · last_call · sms{contact,text} · send_qr{contact,amount,include_hisab:true|false} · send_upi{contact,label,amount,include_hisab:true|false} · ticket_pdf_hisab{contact,extra} · whatsapp{contact,text?} · whatsapp_peek{contact} · whatsapp_play_voice{contact} · read_ticket · read_screen{question?} · remote_task{goal} · remote_abort · open_setup · set_language{language:bengali|hindi|auto} · sleep · open_app{name} · flashlight{state:on|off} · volume{percent} · set_alarm{hour,minute} · set_timer{minutes} · reminder_add{text,in_minutes | at:"YYYY-MM-DDTHH:MM"} · tatkal_reminder{name,class:ac|sleeper} · booking_note{from,to,class:1A|2A|3A|SL|CC|2S,date:"YYYY-MM-DD",passenger,birth_year} · look_camera{camera:back|front,question} · live_camera{on:true|false} · take_photo{camera} · inbox_check{period:today|yesterday|week|month|day,kind:all|credit|debit,date:"YYYY-MM-DD"} · payment_check{amount} · ledger_add{name,amount,kind:gave|got} · ledger_balance{name} · expense_add{amount,note} · expense_summary{period:today|week|month} · pnr_status{pnr} · pnr_add{pnr,date:"YYYY-MM-DD",passenger} · pnr_track{pnr} · remember{text} · reminder_list · app_search{app,query} · play_music{query} · navigate{destination} · battery · find_phone · lock_screen
 Today: $today
 """.trim()
 
     private val TASK_WORDS = Regex(
         "\\b(?:kar|karo|kardo|karna|kijiye|laga|lagao|set|bhej|bhejo|send|call|phone|fon|yaad|remind|alarm|timer|booking|book|tatkal|ticket|pnr|" +
             "camera|photo|selfie|torch|volume|khol|kholo|open|band|sms|message|msg|inbox|credit|debit|refund|qr|upi|क्यूआर|यूपीआई|udhaar|udhar|khata|hisaab|hisab|diye|mile|" +
-            "kharch|kharcha|note|likh|likho|gaana|song|bajao|chalao|rasta|battery|lock|whatsapp)\\w*|" +
+            "kharch|kharcha|note|likh|likho|gaana|song|bajao|chalao|rasta|battery|lock|whatsapp|screen|pc|mona|remote|abort|roko|history|log)\\w*|" +
             "करो|कर दो|लगाओ|भेजो|कॉल|फ़ोन|फोन|याद|अलार्म|टाइमर|बुकिंग|तत्काल|टिकट|कैमरा|फोटो|फ़ोटो|सेल्फी|टॉर्च|आवाज़|खोलो|बंद|मैसेज|" +
-            "उधार|खाता|हिसाब|दिए|मिले|खर्च|नोट|लिखो|गाना|बजाओ|चलाओ|रास्ता|बैटरी|लॉक",
+            "उधार|खाता|हिसाब|दिए|मिले|खर्च|नोट|लिखो|गाना|बजाओ|चलाओ|रास्ता|बैटरी|लॉक|स्क्रीन|रोको",
         RegexOption.IGNORE_CASE,
     )
 
@@ -38,8 +38,28 @@ Today: $today
         return when (str("type")?.lowercase()) {
             null, "chat" -> null
             // A payment QR / UPI ID is shared on WhatsApp by Seema itself — never "open Paytm/PhonePe".
-            "send_qr" -> AssistantAction.SendPaymentQr(str("contact").orEmpty(), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
-            "send_upi" -> AssistantAction.SendUpiId(str("contact").orEmpty(), str("label"), str("amount")?.filter { it.isDigit() }?.toLongOrNull())
+            "send_qr" -> AssistantAction.SendPaymentQr(
+                str("contact").orEmpty(),
+                str("amount")?.filter { it.isDigit() }?.toLongOrNull(),
+                str("include_hisab")?.toBooleanStrictOrNull() ?: (str("hisab")?.toBooleanStrictOrNull() ?: false),
+            )
+            "send_upi" -> AssistantAction.SendUpiId(
+                str("contact").orEmpty(),
+                str("label"),
+                str("amount")?.filter { it.isDigit() }?.toLongOrNull(),
+                str("include_hisab")?.toBooleanStrictOrNull() ?: (str("hisab")?.toBooleanStrictOrNull() ?: false),
+            )
+            "ticket_pdf_hisab", "whatsapp_ticket_hisab" -> (str("contact") ?: str("name"))?.let {
+                AssistantAction.TicketPdfHisab(it, str("extra")?.filter { c -> c.isDigit() }?.toLongOrNull())
+            }
+            "remote_task", "pc_task", "mona_task" -> str("goal")?.let {
+                AssistantAction.Remote(com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousTask(goal = it))
+            }
+            "remote_abort", "pc_abort", "stop_pc" -> AssistantAction.Remote(
+                com.raju.aiassistant.domain.remote.RemoteCommand.AutonomousAbort()
+            )
+            "read_screen", "screen" -> AssistantAction.ReadScreen(str("question"))
+            "last_call", "call_log", "call_history", "recent_calls" -> AssistantAction.LastCall
             "whatsapp" -> str("contact")?.let { c -> str("text")?.let { AssistantAction.WhatsApp(c, it) } ?: AssistantAction.WhatsAppAskText(c) }
             "tatkal_reminder" -> AssistantAction.TatkalReminder(str("name"), str("class")?.lowercase()?.startsWith("s") == true)
             "booking_note" -> AssistantAction.BookingNoteWith(
@@ -75,8 +95,8 @@ Today: $today
             "ledger_add" -> {
                 val paise = str("amount")?.let { com.raju.aiassistant.domain.business.rupeesToPaise(it) }
                 val kind = when (str("kind")?.lowercase()) {
-                    "got", "mile", "received" -> com.raju.aiassistant.domain.ledger.LedgerKind.GOT
-                    "gave", "diye", "given" -> com.raju.aiassistant.domain.ledger.LedgerKind.GAVE
+                    "got", "mile", "received", "jama" -> com.raju.aiassistant.domain.ledger.LedgerKind.GOT
+                    "gave", "diye", "given", "udhaar", "lena" -> com.raju.aiassistant.domain.ledger.LedgerKind.GAVE
                     else -> null
                 }
                 val name = str("name")

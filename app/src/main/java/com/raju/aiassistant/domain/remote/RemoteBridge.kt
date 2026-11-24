@@ -17,10 +17,14 @@ sealed interface RemoteCommand {
     data class Instruction(override val target: RemoteTarget, val text: String) : RemoteCommand
     /** Multi-step autonomous task or screen action executed by MONA on PC. */
     data class AutonomousTask(
-        override val target: RemoteTarget,
+        override val target: RemoteTarget = RemoteTarget.PC,
         val goal: String,
         val sessionId: String = "",
         val input: String? = null,
+    ) : RemoteCommand
+    data class AutonomousAbort(
+        override val target: RemoteTarget = RemoteTarget.PC,
+        val sessionId: String = "",
     ) : RemoteCommand
 }
 
@@ -95,6 +99,12 @@ object RemoteBridge {
         RegexOption.IGNORE_CASE,
     )
 
+    private val ABORT = Regex(
+        "^(?:seema[, ]+)?(?:mere\\s+|मेरे\\s+|আমার\\s+)?(?:$PC|$VPS)\\s*(?:task|टास्क|টাস্ক|काम|काज)?\\s*(?:roko|rok do|band karo|stop karo|stop|abort|रोको|रोक दो|बंद करो|থামাও|থামো)$|" +
+            "^(?:seema[, ]+)?(?:task|टास्क|টাস্ক|काम|काज)?\\s*(?:roko|rok do|band karo|stop|abort|रोको|रोक दो|बंद करो|থামাও)$",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** The machine named first ("PC ko command bhejo: server restart karo" is for the PC). */
     private fun targetOf(text: String): RemoteTarget {
         val vps = TARGET_VPS.find(text)?.range?.first ?: Int.MAX_VALUE
@@ -111,6 +121,7 @@ object RemoteBridge {
     fun parse(said: String): RemoteCommand? {
         val t = said.trim().trimEnd('.', '!', '?', '।', ' ').replace(Regex("\\s+"), " ")
         if (t.isEmpty() || t.length > 560) return null
+        if (ABORT.matches(t)) return RemoteCommand.AutonomousAbort(targetOf(t))
         COMMAND.matchEntire(t)?.let { m ->
             val text = m.groupValues[1].trim().trim('"', '\'', '“', '”')
             return if (text.isBlank()) null else RemoteCommand.Instruction(targetOf(t), text)
@@ -151,6 +162,10 @@ object RemoteBridge {
             command.input?.let { put("input", it) }
             put("target", command.target.name.lowercase())
         }
+        is RemoteCommand.AutonomousAbort -> "abort_autonomous_task" to mapOf(
+            "session_id" to command.sessionId,
+            "target" to command.target.name.lowercase(),
+        )
     }
 
     private fun name(t: RemoteTarget, bengali: Boolean) = when (t) {
@@ -178,6 +193,7 @@ object RemoteBridge {
             RemoteResult.Refused -> if (bengali) "$n এটা করতে দিল না — কম্প্যানিয়নের অনুমতির তালিকায় নেই।" else "$n ने यह करने नहीं दिया — कम्पैनियन की इजाज़त वाली सूची में नहीं है।"
             RemoteResult.Unreachable -> if (bengali) "$n-এর সাথে যোগাযোগ হচ্ছে না, ওটা চালু আছে তো?" else "$n से संपर्क नहीं हो पा रहा, वो चालू है ना?"
             is RemoteResult.Done -> when (c) {
+                is RemoteCommand.AutonomousAbort -> if (bengali) "$n-এ কাজ থামানো হয়েছে।" else "$n पर टास्क रोक दिया गया है।"
                 is RemoteCommand.AutonomousTask -> {
                     r.fields["message"] ?: if (bengali) "$n-এ কাজ সম্পন্ন হয়েছে।" else "$n पर टास्क पूरा हो गया।"
                 }
