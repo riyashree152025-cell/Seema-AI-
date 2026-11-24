@@ -3853,4 +3853,30 @@ class AssistantEngineTest {
         assertTrue(speaker.spoken.last(), speaker.spoken.last().contains("कोई नया संदेश"))
         assertTrue(provider.calls.isEmpty())
     }
+
+    // ---------------------------------------------------------------- loudspeaker echo guard
+
+    @Test
+    fun echoGuardOnLoudspeakerDiscardsOwnVoiceWithin2500ms() = runTest {
+        var onHeadphones = false
+        provider = FakeProvider(ArrayDeque(listOf(AiResult.Success("Delhi mein halki hawa chal rahi hai."), AiResult.Success("dusra"))))
+        val eng = AssistantEngine(
+            scope = backgroundScope, settings = settings, secret = { keys[it] },
+            providerFor = { _, _ -> provider }, searchFor = { search },
+            history = store, memories = store, actionLog = store, tools = tools,
+            speaker = speaker, voice = voice, isOnline = { online }, clock = { now }, nowDescription = { "now" },
+            transcriber = null, wakeListener = NoWakeListener,
+            headphones = { onHeadphones },
+        )
+        eng.startHandsFree()
+        runCurrent()
+        voice.onResult!!("Delhi ka mausam batao")
+        settle()
+        assertEquals(1, provider.calls.size)
+        // Now speech within 2.5s that is her own echo on loudspeaker:
+        now += 500
+        voice.onResult!!("halki hawa")
+        settle()
+        assertEquals(1, provider.calls.size) // discarded by echo guard!
+    }
 }

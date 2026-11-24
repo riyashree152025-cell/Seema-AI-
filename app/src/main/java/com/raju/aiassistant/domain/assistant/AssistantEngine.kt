@@ -525,6 +525,14 @@ class AssistantEngine(
             _voiceSession.value = false
             return
         }
+        // Echo guard on loudspeaker: if the speech recogniser picked up Seema's own voice from the
+        // loudspeaker within 2.5 s of her finishing a sentence, discard it — unless the user said "ruko".
+        val now = clock()
+        if (now - lastSpokeAt < 2_500L && !headphones() && !isStopCommand(heard) && isLikelyOwnEcho(heard, lastSpoken.orEmpty())) {
+            trace("echo: own loudspeaker tail within 2.5 s, dropped")
+            ignoreHeard()
+            return
+        }
         // "Haan sunao" / "nahi" while a message question waits but its own listening was not open:
         // it is still the answer to that question, never a new request for the AI.
         if (heard.trim().split(Regex("\\s+")).size <= 4) {
