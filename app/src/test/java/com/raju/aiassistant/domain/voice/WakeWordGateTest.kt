@@ -9,24 +9,56 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WakeWordGateTest {
+
     @Test
-    fun herNameInEveryLanguageAndTheRequestWithoutIt() {
+    fun acceptedWakePhrasesStrictExtractionAndStripping() {
+        // "hey seema", "hi seema", "hello seema", "arey seema", "suno seema",
+        // "हे सीमा", "अरे सीमा", "सुनो सीमा", "হেই সীমা", "এই সীমা", "শোনো সীমা"
         assertEquals("aaj kitna paisa kata", WakeWordGate.request("Hey Seema aaj kitna paisa kata"))
         assertEquals("aaj kitna paisa kata", WakeWordGate.request("hey seema, aaj kitna paisa kata"))
+        assertEquals("aaj kitna paisa kata", WakeWordGate.request("HEY SEEMA aaj kitna paisa kata"))
+        assertEquals("time kya hua", WakeWordGate.request("Hi Seema time kya hua"))
+        assertEquals("time kya hua", WakeWordGate.request("Hello Seema time kya hua"))
+        assertEquals("aaj kitna paisa kata", WakeWordGate.request("arey seema aaj kitna paisa kata"))
+        assertEquals("aaj kitna paisa kata", WakeWordGate.request("are seema aaj kitna paisa kata"))
+        assertEquals("aaj kitna paisa kata", WakeWordGate.request("suno seema aaj kitna paisa kata"))
+
         assertEquals("मौसम बताओ", WakeWordGate.request("हे सीमा मौसम बताओ"))
         assertEquals("मौसम बताओ", WakeWordGate.request("अरे सीमा मौसम बताओ"))
         assertEquals("मौसम बताओ", WakeWordGate.request("सुनो सीमा मौसम बताओ"))
+
         assertEquals("আজ কত টাকা এসেছে", WakeWordGate.request("হেই সীমা আজ কত টাকা এসেছে"))
         assertEquals("আজ কত টাকা এসেছে", WakeWordGate.request("এই সীমা আজ কত টাকা এসেছে"))
         assertEquals("কী খবর", WakeWordGate.request("শোনো সীমা কী খবর"))
-        assertEquals("", WakeWordGate.request("Hi Seema"))
-        assertEquals("", WakeWordGate.request("arey Seema"))
-        assertEquals("time kya hua", WakeWordGate.request("Hello Seema time kya hua"))
+
+        // Wake phrases alone return empty string for greeting / wake-up
+        assertEquals("", WakeWordGate.request("Hey Seema"))
+        assertEquals("", WakeWordGate.request("hi seema"))
+        assertEquals("", WakeWordGate.request("hello seema"))
+        assertEquals("", WakeWordGate.request("arey seema"))
+        assertEquals("", WakeWordGate.request("suno seema"))
+        assertEquals("", WakeWordGate.request("हे सीमा"))
+        assertEquals("", WakeWordGate.request("अरे सीमा"))
+        assertEquals("", WakeWordGate.request("सुनो सीमा"))
+        assertEquals("", WakeWordGate.request("হেই সীমা"))
+        assertEquals("", WakeWordGate.request("এই সীমা"))
+        assertEquals("", WakeWordGate.request("শোনো সীমা"))
     }
 
     @Test
     fun ordinaryConversationIsDroppedSilently() {
-        for (talk in listOf("haan bhai kal milte hain", "chai piyoge", "it seems fine", "Simran ko bolo aa jaye", "दुकान कितने बजे खुलेगी", "কাল দেখা হবে")) {
+        for (talk in listOf(
+            "haan bhai kal milte hain",
+            "chai piyoge",
+            "it seems fine",
+            "Simran ko bolo aa jaye",
+            "दुकान कितने बजे खुलेगी",
+            "কাল দেখা হবে",
+            "kal seema aayi thi",
+            "maine seema ko bola tha",
+            "talking to seema right now",
+            "aaj kitna paisa kata", // missing wake word while follow-up is closed
+        )) {
             assertNull(talk, WakeWordGate.request(talk))
             assertEquals(talk, WakeWordGate.Verdict.Ignore, WakeWordGate.check(talk, followUpOpen = false))
         }
@@ -82,7 +114,16 @@ class WakeWordGateTest {
 
     @Test
     fun quietCommands() {
-        for (q in listOf("Seema chup raho", "Seema so jao", "abhi mat suno", "सीमा चुप रहो", "अभी मत सुनो", "সীমা চুপ থাকো", "chup raho please")) {
+        for (q in listOf(
+            "Seema chup raho",
+            "Seema so jao",
+            "Abhi mat suno",
+            "সীমা চুপ থাকো",
+            "सीमा चुप रहो",
+            "अभी मत सुनो",
+            "chup raho please",
+            "so jao",
+        )) {
             assertTrue(q, WakeWordGate.isQuietCommand(q))
             assertEquals(q, AssistantAction.GoToSleep, LocalCommands.parse(q))
         }

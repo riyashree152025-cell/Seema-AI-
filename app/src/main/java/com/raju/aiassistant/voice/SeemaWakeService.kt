@@ -151,19 +151,19 @@ class SeemaWakeService : Service() {
             )
             .setContentText(
                 when {
-                    paused -> "कोई बात नहीं सुनी जा रही। फिर चालू करने के लिए \"🎙 फिर सुनो\" दबाइए।"
-                    wakeWordOn -> "दूसरों से बात कीजिए, सीमा बीच में नहीं बोलेगी। रोकना हो तो \"🔇 सुनना रोको\"।"
+                    paused -> "कोई बात नहीं सुनी जा रही। फिर चालू करने के लिए \"Resume Wake-Word\" दबाइए।"
+                    wakeWordOn -> "दूसरों से बात कीजिए, सीमा बीच में नहीं बोलेगी। रोकना हो तो \"Pause Listening\"।"
                     else -> "'हे सीमा' बंद है — माइक सिर्फ़ तब खुलता है जब आप ऐप में बोलते हैं।"
                 },
             )
             .setContentIntent(tapIntent)
         if (paused) {
             // One tap to listen again.
-            builder.addAction(0, "🎙 फिर सुनो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_RESUME_LISTENING, 4))
+            builder.addAction(0, "Resume Wake-Word", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_RESUME_LISTENING, 4))
         } else {
             // Talk to her from any app, or stop her listening, right from the notification shade.
             builder.addAction(0, "🎤 बोलो", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_TALK, 1))
-            builder.addAction(0, "🔇 सुनना रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_PAUSE_LISTENING, 3))
+            builder.addAction(0, "Pause Listening", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_PAUSE_LISTENING, 3))
             builder.addAction(0, "⏹ रोको", SeemaQuickActionReceiver.pending(this, SeemaQuickActionReceiver.ACTION_STOP, 2))
         }
         return builder

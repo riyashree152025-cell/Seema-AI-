@@ -23,7 +23,9 @@ object WakeWordGate {
     /** Her name as the recognisers write it — the real name only (not "seem", "Simran" …). */
     private val NAME = words(
         "seema", "seemaa", "sima", "seemaji", "seema ji", "heyseema", "hiseema", "mesima", "meseema", "hesima", "heseema",
-        "सीमा", "सिमा", "सीमाजी", "हेसीमा", "সীমা", "সিমা", "সীমাদি",
+        "areseema", "areyseema", "sunoseema",
+        "सीमा", "सिमा", "सीमाजी", "हेसीमा", "अरेसीमा", "सुनोसीमा",
+        "সীমা", "সিমা", "সীমাদি", "হেইসীমা", "এইসীমা", "শোনোসীমা",
     )
 
     /** Someone else's assistant, or the words that wake it. */
@@ -71,35 +73,5 @@ object WakeWordGate {
         val t = text.trim().trimEnd('.', '!', '।', ' ').replace(Regex("\\s+"), " ")
         val rest = request(t) ?: t
         return QUIET.matches(rest.trim().trimEnd('.', '!', '।', ' ').trimStart(',', ' '))
-    }
-}
-
-/**
- * The short window after Seema's reply in which Raju may answer without "Hey Seema": [WINDOW_MS] after she stops
- * speaking (a question of hers can ask for longer). A sentence begun inside the window still counts while it is
- * being recognised ([RESULT_GRACE_MS]). Closed at once by "chup raho" or by talk to another assistant.
- */
-class ConversationSessionTimer(private val now: () -> Long) {
-    private var openUntil = 0L
-
-    /** Her reply ended: open the window for [WINDOW_MS] (never shortens a longer one already open). */
-    fun openAfterReply() { openUntil = maxOf(openUntil, now() + WINDOW_MS) }
-
-    /** A question of hers that may take longer to answer ("किसको भेजना है?"). */
-    fun openFor(ms: Long) { openUntil = maxOf(openUntil, now() + ms) }
-
-    fun close() { openUntil = 0L }
-
-    fun isOpen(): Boolean = now() < openUntil
-
-    /** A result heard now from listening that began at [listenStartedAt]: still for her? */
-    fun accepts(listenStartedAt: Long): Boolean = isOpen() || (openUntil > 0 && listenStartedAt <= openUntil && now() < openUntil + RESULT_GRACE_MS)
-
-    /** When the window closes (0 = closed). */
-    fun until(): Long = openUntil
-
-    companion object {
-        const val WINDOW_MS = 7_000L
-        const val RESULT_GRACE_MS = 6_000L
     }
 }

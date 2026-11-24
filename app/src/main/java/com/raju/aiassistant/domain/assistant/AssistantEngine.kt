@@ -544,9 +544,10 @@ class AssistantEngine(
                 return
             }
             com.raju.aiassistant.domain.voice.WakeWordGate.Verdict.OtherAssistant -> {
-                trace("gate: spoken to another assistant, follow-up closed")
+                trace("gate: spoken to another assistant, dropping to sleep mode silently")
                 closeFollowUp()
-                ignoreHeard()
+                _voiceSession.value = false
+                if (canSleep()) goToSleep() else endSession()
                 return
             }
             // Taken: this window (a tap's, or the last reply's) is used up; her next reply opens a fresh 7 s.
@@ -568,7 +569,7 @@ class AssistantEngine(
             return
         }
         val requestAfterWake = (verdict as? com.raju.aiassistant.domain.voice.WakeWordGate.Verdict.Called)?.request
-            ?: if (settings.value.wakeWord) afterWakeWord(text) else null
+            ?: if (settings.value.wakeWord) com.raju.aiassistant.domain.voice.WakeWordGate.request(text) else null
         if (requestAfterWake != null) {
             if (requestAfterWake.isBlank()) {
                 // The user only called her name ("हे सीमा" / "सीमा" / "Hey Seema") to wake/greet her:
@@ -905,7 +906,10 @@ class AssistantEngine(
         heldVoiceText = null
         heldJob?.cancel()
         if (paused()) return
+        val windowOver = !session.isOpen() && clock() >= followUpUntil
         when {
+            windowOver && canSleep() -> goToSleep()
+            windowOver -> returnToStandby()
             canSleep() && _pending.value == null && (inBackground || settings.value.voiceMode != VoiceMode.SESSION) -> goToSleep()
             handsFree && _voiceSession.value -> relisten(300)
             else -> returnToStandby()
@@ -1104,10 +1108,9 @@ class AssistantEngine(
             val request = when {
                 // Her name said: the rest is the request (as before). No name: the whole sentence,
                 // unless it is just the echo of her own answer, which was said within the last 2.5 s.
-                followUp -> com.raju.aiassistant.domain.voice.WakeWordGate.request(heard) ?: afterWakeWord(heard)
+                followUp -> com.raju.aiassistant.domain.voice.WakeWordGate.request(heard)
                     ?: heard.takeIf { it.length >= 2 && now - lastSpokeAt >= 2_500L && !com.raju.aiassistant.domain.voice.WakeWordGate.addressesOther(it) }
-                settings.value.wakeWord -> afterWakeWord(heard)
-                // Wake word switched off and her window closed: still only her name wakes her, never other talk.
+                // Window closed or standby: ALL speech must pass through strict wake-word check.
                 else -> com.raju.aiassistant.domain.voice.WakeWordGate.request(heard)
             }
             trace("wake request: ${when { request == null -> "no name"; request.isBlank() -> "name only"; else -> "${request.length} chars" }}")

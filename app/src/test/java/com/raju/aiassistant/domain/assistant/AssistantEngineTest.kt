@@ -1603,6 +1603,42 @@ class AssistantEngineTest {
     }
 
     @Test
+    fun otherAssistantDuringFollowUpDropsToSleepSilently() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = FakeWake()
+        val e = sleepyEngine(wake, FakeTranscriber("Hey Google"))
+        e.startHandsFree()
+        runCurrent()
+        val spokenBefore = speaker.spoken.size
+        // Raju speaks to Google during follow-up
+        voice.onResult!!("Hey Google")
+        settle()
+        // Immediately cancelled and dropped to sleep silently
+        assertEquals(AssistantState.Sleeping, e.state.value)
+        assertEquals(spokenBefore, speaker.spoken.size) // Nothing spoken
+        assertTrue(provider.calls.isEmpty())
+    }
+
+    @Test
+    fun voiceSleepCommandsConfirmSoftlyAndDropToSleep() = runTest {
+        settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
+        val wake = FakeWake()
+        for ((cmd, expected) in listOf(
+            "Seema so jao" to "ठीक है, जब बुलाओगे तभी बोलूँगी।",
+            "Abhi mat suno" to "ठीक है, जब बुलाओगे तभी बोलूँगी।",
+            "সীমা চুপ থাকো" to "ঠিক আছে, ডাকলে তবেই কথা বলব।",
+        )) {
+            val e = sleepyEngine(wake, FakeTranscriber(cmd))
+            e.startHandsFree()
+            runCurrent()
+            voice.onResult!!(cmd)
+            settle()
+            assertEquals(expected, speaker.spoken.last())
+            assertEquals(AssistantState.Sleeping, e.state.value)
+        }
+    }
+
+    @Test
     fun otherTalkDoesNotWakeHer() = runTest {
         settings.value = settings.value.copy(voiceMode = com.raju.aiassistant.domain.model.VoiceMode.ALWAYS)
         val wake = FakeWake()

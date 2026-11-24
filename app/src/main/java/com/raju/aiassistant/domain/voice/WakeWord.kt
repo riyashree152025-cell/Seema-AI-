@@ -3,19 +3,35 @@ package com.raju.aiassistant.domain.voice
 /** How speech recognition writes "Seema" (Hindi, Bengali, and Latin script, common mishearings). */
 private val WAKE_WORDS = listOf(
     // 2-word composite wake words (with and without space)
-    "hey seema", "heyseema", "hey sima", "heysima", "hi seema", "hiseema", "hello seema", "ok seema",
+    "hey seema", "heyseema", "hey sima", "heysima", "hi seema", "hiseema", "hello seema", "helloseema", "ok seema", "okay seema",
+    "arey seema", "are seema", "arre seema", "areseema", "areyseema", "suno seema", "sunoseema",
     "\u0939\u0947 \u0938\u0940\u092e\u093e", // हे सीमा
     "\u0939\u0947\u0938\u0940\u092e\u093e",   // हेसीमा (no space)
     "\u0939\u0947 \u0938\u093f\u092e\u093e", // हे सिमा
     "\u0939\u0947\u0938\u093f\u092e\u093e",   // हेसिमा (no space)
+    "\u0905\u0930\u0947 \u0938\u0940\u092e\u093e", // अरे सीमा
+    "\u0905\u0930\u0947\u0938\u0940\u092e\u093e",   // अरेसीमा
+    "\u0905\u0930\u0947 \u0938\u093f\u092e\u093e", // अरे सिमा
+    "\u0938\u0941\u0928\u094b \u0938\u0940\u092e\u093e", // सुनो सीमा
+    "\u0938\u0941\u0928\u094b\u0938\u0940\u092e\u093e",   // सुनोसीमा
+    "\u0938\u0941\u0928\u094b \u0938\u093f\u092e\u093e", // सुनो सिमा
+    "\u0938\u0941\u0928\u093f\u090f \u0938\u0940\u092e\u093e", // सुनिए सीमा
     "\u0939\u093e\u092f \u0938\u0940\u092e\u093e", // हाय सीमा
     "\u0939\u093e\u092f\u0938\u0940\u092e\u093e",   // हायसीमा
     "\u0939\u0947\u0932\u094b \u0938\u0940\u092e\u093e", // हेलो सीमा
     "\u0939\u0947\u0932\u094b\u0938\u0940\u092e\u093e",   // हेलोसीमा
+    "\u09b9\u09c7\u0987 \u09b8\u09c0\u09ae\u09be", // হেই সীমা
+    "\u09b9\u09c7\u0987\u09b8\u09c0\u09ae\u09be",   // হেইসীমা
+    "\u09b9\u09c7\u0987 \u09b8\u09bf\u09ae\u09be", // হেই সিমা
+    "\u098f\u0987 \u09b8\u09c0\u09ae\u09be", // এই সীমা
+    "\u098f\u0987\u09b8\u09c0\u09ae\u09be",   // এইসীমা
+    "\u098f\u0987 \u09b8\u09bf\u09ae\u09be", // এই সিমা
     "\u09b9\u09cd\u09af\u09be\u09b2\u09cb \u09b8\u09c0\u09ae\u09be", // হ্যালো সীমা
     "\u09b9\u09cd\u09af\u09be\u09b2\u09cb\u09b8\u09c0\u09ae\u09be",   // হ্যালোসীমা
     "\u09b6\u09cb\u09a8\u09cb \u09b8\u09c0\u09ae\u09be", // শোনো সীমা
     "\u09b6\u09cb\u09a8\u09cb\u09b8\u09c0\u09ae\u09be",   // শোনোসীমা
+    "\u09b6\u09cb\u09a8\u09cb \u09b8\u09bf\u09ae\u09be", // শোনো সিমা
+    "\u09b6\u09cb\u09a8 \u09b8\u09c0\u09ae\u09be", // শোন সীমা
     // Hindi composite & single words
     "\u0938\u0940\u092e\u093e \u091c\u0940", // सीमा जी
     "\u0938\u0940\u092e\u093e\u091c\u0940", // सीमाजी
@@ -25,7 +41,7 @@ private val WAKE_WORDS = listOf(
     "\u0938\u0940\u092e\u093e\u0902", // सीमां
     "\u0938\u0940\u0924\u093e", // सीता (frequent STT mishear)
     // English / transliterated single words
-    "seema ji", "seemaji", "seema", "sima", "shima", "seemaa", "sema", "sheema", "seem", "simran",
+    "seema ji", "seemaji", "seema", "sima", "shima", "seemaa", "sema", "sheema",
     // "Hey Seema" run together, as the phone's recogniser wrote it in real use ("Mesima.", "Máxima.")
     "mesima", "meseema", "hesima", "heseema", "maxima",
     // Bengali single words
@@ -37,7 +53,7 @@ private val WAKE_WORDS = listOf(
 ).sortedByDescending { it.length }
 
 private val LEADING_FILLERS = Regex(
-    "^(hey|hi|hello|ok|okay|oye|arre|are|suno|please|pls|well|so|now|ab|dekho|shono|bolchi|" +
+    "^(hey|hi|hello|ok|okay|oye|arre|are|arey|suno|please|pls|well|so|now|ab|dekho|shono|bolchi|" +
     "\\u0939\\u0948\\s*\\u0924\\u094b\\s*(\\u092e\\u0948\\u0902)?|" + // है तो मैं / है तो
     "(\\u092e\\u0948\\u0902|\\u0939\\u092e)\\s*(\\u092c\\u094b\\u0932|\\u0915\\u0939)\\s*\\u0930\\u0939\\u093e\\s*(\\u0939\\u0942\\u0902)?|" + // मैं बोल रहा हूँ
     "\\u0924\\u094b|" + // तो
@@ -56,6 +72,7 @@ private val LEADING_FILLERS = Regex(
     "\\u0993\\u09b9\\u09c7|" + // ওহে
     "\\u09b6\\u09cb\\u09a8\\u09cb|" + // শোনো
     "\\u09b9\\u09cd\\u09af\\u09be\\u09b2\\u09cb|" + // হ্যালো
+    "\\u09b9\\u09c7\\u0987|" + // হেই
     "\\u09b9\\u09c7|" + // হে
     "\\u0986\\u09b0\\u09c7" + // আরে
     ")($|\\s+)",
@@ -107,8 +124,7 @@ fun afterWakeWord(heard: String): String? {
         before = before.replace(LEADING_FILLERS, "").trim()
     }
     before = before.trimEnd(',', '!', '.', '?')
-    val beforeWords = before.split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (beforeWords.size > 3) return null
+    if (before.isNotBlank()) return null
 
     var after = text.substring(hit.last + 1).trim().trimStart(',', '!', '.', '?', ' ', '-')
     after = after.replace(TRAILING_HONORIFICS, "").trim().trimStart(',', '!', '.', '?', ' ', '-')
